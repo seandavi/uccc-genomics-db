@@ -1,0 +1,26 @@
+# Daily vendor-genomics refresh: sync raw Caris (S3) + FMI (dccapp720) files,
+# rebuild genomics_phi.duckdb, derive genomics.duckdb. Instance of the
+# monode/infrastructure SCHEDULING.md convention; copied from cdsci-lake's units.
+[Unit]
+Description=Rebuild the UCCC vendor-genomics DuckDBs from Caris + FMI deliveries
+Documentation=file:///home/davsean/Documents/git/uccc-genomics-db/README.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=ntfy-notify@%N.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/davsean/Documents/git/uccc-genomics-db
+# NOT `/usr/bin/env uv` -- systemd --user PATH excludes ~/.local/bin (see SCHEDULING.md).
+ExecStart=%h/.local/bin/uv run genomics all
+# Then rebuild the static dashboard and push it to Cloudflare Workers (README § Dashboard).
+# npm needs node on PATH; the deploy token is read from GSM at run time, never stored here.
+Environment=PATH=%h/.nvm/versions/node/v22.20.0/bin:%h/.local/bin:/usr/bin:/bin
+ExecStart=%h/.nvm/versions/node/v22.20.0/bin/npm --prefix %h/Documents/git/uccc-genomics-db/dashboard run build
+ExecStart=/bin/sh -c 'CLOUDFLARE_API_TOKEN=$$(gcloud secrets versions access latest --secret=cdsci-cloudflare-workers-token --project=cdsci-infra) npm --prefix %h/Documents/git/uccc-genomics-db/dashboard run deploy'
+# Full rebuild is ~20 min today (Caris TPM CSV read dominates); give headroom.
+TimeoutStartSec=7200
+Nice=10
+
+[Install]
+WantedBy=default.target

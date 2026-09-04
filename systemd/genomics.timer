@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily vendor-genomics refresh (Caris drops ~09:45 MT; FMI share updates overnight)
+
+[Timer]
+OnCalendar=*-*-* 10:30:00
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
