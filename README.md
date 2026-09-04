@@ -141,7 +141,7 @@ npm run deploy   # -> Cloudflare Worker `uccc-genomics-dashboard` (needs CLOUDFL
 
 Hosting is a Cloudflare Workers static-assets site, deployed by the systemd
 service after every daily load with the `cdsci-cloudflare-workers-token`
-secret from GSM. Users reach it at `https://genomics.cancerdatasci.org`
+secret from GSM. Users reach it at `https://uccc-genomics.cancerdatasci.org`
 behind **Cloudflare Access** (one-time PIN to an institutional email), so no
 Claude, VPN or tailnet is needed. `workers_dev` and preview URLs are off in
 `dashboard/wrangler.toml` because Access only guards the custom domain.
@@ -149,7 +149,7 @@ Claude, VPN or tailnet is needed. `workers_dev` and preview URLs are off in
 One-time setup, in this order (the route stays commented out until step 1 is done):
 
 1. Zero Trust → Access → Applications → Add → Self-hosted.
-   Domain `genomics.cancerdatasci.org`; identity provider One-time PIN;
+   Domain `uccc-genomics.cancerdatasci.org`; identity provider One-time PIN;
    policy Allow, "Emails ending in" `@cuanschutz.edu` (add other domains as
    needed); session 24h.
 2. Uncomment `routes` in `dashboard/wrangler.toml` and run `npm run deploy`
