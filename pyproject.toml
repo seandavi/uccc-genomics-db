@@ -16,3 +16,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/uccc_genomics"]
+
+[tool.uv.workspace]
+members = ["mcp"]
+
