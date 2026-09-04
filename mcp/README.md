@@ -1,8 +1,17 @@
 # UCCC Genomics MCP (v2) Server
 
-Official Model Context Protocol (MCP v2) server using **Streamable HTTP** transport to provide read-only access to the de-identified UCCC genomics database (`genomics.duckdb`).
+Official Model Context Protocol (MCP v2) server providing read-only access to the de-identified UCCC genomics database (`genomics.duckdb`) over **Streamable HTTP** with **Tailscale HTTPS**.
 
-Designed to run as a continuous service on your Tailnet or as a local tool provider.
+Running live as a continuous systemd user service on `onclappc02` and proxied over Tailscale MagicDNS with valid TLS certificates.
+
+---
+
+## Live Endpoint (Tailnet HTTPS)
+
+* **URL**: `https://onclappc02.tail892754.ts.net:8088/mcp`
+* **Transport**: MCP v2 Streamable HTTP (POST / streaming responses with `Mcp-Session-Id`)
+
+---
 
 ## Tools Provided
 
@@ -13,47 +22,47 @@ Designed to run as a continuous service on your Tailnet or as a local tool provi
 
 ---
 
-## Running on the Tailnet (Streamable HTTP)
+## Tailnet HTTPS Architecture
 
-### Direct CLI
-```bash
-# Starts MCP v2 Streamable HTTP server on port 8088
-uv run genomics-mcp --transport streamable-http --host 0.0.0.0 --port 8088
-
-# Endpoint on Tailnet: http://100.74.53.55:8088/mcp
+```
+Client (Claude / Cursor / Pi)
+         │
+         │  HTTPS (MagicDNS TLS)
+         ▼
+[tailscale serve :8088] (terminates TLS at onclappc02.tail892754.ts.net:8088)
+         │
+         │  HTTP (localhost)
+         ▼
+[genomics-mcp.service] (uv run genomics-mcp --transport streamable-http --host 127.0.0.1 --port 8089)
+         │
+         ▼
+[genomics.duckdb] (AES-256-GCM encrypted, read-only)
 ```
 
-### Continuous Background Service (Systemd User Service)
-A preconfigured service unit is provided in `systemd/genomics-mcp.service`:
-
-```bash
-# Install and start user service
-ln -sf /home/davsean/Documents/git/uccc-genomics-db/systemd/genomics-mcp.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now genomics-mcp.service
-
-# Verify service is active
-systemctl --user status genomics-mcp.service
-journalctl --user -u genomics-mcp.service -f
-```
+1. **Backend Service (`genomics-mcp.service`)**:
+   Runs on `127.0.0.1:8089` under systemd `--user`.
+2. **Tailscale Proxy (`tailscale serve`)**:
+   Exposes port `8088` with valid MagicDNS HTTPS and proxies to `127.0.0.1:8089`:
+   ```bash
+   tailscale serve --https=8088 --bg --yes 8089
+   ```
 
 ---
 
-## Client Configuration (MCP v2 Streamable HTTP)
+## Client Configuration Examples
 
-Connect your MCP client (Claude Desktop, Cursor, Pi, LibreChat, etc.) to the Tailnet Streamable HTTP endpoint:
-
+### Claude Desktop / Cursor / Pi (Over the Tailnet)
 ```json
 {
   "mcpServers": {
     "uccc-genomics": {
-      "url": "http://100.74.53.55:8088/mcp"
+      "url": "https://onclappc02.tail892754.ts.net:8088/mcp"
     }
   }
 }
 ```
 
-Or for local stdio:
+### Local Stdio (Alternative for local scripts)
 ```json
 {
   "mcpServers": {
@@ -70,4 +79,19 @@ Or for local stdio:
     }
   }
 }
+```
+
+---
+
+## Service Management
+
+```bash
+# View service status
+systemctl --user status genomics-mcp.service
+
+# View streaming logs
+journalctl --user -u genomics-mcp.service -f
+
+# Tailscale serve status
+tailscale serve status
 ```

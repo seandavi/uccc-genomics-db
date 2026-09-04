@@ -11,6 +11,7 @@ from typing import Any
 
 import duckdb
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 # Configuration defaults
 DATA = os.environ.get("DATA", "/data/davsean/genomics")
@@ -272,14 +273,31 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
+    sec = TransportSecuritySettings(
+        allowed_hosts=["*"],
+        allowed_origins=["*"],
+        enable_dns_rebinding_protection=False,
+    )
+
     if args.transport == "stdio":
         mcp.run(transport="stdio")
     elif args.transport == "streamable-http":
         print(f"Starting UCCC Genomics MCP v2 Server (Streamable HTTP) on http://{args.host}:{args.port}{args.path}", file=sys.stderr)
-        mcp.run(transport="streamable-http", host=args.host, port=args.port, streamable_http_path=args.path)
+        mcp.run(
+            transport="streamable-http",
+            host=args.host,
+            port=args.port,
+            streamable_http_path=args.path,
+            transport_security=sec,
+        )
     elif args.transport == "sse":
         print(f"Starting UCCC Genomics MCP Server (SSE) on http://{args.host}:{args.port}/sse", file=sys.stderr)
-        mcp.run(transport="sse", host=args.host, port=args.port)
+        mcp.run(
+            transport="sse",
+            host=args.host,
+            port=args.port,
+            transport_security=sec,
+        )
 
 
 if __name__ == "__main__":
