@@ -247,12 +247,12 @@ def get_documentation(topic: str = "overview") -> str:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="UCCC Genomics MCP Server")
+    parser = argparse.ArgumentParser(description="UCCC Genomics MCP (v2) Server")
     parser.add_argument(
         "--transport",
-        choices=["sse", "streamable-http", "stdio"],
-        default="sse",
-        help="MCP transport (default: sse)",
+        choices=["streamable-http", "sse", "stdio"],
+        default="streamable-http",
+        help="MCP transport (default: streamable-http)",
     )
     parser.add_argument(
         "--host",
@@ -265,16 +265,21 @@ def main(argv=None):
         default=8088,
         help="Port for network transports (default: 8088)",
     )
+    parser.add_argument(
+        "--path",
+        default="/mcp",
+        help="Path for Streamable HTTP transport (default: /mcp)",
+    )
     args = parser.parse_args(argv)
 
     if args.transport == "stdio":
         mcp.run(transport="stdio")
+    elif args.transport == "streamable-http":
+        print(f"Starting UCCC Genomics MCP v2 Server (Streamable HTTP) on http://{args.host}:{args.port}{args.path}", file=sys.stderr)
+        mcp.run(transport="streamable-http", host=args.host, port=args.port, streamable_http_path=args.path)
     elif args.transport == "sse":
         print(f"Starting UCCC Genomics MCP Server (SSE) on http://{args.host}:{args.port}/sse", file=sys.stderr)
         mcp.run(transport="sse", host=args.host, port=args.port)
-    elif args.transport == "streamable-http":
-        print(f"Starting UCCC Genomics MCP Server (Streamable HTTP) on http://{args.host}:{args.port}/mcp", file=sys.stderr)
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

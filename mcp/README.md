@@ -1,67 +1,59 @@
 # UCCC Genomics MCP (v2) Server
 
-Model Context Protocol (MCP) server providing read-only access to the de-identified UCCC vendor-genomics database (`genomics.duckdb`).
+Official Model Context Protocol (MCP v2) server using **Streamable HTTP** transport to provide read-only access to the de-identified UCCC genomics database (`genomics.duckdb`).
 
-Designed to run as a continuous service on your Tailnet or as a local stdio / SSE tool provider.
+Designed to run as a continuous service on your Tailnet or as a local tool provider.
 
 ## Tools Provided
 
-* **`list_tables(schema: str = "")`**: Lists all available tables and views in `unified`, `caris`, and `fmi` schemas (or filtered by schema).
+* **`list_tables(schema: str = "")`**: Lists all available tables and views across schemas (`unified`, `caris`, `fmi`).
 * **`describe_tables(tables: list[str])`**: Returns column definitions, data types, and nullability for one or more tables (e.g. `['unified.patient', 'unified.variant']`).
-* **`query(sql: str, limit: int = 100)`**: Executes read-only SQL queries (`SELECT`, `WITH`, `DESCRIBE`). Enforces safety by rejecting schema modifications and capping row output (max 1,000 rows) to protect context window limits.
-* **`get_documentation(topic: str = "overview")`**: Retrieves structured schema documentation and copy-pasteable SQL cohort query examples on demand (`overview`, `unified`, `vendor_schemas`, `examples`, `all`) so large documentation is not dumped into your initial prompt context.
+* **`query(sql: str, limit: int = 100)`**: Executes read-only SQL queries (`SELECT`, `WITH`, `DESCRIBE`). Enforces safety by rejecting schema modifications and capping row output (max 1,000 rows) to protect LLM context windows.
+* **`get_documentation(topic: str = "overview")`**: **Context-protection tool**. Retrieves structured schema documentation and copy-pasteable SQL cohort queries on demand (`overview`, `unified`, `vendor_schemas`, `examples`, `all`) so large documentation is not dumped into your initial prompt context.
 
-## Running Locally
+---
 
-### Development (SSE transport)
+## Running on the Tailnet (Streamable HTTP)
+
+### Direct CLI
 ```bash
-uv run genomics-mcp --transport sse --host 0.0.0.0 --port 8088
-# Endpoint: http://<tailnet-ip>:8088/sse
-```
-
-### Development (Streamable HTTP transport)
-```bash
+# Starts MCP v2 Streamable HTTP server on port 8088
 uv run genomics-mcp --transport streamable-http --host 0.0.0.0 --port 8088
-# Endpoint: http://<tailnet-ip>:8088/mcp
+
+# Endpoint on Tailnet: http://100.74.53.55:8088/mcp
 ```
 
-### Development (stdio transport)
-```bash
-uv run genomics-mcp --transport stdio
-```
-
-## Running as a Systemd Service (on the Tailnet)
-
-To run the MCP server continuously on your machine accessible over Tailscale:
+### Continuous Background Service (Systemd User Service)
+A preconfigured service unit is provided in `systemd/genomics-mcp.service`:
 
 ```bash
-# Link user unit and start service
+# Install and start user service
 ln -sf /home/davsean/Documents/git/uccc-genomics-db/systemd/genomics-mcp.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now genomics-mcp.service
 
-# Check status and logs
+# Verify service is active
 systemctl --user status genomics-mcp.service
 journalctl --user -u genomics-mcp.service -f
 ```
 
-The service binds to port `8088`. On the Tailnet, connect to:
-`http://100.74.53.55:8088/sse`
+---
 
-## Client Configuration Examples
+## Client Configuration (MCP v2 Streamable HTTP)
 
-### Claude Desktop / Cursor (Remote SSE via Tailnet)
+Connect your MCP client (Claude Desktop, Cursor, Pi, LibreChat, etc.) to the Tailnet Streamable HTTP endpoint:
+
 ```json
 {
   "mcpServers": {
     "uccc-genomics": {
-      "url": "http://100.74.53.55:8088/sse"
+      "url": "http://100.74.53.55:8088/mcp"
     }
   }
 }
 ```
 
-### Claude Desktop / Cursor (Local stdio over SSH or local clone)
+Or for local stdio:
 ```json
 {
   "mcpServers": {
