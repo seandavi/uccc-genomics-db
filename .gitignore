@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+
+# DuckDB database files and encryption / de-identification keys
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp
+.db_key*
+.deid_key*
+.duckdb_init_*
+*.key
+
+# Dashboard / Node / Observable Framework artifacts and caches
+node_modules/
+dashboard/dist/
+dashboard/.wrangler/
+dashboard/.observablehq/
+dashboard/src/.observablehq/
+.observablehq/
+
+# Environment files and temporary files
+.env
+.env.*
+*.tmp
+*.jsonl
+.DS_Store
