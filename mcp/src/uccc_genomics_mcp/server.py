@@ -12,6 +12,8 @@ from typing import Any
 import duckdb
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 # Configuration defaults
 DATA = os.environ.get("DATA", "/data/davsean/genomics")
@@ -131,6 +133,23 @@ mcp = MCPServer(
         "for column definitions, query for executing SQL, and get_docs for domain documentation."
     ),
 )
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def root_info(request: Request) -> JSONResponse:
+    return JSONResponse({
+        "status": "ok",
+        "service": "uccc-genomics-mcp",
+        "protocol": "MCP v2 (Streamable HTTP)",
+        "endpoint": "/mcp",
+        "message": "UCCC Genomics MCP Server is running. Connect MCP clients to /mcp via POST.",
+        "tools": ["list_tables", "describe_tables", "query", "get_documentation"],
+    })
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "healthy"})
 
 
 @mcp.tool()
