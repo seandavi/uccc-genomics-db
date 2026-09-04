@@ -18,6 +18,10 @@ def sql(name: str) -> str:
     return files("uccc_genomics.sql").joinpath(name).read_text()
 
 
+def data_file(name: str) -> str:
+    return str(files("uccc_genomics.data").joinpath(name))
+
+
 def read_key(path: str) -> str:
     """Hex key from a mode-600 file, created on first use."""
     import secrets

@@ -8,7 +8,21 @@ SELECT 'caris' AS vendor, r.case_id AS report_id, r.research_id,
        CASE WHEN s.specimen_kind = 'liquidBiopsy' THEN 'liquid' ELSE 'tissue' END AS assay_class,
        (SELECT max(genome_build) FROM caris.variant v WHERE v.case_id = r.case_id) AS genome_build,
        r.ordered_at::DATE AS ordered_on, s.collected_on, r.received_at::DATE AS received_on, r.approved_at::DATE AS reported_on,
-       r.gender, r.lineage AS disease_text, r.sub_lineage AS disease_detail_text, r.primary_site AS primary_site_text,
+       r.gender,
+       -- Harmonized OncoTree & NCIt ontology terms
+       coalesce(c.oncotree_code, 'OTHER') AS oncotree_code,
+       coalesce(c.oncotree_name, r.lineage, 'Other') AS oncotree_name,
+       coalesce(c.organ_system, 'Other') AS organ_system,
+       c.ncit_code AS ncit_code,
+       -- Standardized disease name (harmonized across vendors)
+       coalesce(c.oncotree_name, r.lineage, '(not stated)') AS disease_text,
+       r.sub_lineage AS disease_detail_text,
+       r.primary_site AS primary_site_text,
+       -- Raw provenance
+       r.lineage AS raw_disease_text,
+       r.sub_lineage AS raw_disease_detail,
+       r.primary_site AS raw_primary_site,
+       r.icd_code AS raw_icd_code,
        r.icd_code,
        (SELECT try_cast(payload->>'hePercentTumorNuclei' AS DOUBLE) FROM caris.result x
          WHERE x.case_id = r.case_id AND x.kind = 'histopathology' LIMIT 1) AS tumor_purity_pct,
@@ -16,6 +30,8 @@ SELECT 'caris' AS vendor, r.case_id AS report_id, r.research_id,
 FROM caris.report r
 LEFT JOIN (SELECT * FROM caris.specimen QUALIFY row_number() OVER (PARTITION BY case_id ORDER BY specimen_kind, specimen_idx) = 1) s
        ON s.case_id = r.case_id
+LEFT JOIN (SELECT * FROM reference.disease_crosswalk WHERE vendor = 'caris') c
+       ON lower(trim(r.lineage)) = lower(trim(c.vendor_term))
 UNION ALL BY NAME
 SELECT 'fmi' AS vendor, r.report_id, r.research_id,
        r.test_type AS assay_name,
@@ -23,11 +39,29 @@ SELECT 'fmi' AS vendor, r.report_id, r.research_id,
             WHEN r.test_type ILIKE '%heme%' THEN 'heme' ELSE 'tissue' END AS assay_class,
        'GRCh37/hg19' AS genome_build,
        NULL::DATE AS ordered_on, r.collected_on, r.received_on, NULL::DATE AS reported_on,
-       r.gender, r.disease AS disease_text, r.pathology_diagnosis AS disease_detail_text, r.tissue_of_origin AS primary_site_text,
+       r.gender,
+       -- Harmonized OncoTree & NCIt ontology terms
+       coalesce(co.oncotree_code, cd.oncotree_code, 'OTHER') AS oncotree_code,
+       coalesce(co.oncotree_name, cd.oncotree_name, r.disease_ontology, r.disease, 'Other') AS oncotree_name,
+       coalesce(co.organ_system, cd.organ_system, 'Other') AS organ_system,
+       coalesce(co.ncit_code, cd.ncit_code) AS ncit_code,
+       -- Standardized disease name (harmonized across vendors)
+       coalesce(co.oncotree_name, cd.oncotree_name, r.disease_ontology, r.disease, '(not stated)') AS disease_text,
+       r.pathology_diagnosis AS disease_detail_text,
+       r.tissue_of_origin AS primary_site_text,
+       -- Raw provenance
+       r.disease AS raw_disease_text,
+       r.disease_ontology AS raw_disease_detail,
+       r.tissue_of_origin AS raw_primary_site,
+       NULL::VARCHAR AS raw_icd_code,
        NULL::VARCHAR AS icd_code,
        coalesce(r.purity_estimate, r.percent_tumor_nuclei) AS tumor_purity_pct,
        r.qc_status AS report_status
-FROM fmi.report r;
+FROM fmi.report r
+LEFT JOIN (SELECT * FROM reference.disease_crosswalk WHERE vendor = 'fmi' AND vendor_field = 'disease_ontology') co
+       ON lower(trim(r.disease_ontology)) = lower(trim(co.vendor_term))
+LEFT JOIN (SELECT * FROM reference.disease_crosswalk WHERE vendor = 'fmi' AND vendor_field = 'disease') cd
+       ON lower(trim(r.disease)) = lower(trim(cd.vendor_term));
 
 CREATE OR REPLACE VIEW unified.patient AS
 SELECT research_id, min(gender) AS gender, count(*) AS n_reports,

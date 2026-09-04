@@ -42,7 +42,17 @@ All tables share `research_id` (patient) and `report_id` (test accession).
    - 1 row per patient across all vendors.
 
 2. `unified.report`:
-   - Columns: vendor, report_id, research_id, assay_name, assay_class (tissue/liquid/heme), genome_build, ordered_on, collected_on, received_on, reported_on, gender, disease_text, disease_detail_text, primary_site_text, icd_code, tumor_purity_pct, report_status
+   - Harmonized ontology terms:
+     * `oncotree_code`: Standard OncoTree code (e.g. MEL, COADREAD, PAAD, PRAD, BRCA, NSCLC, EOC)
+     * `oncotree_name`: Harmonized disease name (e.g. Melanoma, Colorectal Adenocarcinoma)
+     * `organ_system`: Organ system rollup (e.g. Skin, Bowel, Pancreas, Prostate, Breast, Lung)
+     * `ncit_code`: NCI Thesaurus term code (e.g. NCIT:C3224, NCIT:C9384, NCIT:C4022)
+   - Provenance columns:
+     * `raw_disease_text`: Exact vendor string (Caris lineage / FMI disease)
+     * `raw_disease_detail`: Exact vendor detail (Caris sub_lineage / FMI disease_ontology)
+     * `raw_primary_site`: Exact vendor primary site / tissue of origin
+     * `raw_icd_code`: Caris ICD-10 code (when available)
+   - Other columns: vendor, report_id, research_id, assay_name, assay_class (tissue/liquid/heme), genome_build, ordered_on, collected_on, received_on, reported_on, gender, tumor_purity_pct, report_status
 
 3. `unified.variant`:
    - Short variants (SNVs, indels, non-wildtype calls).
@@ -85,26 +95,29 @@ Foundation Medicine-specific (`fmi.*`):
     "examples": """
 # Example SQL Queries
 
--- 1. Find patients with KRAS G12C and their TMB status:
-SELECT v.research_id, v.vendor, v.report_id, v.hgvs_p, v.vaf, b.call_norm AS tmb_status, b.value AS tmb_mut_per_mb
+-- 1. Find patients with KRAS G12C and their TMB status by cancer type:
+SELECT r.organ_system, r.oncotree_name, v.research_id, v.vendor, v.report_id, v.hgvs_p, v.vaf, b.call_norm AS tmb_status, b.value AS tmb_mut_per_mb
 FROM unified.variant v
+JOIN unified.report r USING (vendor, report_id)
 LEFT JOIN unified.biomarker b ON b.report_id = v.report_id AND b.name = 'TMB'
 WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%'
+ORDER BY r.organ_system, v.vaf DESC
 LIMIT 20;
 
 -- 2. Multi-vendor patient overlap (tested at both Caris and FMI):
-SELECT p.research_id, p.n_reports, p.vendors, r.vendor, r.assay_name, r.disease_text
+SELECT p.research_id, p.n_reports, p.vendors, r.vendor, r.oncotree_name, r.organ_system, r.raw_disease_text
 FROM unified.patient p
 JOIN unified.report r ON r.research_id = p.research_id
 WHERE p.n_vendors > 1
 ORDER BY p.research_id, r.collected_on
 LIMIT 20;
 
--- 3. Top mutated genes across all reports (excluding VUS):
-SELECT gene, count(DISTINCT report_id) AS n_reports, count(DISTINCT research_id) AS n_patients
-FROM unified.variant
-WHERE NOT coalesce(is_vus, false)
-GROUP BY gene
+-- 3. Top mutated genes in Colorectal cancer across both vendors:
+SELECT v.gene, count(DISTINCT v.report_id) AS n_reports, count(DISTINCT v.research_id) AS n_patients
+FROM unified.variant v
+JOIN unified.report r USING (vendor, report_id)
+WHERE r.organ_system = 'Bowel' AND NOT coalesce(v.is_vus, false)
+GROUP BY v.gene
 ORDER BY n_reports DESC
 LIMIT 15;
 """.strip()

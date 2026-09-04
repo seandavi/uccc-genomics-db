@@ -83,6 +83,15 @@ def run():
             n = con.execute(f"SELECT count(*) FROM {s}.{t}").fetchone()[0]
             print(f"{s}.{t:16s} {n:>12,}")
         con.execute(sql(f"{s}_views.sql"))
+
+    # Reference schema & ontology crosswalk
+    from .config import data_file
+    con.execute("CREATE SCHEMA IF NOT EXISTS reference")
+    crosswalk_file = data_file("disease_crosswalk.csv")
+    con.execute(f"CREATE TABLE reference.disease_crosswalk AS SELECT * FROM read_csv('{crosswalk_file}', header=true, auto_detect=true)")
+    n_cw = con.execute("SELECT count(*) FROM reference.disease_crosswalk").fetchone()[0]
+    print(f"reference.disease_crosswalk {n_cw:>12,}")
+
     con.execute(sql("unified.sql"))
     print("views: unified.*")
 
