@@ -1,0 +1,16 @@
+{
+  "name": "uccc-genomics-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "observable preview",
+    "build": "observable build",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@observablehq/framework": "^1.13.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.129.0"
+  }
+}
