@@ -95,3 +95,16 @@ journalctl --user -u genomics-mcp.service -f
 # Tailscale serve status
 tailscale serve status
 ```
+
+---
+
+## Status & Open Testing Items
+
+* **Local Verification**: Passed on host (`onclappc02`). Systemd unit runs stably, DuckDB connects read-only with decryption key, and tools respond correctly.
+* **Tailnet Remote Testing (In Progress / Needs Further Testing)**:
+  * Remote access from secondary client devices on the tailnet reported unresponsive.
+  * **Items to verify**:
+    1. Tailscale ACLs / peer connectivity between client device and `onclappc02`.
+    2. MagicDNS resolution of `onclappc02.tail892754.ts.net` from client environments.
+    3. Client MCP transport compatibility (whether client expects Streamable HTTP on `/mcp` vs legacy SSE on `/sse` vs direct stdio bridge).
+
