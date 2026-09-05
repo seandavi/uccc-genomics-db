@@ -9,7 +9,7 @@ const s = FileAttachment("data/summary.json").json();
 ```
 
 ```js
-const vendorColor = {domain: ["caris", "fmi"], range: ["#2a78d6", "#eb6834"], legend: true};
+import {vendorColor} from "./components/theme.js";
 const genesPerPanel = new Map(d3.rollups(s.coverage, (v) => v.length, (d) => d.panel));
 const panels = s.panels.map((d) => ({...d, genes_with_evidence: genesPerPanel.get(d.panel) ?? 0}));
 ```
@@ -18,7 +18,7 @@ const panels = s.panels.map((d) => ({...d, genes_with_evidence: genesPerPanel.ge
   <div class="card">
     <h2>Panels</h2>
     <h3>Caris panel from its wild-type records; FMI panel gene lists are not loaded, so the assay name stands in and "genes with evidence" counts only genes ever reported altered or pertinent-negative.</h3>
-    ${Inputs.table(panels, {columns: ["vendor", "panel", "n", "genes_with_evidence"], header: {n: "reports", genes_with_evidence: "genes with evidence"}, sort: "n", reverse: true})}
+    ${Inputs.table(panels, {columns: ["vendor", "panel", "n", "genes_with_evidence"], header: {n: "reports", genes_with_evidence: "genes"}, sort: "n", reverse: true})}
   </div>
   <div class="card">
     <h2>Report status</h2>

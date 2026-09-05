@@ -9,11 +9,10 @@ const s = FileAttachment("data/summary.json").json();
 ```
 
 ```js
-const vendorColor = {domain: ["caris", "fmi"], range: ["#2a78d6", "#eb6834"], legend: true};
-const fmt = (n) => n.toLocaleString("en-US");
+import {vendorColor, fmt} from "./components/theme.js";
 ```
 
-Caris and Foundation Medicine NGS reports as one de-identified database. Latest delivery received ${s.meta.last_received}; site built ${s.meta.built_at.replace("T", " ")}.
+Caris and Foundation Medicine NGS reports as one de-identified database. Site built ${s.meta.built_at.replace("T", " ")} from the latest daily load.
 
 <div class="grid grid-cols-4">
   <div class="card"><h2>Reports</h2><span class="big">${fmt(s.meta.n_reports)}</span></div>
@@ -25,7 +24,7 @@ Caris and Foundation Medicine NGS reports as one de-identified database. Latest 
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>Reports by collection year</h2>
-    <h3>Dates are shifted per patient by up to ±6 months</h3>
+    <h3>Dates are shifted per patient by up to ±6 months, so the last bar runs past today and edge years are partial</h3>
     ${resize((width) => Plot.plot({
       width, height: 320, color: vendorColor,
       x: {tickFormat: String, tickRotate: -45, label: null},
@@ -62,12 +61,12 @@ function diseaseBars(vendor, i) {
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>Caris: top diseases</h2>
-    <h3>Caris lineage vocabulary, as reported</h3>
+    <h3>OncoTree name where the crosswalk maps the Caris lineage, otherwise the lineage as reported</h3>
     ${diseaseBars("caris", 0)}
   </div>
   <div class="card">
     <h2>Foundation Medicine: top diseases</h2>
-    <h3>FMI disease vocabulary, as reported. The two vocabularies are not mapped to each other.</h3>
+    <h3>OncoTree name where the crosswalk maps the FMI disease term, otherwise the term as reported</h3>
     ${diseaseBars("fmi", 1)}
   </div>
 </div>

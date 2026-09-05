@@ -9,11 +9,7 @@ const s = FileAttachment("data/summary.json").json();
 ```
 
 ```js
-const altColor = {
-  domain: ["pathogenic/likely", "amplification", "loss", "fusion", "VUS"],
-  range: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"],
-  legend: true
-};
+import {altColor} from "./components/theme.js";
 const sumBy = (rows, key) => d3.rollups(rows, (v) => d3.sum(v, (d) => d.n), (d) => d[key]).sort((a, b) => b[1] - a[1]).map((d) => d[0]);
 ```
 

@@ -9,7 +9,7 @@ const s = FileAttachment("data/summary.json").json();
 ```
 
 ```js
-const vendorColor = {domain: ["caris", "fmi"], range: ["#2a78d6", "#eb6834"], legend: true};
+import {vendorColor} from "./components/theme.js";
 const callColor = {domain: ["high", "intermediate", "low", "stable", "indeterminate"], range: ["#eb6834", "#eda100", "#2a78d6", "#2a78d6", "#9a9a9a"], legend: true};
 ```
 
