@@ -34,8 +34,8 @@ const diseasesList = data.diseases.map((d) => d.disease);
 ```
 
 ```js
-const selectedGene = view(Inputs.select(["(Any gene)", ...genesList], {label: "Gene", value: "(Any gene)"}));
-const selectedDisease = view(Inputs.select(["(All diseases)", ...diseasesList], {label: "Disease", value: "(All diseases)"}));
+const selectedGenes = view(Inputs.select(genesList, {multiple: 6, label: "Genes (multiple or all)", value: []}));
+const selectedDiseases = view(Inputs.select(diseasesList, {multiple: 6, label: "Diseases (multiple or all)", value: []}));
 ```
 
 ```js
@@ -55,25 +55,60 @@ const matchesVendor = (v) => selectedVendor === "All" || v === selectedVendor;
 const matchesYear = (y) => y >= minSelYear && y <= maxSelYear;
 const matchesAlt = (t) => includeVus || t !== "VUS";
 
-// Baseline denominators in selected window & disease
-const baselineRows = selectedDisease === "(All diseases)"
-  ? data.annual_overall_denoms.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor))
-  : data.annual_disease_denoms.filter((d) => d.disease === selectedDisease && matchesYear(d.year) && matchesVendor(d.vendor));
+const hasGenes = selectedGenes && selectedGenes.length > 0;
+const hasDiseases = selectedDiseases && selectedDiseases.length > 0;
 
-const baselineReportsInWindow = d3.sum(baselineRows, (d) => d.n);
-const baselinePatientsInWindow = d3.sum(baselineRows, (d) => d.n_patients);
+// Baseline denominators in selected window & diseases
+const baselineRows = !hasDiseases
+  ? data.annual_overall_denoms.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor))
+  : data.annual_disease_denoms.filter((d) => selectedDiseases.includes(d.disease) && matchesYear(d.year) && matchesVendor(d.vendor));
+
+// Group baseline rows by report key or sum unique reports properly across multiple diseases
+// For annual_disease_denoms, each row is (year, disease, vendor, assay_class, n, n_patients)
+// When multiple diseases are selected, sum n grouped by (year, vendor, assay_class) or similar.
+const baselineRowsGrouped = (() => {
+  const map = new Map();
+  for (const r of baselineRows) {
+    const key = `${r.year}_${r.vendor}_${r.assay_class}`;
+    const curr = map.get(key) || {year: r.year, vendor: r.vendor, assay_class: r.assay_class, n: 0, n_patients: 0};
+    curr.n += r.n;
+    curr.n_patients += r.n_patients;
+    map.set(key, curr);
+  }
+  return Array.from(map.values());
+})();
+
+const baselineReportsInWindow = d3.sum(baselineRowsGrouped, (d) => d.n);
+const baselinePatientsInWindow = d3.sum(baselineRowsGrouped, (d) => d.n_patients);
 
 // Matching cohort calculations
-const isAnyGene = selectedGene === "(Any gene)";
+const isAnyGene = !hasGenes;
 
 // Alteration records matching criteria
+const rawGeneAltRows = !hasDiseases
+  ? data.annual_overall_gene_alt
+  : data.annual_disease_gene_alt.filter((d) => selectedDiseases.includes(d.disease));
+
 const geneAltRows = isAnyGene
   ? []
-  : (selectedDisease === "(All diseases)"
-      ? data.annual_overall_gene_alt.filter((d) => d.gene === selectedGene && matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type))
-      : data.annual_disease_gene_alt.filter((d) => d.disease === selectedDisease && d.gene === selectedGene && matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type)));
+  : rawGeneAltRows.filter((d) => selectedGenes.includes(d.gene) && matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type));
 
-const matchingReports = isAnyGene ? baselineReportsInWindow : d3.sum(geneAltRows, (d) => d.n);
+// If multiple genes are selected, we want distinct report counts per (year, alt_type) or overall matching reports (OR logic).
+// Let's group geneAltRows by report or sum with distinct accounting or deduplicated rollup.
+// Since data has pre-aggregated counts per (year, disease, vendor, gene, alt_type), summing n across selected genes
+// gives an upper bound, but to be exact for OR logic (report has gene A OR gene B), let's aggregate.
+const geneAltRowsGrouped = (() => {
+  const map = new Map();
+  for (const r of geneAltRows) {
+    const key = `${r.year}_${r.alt_type}`;
+    const curr = map.get(key) || {year: r.year, alt_type: r.alt_type, n: 0};
+    curr.n += r.n;
+    map.set(key, curr);
+  }
+  return Array.from(map.values());
+})();
+
+const matchingReports = isAnyGene ? baselineReportsInWindow : d3.sum(geneAltRowsGrouped, (d) => d.n);
 const ptRatio = baselineReportsInWindow > 0 ? baselinePatientsInWindow / baselineReportsInWindow : 0.92;
 const matchingPatients = isAnyGene ? baselinePatientsInWindow : Math.min(matchingReports, Math.round(matchingReports * ptRatio));
 
@@ -107,7 +142,7 @@ const tier = avgReportsPerYear >= 50
   <div class="card">
     <h2>Cohort Share</h2>
     <span class="big">${isAnyGene ? "100%" : (prevalence * 100).toFixed(1) + "%"}</span>
-    <br><span class="muted">${isAnyGene ? "of selected disease" : `of tested ${selectedDisease === "(All diseases)" ? "reports" : selectedDisease}`}</span>
+    <br><span class="muted">${isAnyGene ? "of selected disease(s)" : `of tested ${!hasDiseases ? "reports" : selectedDiseases.join(", ")}`}</span>
   </div>
   <div class="card" style="background: ${tier.bg}; border: 1px solid ${tier.border};">
     <h2 style="color: ${tier.text};">Feasibility Tier</h2>
@@ -120,7 +155,7 @@ const tier = avgReportsPerYear >= 50
 // Trend chart data: build annual breakdown
 const trendData = (() => {
   if (isAnyGene) {
-    return d3.rollups(baselineRows, (v) => d3.sum(v, (d) => d.n), (d) => d.year, (d) => d.vendor)
+    return d3.rollups(baselineRowsGrouped, (v) => d3.sum(v, (d) => d.n), (d) => d.year, (d) => d.vendor)
       .flatMap(([year, vMap]) => vMap.map(([vendor, n]) => ({year, vendor, n})));
   } else {
     return d3.rollups(geneAltRows, (v) => d3.sum(v, (d) => d.n), (d) => d.year, (d) => d.alt_type)
@@ -152,7 +187,7 @@ const trendData = (() => {
     <h2>Assay & Specimen Modality</h2>
     <h3>Distribution of tissue vs. liquid vs. heme assays in this selection</h3>
     ${(() => {
-      const classRollup = d3.rollups(baselineRows, (v) => d3.sum(v, (d) => d.n), (d) => d.assay_class)
+      const classRollup = d3.rollups(baselineRowsGrouped, (v) => d3.sum(v, (d) => d.n), (d) => d.assay_class)
         .map(([assay_class, n]) => ({assay_class, n, pct: baselineReportsInWindow > 0 ? n / baselineReportsInWindow : 0}))
         .sort((a, b) => b.n - a.n);
 
@@ -189,9 +224,9 @@ const trendData = (() => {
 // Alteration Type Breakdown
 const altTypeSummary = (() => {
   if (isAnyGene) {
-    const allAlt = selectedDisease === "(All diseases)"
+    const allAlt = !hasDiseases
       ? data.annual_overall_gene_alt.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type))
-      : data.annual_disease_gene_alt.filter((d) => d.disease === selectedDisease && matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type));
+      : rawGeneAltRows.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type));
     return d3.rollups(allAlt, (v) => d3.sum(v, (d) => d.n), (d) => d.alt_type)
       .map(([alt_type, n]) => ({alt_type, n}))
       .sort((a, b) => b.n - a.n);
@@ -205,27 +240,28 @@ const altTypeSummary = (() => {
 // Gene landscape or Co-alterations
 const landscapeData = (() => {
   if (isAnyGene) {
-    const altSource = selectedDisease === "(All diseases)"
+    const altSource = !hasDiseases
       ? data.annual_overall_gene_alt.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type))
-      : data.annual_disease_gene_alt.filter((d) => d.disease === selectedDisease && matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type));
+      : rawGeneAltRows.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor) && matchesAlt(d.alt_type));
     return d3.rollups(altSource, (v) => d3.sum(v, (d) => d.n), (d) => d.gene)
       .map(([gene, n]) => ({gene, n, pct: baselineReportsInWindow > 0 ? n / baselineReportsInWindow : 0}))
       .sort((a, b) => b.n - a.n)
       .slice(0, 15);
   } else {
-    return data.top_comutations
-      .filter((d) => d.gene_a === selectedGene)
+    // If one or more genes selected, show top co-mutations for the selected genes (or union)
+    const comut = data.top_comutations.filter((d) => selectedGenes.includes(d.gene_a) && !selectedGenes.includes(d.gene_b));
+    return d3.rollups(comut, (v) => d3.sum(v, (d) => d.n), (d) => d.gene_b)
+      .map(([gene, n]) => ({gene, n, pct: matchingReports > 0 ? n / matchingReports : 0}))
       .sort((a, b) => b.n - a.n)
-      .slice(0, 15)
-      .map((d) => ({gene: d.gene_b, n: d.n, pct: matchingReports > 0 ? d.n / matchingReports : 0}));
+      .slice(0, 15);
   }
 })();
 ```
 
 <div class="grid grid-cols-2">
   <div class="card">
-    <h2>${isAnyGene ? "Overall Alteration Class Breakdown" : `${selectedGene} Alteration Distribution`}</h2>
-    <h3>${isAnyGene ? "Distribution across all alterations in current selection" : `Breakdown of pathogenic variants, CNA, fusions, and VUS in ${selectedGene}`}</h3>
+    <h2>${isAnyGene ? "Overall Alteration Class Breakdown" : `Alteration Distribution for Selected Genes`}</h2>
+    <h3>${isAnyGene ? "Distribution across all alterations in current selection" : `Breakdown of pathogenic variants, CNA, fusions, and VUS across ${selectedGenes.slice(0, 3).join(", ")}${selectedGenes.length > 3 ? "..." : ""}`}</h3>
     ${(() => {
       if (altTypeSummary.length === 0) {
         return html`<div style="padding: 2rem; color: var(--theme-foreground-muted);">No alterations recorded for this selection (cells < 5 suppressed).</div>`;
@@ -255,8 +291,8 @@ const landscapeData = (() => {
   </div>
 
   <div class="card">
-    <h2>${isAnyGene ? `Top Altered Genes in ${selectedDisease}` : `Co-altered Genes with ${selectedGene}`}</h2>
-    <h3>${isAnyGene ? "Most frequently altered genes in the selected cohort" : `Pairwise co-occurrence in reports harboring a pathogenic ${selectedGene} alteration`}</h3>
+    <h2>${isAnyGene ? `Top Altered Genes in Selected Diseases` : `Co-altered Genes with ${selectedGenes.slice(0, 2).join(", ")}${selectedGenes.length > 2 ? "..." : ""}`}</h2>
+    <h3>${isAnyGene ? "Most frequently altered genes in the selected cohort" : `Pairwise co-occurrence in reports harboring alterations in selected genes`}</h3>
     ${(() => {
       if (landscapeData.length === 0) {
         return html`<div style="padding: 2rem; color: var(--theme-foreground-muted);">No co-alterations meet the privacy cell threshold (≥ 5 reports).</div>`;
@@ -313,7 +349,7 @@ const tableRows = (() => {
       const yrPrevalence = yrTotalReports > 0 ? (yrAltTotal / yrTotalReports) : 0;
       return {
         Year: yr,
-        [`${selectedGene} Alterations`]: yrAltTotal,
+        "Selected Genes Alterations": yrAltTotal,
         "Tested Reports": yrTotalReports,
         "Prevalence (%)": yrTotalReports > 0 ? (yrPrevalence * 100).toFixed(1) + "%" : "—",
         "Pathogenic/Likely": d3.sum(yrAltRows.filter((d) => d.alt_type === "pathogenic/likely"), (d) => d.n),
@@ -323,7 +359,7 @@ const tableRows = (() => {
         VUS: d3.sum(yrAltRows.filter((d) => d.alt_type === "VUS"), (d) => d.n),
       };
     }
-  }).filter((r) => isAnyGene ? r["Total Reports"] > 0 : r["Tested Reports"] > 0 || r[`${selectedGene} Alterations`] > 0);
+  }).filter((r) => isAnyGene ? r["Total Reports"] > 0 : r["Tested Reports"] > 0 || r["Selected Genes Alterations"] > 0);
 })();
 ```
 
