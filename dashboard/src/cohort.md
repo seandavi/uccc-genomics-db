@@ -167,7 +167,7 @@ const trendData = (() => {
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>Accrual Trend Over Time (${minSelYear}–${maxSelYear})</h2>
-    <h3>${isAnyGene ? "Reports per year stacked by sequencing vendor" : `${selectedGene} alterations per year stacked by alteration class`}</h3>
+    <h3>${isAnyGene ? "Reports per year stacked by sequencing vendor" : `${selectedGenes.join(", ")} alterations per year stacked by alteration class`}</h3>
     ${resize((width) => Plot.plot({
       width,
       height: 320,
