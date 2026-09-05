@@ -75,6 +75,15 @@ src/uccc_genomics/
   fmi.py        sync() + load(): report XML -> fmi.*  (incl. blocks the old parser skipped)
   deid.py       generic: drop PHI columns, keyed-hash ids, per-patient date shift, leak assert
   sql/caris_views.sql, fmi_views.sql, unified.sql
+  data/disease_crosswalk.csv   vendor disease term -> OncoTree code/name, organ system, NCIt (-> reference.disease_crosswalk)
+mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/README.md)
+dashboard/      Observable Framework site over aggregates of the de-id file (below)
+tests/          pytest: synthetic load -> deid -> unified, MCP query guard, dashboard loader governance
+```
+
+```bash
+uv run pytest          # ~30 s; the loader tests skip when $DATA/genomics.duckdb is absent
+cd dashboard && npm test   # cohort page arithmetic
 ```
 
 ## Schemas
@@ -98,6 +107,10 @@ failed to parse — nothing is dropped silently). Views `tmb`, `msi`, `loh`.
 (Caris wild-type records + FMI pertinent negatives). Each is a
 `UNION ALL BY NAME` across vendors with a `vendor` column; vendor-specific
 detail stays in `caris.*` / `fmi.*` and joins back on `report_id`.
+`report.disease_text` / `oncotree_code` / `organ_system` / `ncit_code` come from
+`reference.disease_crosswalk` (hand-curated, in the package) where the vendor's
+term is mapped; unmapped terms keep the vendor string as `disease_text` with
+`oncotree_code = 'OTHER'`, and `raw_disease_text` always has the original.
 
 ```sql
 -- patients with a KRAS G12C call from either vendor, and whether they also had TMB-High
@@ -125,15 +138,21 @@ WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%';
 ## Dashboard
 
 `dashboard/` is an [Observable Framework](https://observablehq.com/framework/)
-site: five pages of aggregates over `genomics.duckdb`:
-1. **Overview** (`/`) — High-level metrics, collection years, assays, and vendor disease breakdowns.
-2. **Cohort Exploration** (`/cohort`) — **Fast cohort & feasibility search** supporting multi-select gene and disease filtering (OR logic), start/end year range sliders, vendor selection, VUS toggle, matching report counts, estimated patient counts, accrual rates, automated **Feasibility Tiers** (High, Moderate, Low/Pilot), longitudinal accrual trend charts, assay modality distributions, alteration class breakdowns, co-mutation landscape, and annual breakdown tables.
-3. **Genes** (`/genes`) — Gene alteration frequencies, VUS toggling, and disease-gene heatmaps.
-4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, and LOH distributions.
-5. **Coverage & Quality** (`/coverage`) — Panel coverage metrics and quality metrics.
+site: five pages of aggregates over `genomics.duckdb`. Two data loaders
+(`src/data/summary.json.py`, `src/data/cohort.json.py`) run at build time,
+drop every cell under `MIN_CELL = 5` and emit no row-level ids; the pages are
+pure client-side filtering over that JSON.
 
-All data loaders enforce strict institutional privacy rules (`MIN_CELL = 5` suppression and zero row-level identifiers).
-The built site is hosted on Cloudflare Workers (`https://uccc-end-omics.cancerdatasci.org`) with Google Analytics (`G-HR1PFD75WN`) tracking and Cloudflare Access authentication.
+1. **Overview** (`/`) — counts, reports by collection year, assays, top diseases per vendor.
+2. **Cohort exploration** (`/cohort`) — gene(s) × disease(s) × vendor × year window × VUS.
+   Headline counts and prevalence come from all-years totals (year × disease × gene cells
+   are mostly suppressed); expected accrual = prevalence × tested volume in the window;
+   the arithmetic lives in `src/components/cohort.js` and is covered by `npm test`.
+3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, one gene across diseases.
+4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions.
+5. **Coverage & quality** (`/coverage`) — panels, gene coverage, report status, purity, known gaps.
+
+Google Analytics (`G-HR1PFD75WN`) is in the page head.
 
 ```bash
 cd dashboard && npm install
@@ -149,17 +168,13 @@ behind **Cloudflare Access** (one-time PIN to an institutional email), so no
 Claude, VPN or tailnet is needed. `workers_dev` and preview URLs are off in
 `dashboard/wrangler.toml` because Access only guards the custom domain.
 
-One-time setup, in this order (the route stays commented out until step 1 is done):
-
-1. Zero Trust → Access → Applications → Add → Self-hosted.
-   Domain `uccc-genomics.cancerdatasci.org`; identity provider One-time PIN;
-   policy Allow, "Emails ending in" `@cuanschutz.edu` (add other domains as
-   needed); session 24h.
-2. Uncomment `routes` in `dashboard/wrangler.toml` and run `npm run deploy`
-   (or wait for the next daily run). `custom_domain = true` creates the
-   proxied DNS record itself.
-3. In an incognito window, confirm the hostname redirects to the Access
-   login before showing anything.
+Access is configured (done 2026-09; the hostname 302s to the Access login
+for anonymous requests) as: Zero Trust → Access → Applications → Self-hosted,
+domain `uccc-genomics.cancerdatasci.org`, identity provider One-time PIN,
+policy Allow "Emails ending in" `@cuanschutz.edu`, session 24h. Add domains
+there, not in this repo. If the Access application is ever deleted, comment
+out `routes` in `dashboard/wrangler.toml` first: the Worker would otherwise
+serve the site unauthenticated on the custom domain.
 
 The site only ever contains suppressed aggregates, but it does leave campus:
 if the DUA reads "data or any derivative", host it on the box behind Traefik
@@ -180,7 +195,8 @@ Never `--delete` toward the bucket or share; mirrors are read-only from the sour
 ## Not in scope
 
 Caris XML/PDF/VCF, FMI PDFs, FMI panel gene lists (so `gene_tested` for FMI
-is pertinent-negatives only), OncoTree mapping of the two disease
-vocabularies, publishing to cdsci-lake/R2 (PHI; the de-id file is still a
+is pertinent-negatives only), a full OncoTree ontology (the crosswalk covers
+the terms seen so far; new vendor terms land as `OTHER` until added to the
+CSV), publishing to cdsci-lake/R2 (PHI; the de-id file is still a
 limited dataset under the DUAs — keep it on campus). `PLAN.md` has the
 reasoning.
