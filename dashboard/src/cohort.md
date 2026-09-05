@@ -61,7 +61,7 @@ const hasDiseases = selectedDiseases && selectedDiseases.length > 0;
 // Baseline denominators in selected window & diseases
 const baselineRows = !hasDiseases
   ? data.annual_overall_denoms.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor))
-  : data.annual_disease_denoms.filter((d) => selectedDiseases.includes(d.disease) && matchesYear(d.year) && matchesVendor(d.vendor));
+  : data.annual_overall_denoms.filter((d) => matchesYear(d.year) && matchesVendor(d.vendor));
 
 // Group baseline rows by report key or sum unique reports properly across multiple diseases
 // For annual_disease_denoms, each row is (year, disease, vendor, assay_class, n, n_patients)
