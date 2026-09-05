@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "observable preview",
     "build": "observable build",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node --test"
   },
   "dependencies": {
     "@observablehq/framework": "^1.13.0"
