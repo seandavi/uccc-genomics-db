@@ -162,6 +162,36 @@ const trendData = (() => {
       .flatMap(([year, vMap]) => vMap.map(([alt_type, n]) => ({year, alt_type, n})));
   }
 })();
+
+// Assay/specimen modality chart, hoisted out of the template literal so blank lines
+// inside the IIFE can't be misread as a Markdown indented code block.
+const classRollup = d3.rollups(baselineRowsGrouped, (v) => d3.sum(v, (d) => d.n), (d) => d.assay_class)
+  .map(([assay_class, n]) => ({assay_class, n, pct: baselineReportsInWindow > 0 ? n / baselineReportsInWindow : 0}))
+  .sort((a, b) => b.n - a.n);
+
+const classRollupChart = classRollup.length === 0
+  ? html`<div style="padding: 2rem; color: var(--theme-foreground-muted);">No reports matching criteria.</div>`
+  : resize((width) => Plot.plot({
+      width,
+      height: 320,
+      marginLeft: 90,
+      color: assayColor,
+      x: {grid: true, label: "reports", domain: [0, d3.max(classRollup, (d) => d.n) * 1.15 || 10]},
+      y: {label: null, domain: classRollup.map((d) => d.assay_class)},
+      marks: [
+        Plot.barX(classRollup, {x: "n", y: "assay_class", fill: "assay_class", tip: true}),
+        Plot.text(classRollup, {
+          x: "n",
+          y: "assay_class",
+          text: (d) => `${fmt(d.n)} (${(d.pct * 100).toFixed(1)}%)`,
+          dx: 6,
+          textAnchor: "start",
+          fill: "currentColor",
+          fontSize: 12
+        }),
+        Plot.ruleX([0])
+      ]
+    }));
 ```
 
 <div class="grid grid-cols-2">
@@ -186,37 +216,7 @@ const trendData = (() => {
   <div class="card">
     <h2>Assay & Specimen Modality</h2>
     <h3>Distribution of tissue vs. liquid vs. heme assays in this selection</h3>
-    ${(() => {
-      const classRollup = d3.rollups(baselineRowsGrouped, (v) => d3.sum(v, (d) => d.n), (d) => d.assay_class)
-        .map(([assay_class, n]) => ({assay_class, n, pct: baselineReportsInWindow > 0 ? n / baselineReportsInWindow : 0}))
-        .sort((a, b) => b.n - a.n);
-
-      if (classRollup.length === 0) {
-        return html`<div style="padding: 2rem; color: var(--theme-foreground-muted);">No reports matching criteria.</div>`;
-      }
-
-      return resize((width) => Plot.plot({
-        width,
-        height: 320,
-        marginLeft: 90,
-        color: assayColor,
-        x: {grid: true, label: "reports", domain: [0, d3.max(classRollup, (d) => d.n) * 1.15 || 10]},
-        y: {label: null, domain: classRollup.map((d) => d.assay_class)},
-        marks: [
-          Plot.barX(classRollup, {x: "n", y: "assay_class", fill: "assay_class", tip: true}),
-          Plot.text(classRollup, {
-            x: "n",
-            y: "assay_class",
-            text: (d) => `${fmt(d.n)} (${(d.pct * 100).toFixed(1)}%)`,
-            dx: 6,
-            textAnchor: "start",
-            fill: "currentColor",
-            fontSize: 12
-          }),
-          Plot.ruleX([0])
-        ]
-      }));
-    })()}
+    ${classRollupChart}
   </div>
 </div>
 
