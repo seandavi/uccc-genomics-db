@@ -124,15 +124,23 @@ LIMIT 15;
 }
 
 
+def harden(con):
+    """Sandbox a connection: no file/network table functions (read_text('.../.db_key_phi'),
+    read_blob, httpfs...) and no way to switch them back on. The keyword denylist in
+    `query` is the second layer; this is the one DuckDB enforces."""
+    con.execute("SET enable_external_access = false; SET lock_configuration = true")
+    return con
+
+
 def get_db():
-    """Create a new read-only DuckDB connection to the encrypted de-id database."""
+    """Create a new read-only, sandboxed DuckDB connection to the encrypted de-id database."""
     if not os.path.exists(DEID_DB_KEY):
         raise FileNotFoundError(f"Database encryption key file not found: {DEID_DB_KEY}")
     key = open(DEID_DB_KEY).read().strip()
     con = duckdb.connect()
     con.execute(f"ATTACH '{DEID_DB}' AS db (ENCRYPTION_KEY '{key}', READ_ONLY)")
     con.execute("USE db")
-    return con
+    return harden(con)
 
 
 # Initialize MCP server

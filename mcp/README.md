@@ -17,7 +17,7 @@ Running live as a continuous systemd user service on `onclappc02` and proxied ov
 
 * **`list_tables(schema: str = "")`**: Lists all available tables and views across schemas (`unified`, `caris`, `fmi`).
 * **`describe_tables(tables: list[str])`**: Returns column definitions, data types, and nullability for one or more tables (e.g. `['unified.patient', 'unified.variant']`).
-* **`query(sql: str, limit: int = 100)`**: Executes read-only SQL queries (`SELECT`, `WITH`, `DESCRIBE`). Enforces safety by rejecting schema modifications and capping row output (max 1,000 rows) to protect LLM context windows.
+* **`query(sql: str, limit: int = 100)`**: Executes read-only SQL queries (`SELECT`, `WITH`, `DESCRIBE`). Every connection runs with `enable_external_access = false` (no `read_text`/`read_csv`/httpfs on the host filesystem) and `lock_configuration = true`, plus a keyword denylist and a 1,000-row cap; `tests/test_mcp_query.py` pins this.
 * **`get_documentation(topic: str = "overview")`**: **Context-protection tool**. Retrieves structured schema documentation and copy-pasteable SQL cohort queries on demand (`overview`, `unified`, `vendor_schemas`, `examples`, `all`) so large documentation is not dumped into your initial prompt context.
 
 ---
