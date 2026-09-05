@@ -7,6 +7,7 @@ export default {
   interpreters: {".py": ["uv", "run", "python"]},
   pages: [
     {name: "Overview", path: "/"},
+    {name: "Cohort exploration", path: "/cohort"},
     {name: "Genes", path: "/genes"},
     {name: "Biomarkers", path: "/biomarkers"},
     {name: "Coverage & quality", path: "/coverage"},
