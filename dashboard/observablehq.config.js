@@ -5,6 +5,16 @@ export default {
   title: "UCCC vendor genomics",
   root: "src",
   interpreters: {".py": ["uv", "run", "python"]},
+  head: `
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-HR1PFD75WN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-HR1PFD75WN');
+    </script>
+  `,
   pages: [
     {name: "Overview", path: "/"},
     {name: "Cohort exploration", path: "/cohort"},
