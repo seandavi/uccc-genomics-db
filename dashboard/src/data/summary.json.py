@@ -14,11 +14,11 @@ con = connect(db=(DEID_DB, DEID_DB_KEY, "READ_ONLY"))
 
 
 def rows(sql: str) -> list[dict]:
-    """Rows as dicts, minus any whose `n` is a small cell."""
+    """Rows as dicts, minus any whose `n` or `n_patients` is a small cell."""
     cur = con.execute(sql)
     cols = [d[0] for d in cur.description]
     out = [dict(zip(cols, r)) for r in cur.fetchall()]
-    return [r for r in out if r.get("n") is None or r["n"] >= MIN_CELL]
+    return [r for r in out if all(r.get(k) is None or r[k] >= MIN_CELL for k in ("n", "n_patients"))]
 
 
 # One alteration row per (report, gene, type). VUS kept separate so it can be toggled.
@@ -30,7 +30,7 @@ WITH alt AS (
   UNION ALL SELECT vendor, report_id, gene1, 'fusion' FROM unified.fusion WHERE gene1 IS NOT NULL
   UNION ALL SELECT vendor, report_id, gene2, 'fusion' FROM unified.fusion WHERE gene2 IS NOT NULL AND gene2 <> gene1
 ),
-rep AS (SELECT vendor, report_id, coalesce(disease_text, '(not stated)') AS disease FROM unified.report)
+rep AS (SELECT vendor, report_id, disease_text AS disease FROM unified.report)
 """
 
 summary = {
@@ -39,8 +39,7 @@ summary = {
                (SELECT count(*) FROM unified.variant) AS n_variants,
                (SELECT count(*) FROM unified.cna) AS n_cna,
                (SELECT count(*) FROM unified.fusion) AS n_fusions,
-               (SELECT count(*) FROM unified.patient WHERE n_vendors > 1) AS n_multi_vendor,
-               max(coalesce(received_on, collected_on))::DATE AS last_received
+               (SELECT count(*) FROM unified.patient WHERE n_vendors > 1) AS n_multi_vendor
         FROM unified.report""")[0]
     | {"built_at": datetime.datetime.now().isoformat(timespec="minutes"), "min_cell": MIN_CELL},
     "reports_by_year": rows("""
@@ -53,14 +52,14 @@ summary = {
         SELECT vendor, coalesce(report_status, '(none)') AS status, count(*) AS n
         FROM unified.report GROUP BY ALL ORDER BY vendor, n DESC"""),
     "disease": rows("""
-        SELECT vendor, coalesce(disease_text, '(not stated)') AS disease,
+        SELECT vendor, disease_text AS disease,
                count(*) AS n, count(DISTINCT research_id) AS n_patients
         FROM unified.report GROUP BY vendor, disease
         QUALIFY row_number() OVER (PARTITION BY vendor ORDER BY n DESC) <= 25
         ORDER BY vendor, n DESC"""),
     # Denominators for gene frequencies: reports per vendor x disease, plus an all-disease rollup.
     "denom": rows("""
-        SELECT vendor, coalesce(disease_text, '(not stated)') AS disease, count(*) AS n
+        SELECT vendor, disease_text AS disease, count(*) AS n
         FROM unified.report GROUP BY GROUPING SETS ((vendor, disease), (vendor))"""),
     "gene_alt": rows(ALT + """,
         top AS (SELECT gene FROM alt WHERE alt_type <> 'VUS' GROUP BY gene ORDER BY count(DISTINCT report_id) DESC LIMIT 60)
@@ -72,7 +71,7 @@ summary = {
         SELECT vendor, least(floor(value / 2) * 2, 50) AS bin, count(*) AS n
         FROM unified.biomarker WHERE name = 'TMB' AND value IS NOT NULL GROUP BY ALL ORDER BY ALL"""),
     "biomarker_call": rows("""
-        SELECT b.vendor, b.name, coalesce(r.disease_text, '(not stated)') AS disease, b.call_norm, count(*) AS n
+        SELECT b.vendor, b.name, r.disease_text AS disease, b.call_norm, count(*) AS n
         FROM unified.biomarker b JOIN unified.report r USING (vendor, report_id)
         WHERE b.name IN ('TMB', 'MSI')
         GROUP BY GROUPING SETS ((b.vendor, b.name, disease, b.call_norm), (b.vendor, b.name, b.call_norm))"""),
@@ -107,13 +106,13 @@ summary = {
         SELECT r.vendor, coalesce(cp.panel, r.assay_name) AS panel, count(*) AS n
         FROM unified.report r LEFT JOIN caris_panel cp USING (report_id) GROUP BY ALL ORDER BY vendor, n DESC"""),
     "quality": rows("""
-        SELECT 'reports without a collection date' AS item, count(*) AS n FROM unified.report WHERE collected_on IS NULL
-        UNION ALL SELECT 'reports without a stated disease', count(*) FROM unified.report WHERE disease_text IS NULL
-        UNION ALL SELECT 'FMI reports with unknown test type', count(*) FROM unified.report WHERE vendor = 'fmi' AND assay_name = 'undefined'
-        UNION ALL SELECT 'FMI amendment records', count(*) FROM fmi.amendment
-        UNION ALL SELECT 'Caris QNS (insufficient sample)', count(*) FROM unified.report WHERE vendor = 'caris' AND report_status = 'QNS'
-        UNION ALL SELECT 'FMI QC fail', count(*) FROM unified.report WHERE vendor = 'fmi' AND report_status = 'Fail'
-        UNION ALL SELECT 'variants missing VAF', count(*) FROM unified.variant WHERE vaf IS NULL"""),
+        SELECT 'no collection date' AS item, count(*) AS n FROM unified.report WHERE collected_on IS NULL
+        UNION ALL SELECT 'no stated disease', count(*) FROM unified.report WHERE disease_text = '(not stated)'
+        UNION ALL SELECT 'FMI: unknown test type', count(*) FROM unified.report WHERE vendor = 'fmi' AND assay_name = 'undefined'
+        UNION ALL SELECT 'FMI: amendment records', count(*) FROM fmi.amendment
+        UNION ALL SELECT 'Caris: QNS (insufficient sample)', count(*) FROM unified.report WHERE vendor = 'caris' AND report_status = 'QNS'
+        UNION ALL SELECT 'FMI: QC fail', count(*) FROM unified.report WHERE vendor = 'fmi' AND report_status = 'Fail'
+        UNION ALL SELECT 'variants without VAF', count(*) FROM unified.variant WHERE vaf IS NULL"""),
 }
 
 # GROUPING SETS rollups arrive with disease = NULL; name them.
@@ -124,7 +123,8 @@ for key in ("denom", "gene_alt", "biomarker_call"):
 # Self-check: nothing below the small-cell floor and nothing row-level leaves this loader.
 for key, val in summary.items():
     for r in val if isinstance(val, list) else [val]:
-        assert r.get("n") is None or r["n"] >= MIN_CELL, (key, r)
+        for k in ("n", "n_patients"):
+            assert r.get(k) is None or r[k] >= MIN_CELL, (key, r)
         assert not {"report_id", "research_id"} & r.keys(), (key, r)
 
 json.dump(summary, sys.stdout, default=str)
