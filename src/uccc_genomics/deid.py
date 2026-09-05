@@ -12,7 +12,7 @@ Key in $DATA/.deid_key (mode 600); same key => same IDs on rebuild.
 """
 import os
 
-from .config import DEID_DB, DEID_DB_KEY, KEY_FILE, PHI_DB, PHI_DB_KEY, connect, read_key, sql
+from .config import DEID_DB, DEID_DB_KEY, KEY_FILE, PHI_DB, PHI_DB_KEY, connect, data_file, read_key, sql
 
 KEY_COL = {"caris": "case_id", "fmi": "report_id"}
 # patient identity per vendor: normalized MRN, else lower(last|first|dob) -- FMI leaves MRN empty on ~20% of reports
@@ -72,8 +72,8 @@ def run():
                     continue
                 elif c in HASH:
                     sel.append(f'substr(sha256(getvariable(\'k\') || \'sid\' || r."{c}"), 1, 16) AS "{c}"')
-                elif typ in ("DATE", "TIMESTAMP"):
-                    sel.append(f'r."{c}" + to_days(x.shift_days) AS "{c}"')
+                elif typ in ("DATE", "TIMESTAMP"):  # DATE + INTERVAL is a TIMESTAMP; keep the declared type
+                    sel.append(f'(r."{c}" + to_days(x.shift_days))::{typ} AS "{c}"')
                 elif "age" in c and typ in ("INTEGER", "BIGINT", "DOUBLE"):
                     sel.append(f'least(r."{c}", 89) AS "{c}"')
                 else:
@@ -84,13 +84,10 @@ def run():
             print(f"{s}.{t:16s} {n:>12,}")
         con.execute(sql(f"{s}_views.sql"))
 
-    # Reference schema & ontology crosswalk
-    from .config import data_file
-    con.execute("CREATE SCHEMA IF NOT EXISTS reference")
-    crosswalk_file = data_file("disease_crosswalk.csv")
-    con.execute(f"CREATE TABLE reference.disease_crosswalk AS SELECT * FROM read_csv('{crosswalk_file}', header=true, auto_detect=true)")
-    n_cw = con.execute("SELECT count(*) FROM reference.disease_crosswalk").fetchone()[0]
-    print(f"reference.disease_crosswalk {n_cw:>12,}")
+    # Reference data shipped with the package: vendor disease term -> OncoTree / NCIt.
+    con.execute("CREATE SCHEMA reference")
+    con.execute(f"CREATE TABLE reference.disease_crosswalk AS SELECT * FROM read_csv('{data_file('disease_crosswalk.csv')}')")
+    print(f"reference.disease_crosswalk {con.execute('SELECT count(*) FROM reference.disease_crosswalk').fetchone()[0]:>6,}")
 
     con.execute(sql("unified.sql"))
     print("views: unified.*")
