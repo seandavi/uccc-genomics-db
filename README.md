@@ -125,12 +125,15 @@ WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%';
 ## Dashboard
 
 `dashboard/` is an [Observable Framework](https://observablehq.com/framework/)
-site: four pages of aggregates over `genomics.duckdb` (overview, gene
-frequencies, biomarkers, coverage/quality). One data loader,
-`dashboard/src/data/summary.json.py`, opens the de-id file at build time and
-emits every aggregate as a single JSON; nothing row-level and no count below
-5 (the institutional small-cell floor) leaves it. The built site is plain
-static files.
+site: five pages of aggregates over `genomics.duckdb`:
+1. **Overview** (`/`) — High-level metrics, collection years, assays, and vendor disease breakdowns.
+2. **Cohort Exploration** (`/cohort`) — **Fast cohort & feasibility search** supporting multi-select gene and disease filtering (OR logic), start/end year range sliders, vendor selection, VUS toggle, matching report counts, estimated patient counts, accrual rates, automated **Feasibility Tiers** (High, Moderate, Low/Pilot), longitudinal accrual trend charts, assay modality distributions, alteration class breakdowns, co-mutation landscape, and annual breakdown tables.
+3. **Genes** (`/genes`) — Gene alteration frequencies, VUS toggling, and disease-gene heatmaps.
+4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, and LOH distributions.
+5. **Coverage & Quality** (`/coverage`) — Panel coverage metrics and quality metrics.
+
+All data loaders enforce strict institutional privacy rules (`MIN_CELL = 5` suppression and zero row-level identifiers).
+The built site is hosted on Cloudflare Workers (`https://uccc-end-omics.cancerdatasci.org`) with Google Analytics (`G-HR1PFD75WN`) tracking and Cloudflare Access authentication.
 
 ```bash
 cd dashboard && npm install
