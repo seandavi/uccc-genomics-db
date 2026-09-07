@@ -53,7 +53,7 @@ fmi,disease,BONE MARROW,HEME,Bone Marrow Malignancy,Blood/Bone Marrow,NCIT:C3161
 fmi,disease,BRAIN,CNS,Brain Tumor,CNS/Brain,NCIT:C3058
 fmi,disease,BREAST,BRCA,Breast Cancer,Breast,NCIT:C4872
 fmi,disease,CERVIX,CESC,Cervical Cancer,Cervix,NCIT:C9311
-fmi,disease,COLON,COAD,Colon Adenocarcinoma,Bowel,NCIT:C4349
+fmi,disease,COLON,COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease,DUODENUM,DUOD,Duodenal Cancer,Bowel,NCIT:C3384
 fmi,disease,ESOPHAGUS,ESCA,Esophageal Cancer,Esophagus/Stomach,NCIT:C4026
 fmi,disease,EYE,EYE,Ocular Neoplasm,Eye,NCIT:C3804
@@ -77,7 +77,7 @@ fmi,disease,PERITONEUM,PERIT,Peritoneal Neoplasm,Peritoneum,NCIT:C3318
 fmi,disease,PLACENTA,PLAC,Gestational Trophoblastic Disease,Female Reproductive,NCIT:C3334
 fmi,disease,PLEURA,PLEURA,Pleural Neoplasm,Pleura,NCIT:C3335
 fmi,disease,PROSTATE,PRAD,Prostate Cancer,Prostate,NCIT:C2919
-fmi,disease,RECTUM,READ,Rectal Adenocarcinoma,Bowel,NCIT:C9385
+fmi,disease,RECTUM,COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease,SALIVARY GLAND,SGC,Salivary Gland Cancer,Head and Neck,NCIT:C3364
 fmi,disease,SKIN,SKIN,Skin Cancer / Melanoma,Skin,NCIT:C3224
 fmi,disease,SMALL INTESTINE,SMC,Small Intestinal Cancer,Bowel,NCIT:C3384
@@ -110,12 +110,12 @@ fmi,disease_ontology,"Unknown primary, adenocarcinoma",CUP,Cancer of Unknown Pri
 fmi,disease_ontology,Unknown primary sarcomatoid carcinoma,SARC,Soft Tissue Sarcoma,Soft Tissue,NCIT:C9118
 fmi,disease_ontology,Head and neck neuroendocrine carcinoma,HNSC,Head and Neck Carcinoma,Head and Neck,NCIT:C3088
 fmi,disease_ontology,Appendix mucinous neoplasm (NOS),APPD,Appendiceal Carcinoma,Bowel,NCIT:C3011
-fmi,disease_ontology,Colon adenocarcinoma (CRC),COAD,Colon Adenocarcinoma,Bowel,NCIT:C4349
+fmi,disease_ontology,Colon adenocarcinoma (CRC),COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease_ontology,Pancreas ductal adenocarcinoma,PAAD,Pancreatic Adenocarcinoma,Pancreas,NCIT:C4022
 fmi,disease_ontology,Vulva melanoma,MEL,Melanoma,Skin,NCIT:C3224
 fmi,disease_ontology,Pancreatobiliary carcinoma (NOS),PAAD,Pancreatic Adenocarcinoma,Pancreas,NCIT:C4022
 fmi,disease_ontology,Small intestine leiomyosarcoma,SMC,Small Bowel Carcinoma,Bowel,NCIT:C3384
-fmi,disease_ontology,Colon cancer (NOS),COAD,Colon Adenocarcinoma,Bowel,NCIT:C4349
+fmi,disease_ontology,Colon cancer (NOS),COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease_ontology,Thyroid follicular oncocytic carcinoma,THCA,Thyroid Carcinoma,Thyroid,NCIT:C3995
 fmi,disease_ontology,Kidney urothelial carcinoma,BLCA,Bladder Urothelial Carcinoma,Bladder/Urinary,NCIT:C4908
 fmi,disease_ontology,Lung cancer (NOS),NSCLC,Non-Small Cell Lung Cancer,Lung,NCIT:C2926
@@ -124,7 +124,7 @@ fmi,disease_ontology,Pancreas solid pseudopapillary tumor,PAAD,Pancreatic Adenoc
 fmi,disease_ontology,Fallopian tube carcinosarcoma,EOC,Ovarian Epithelial Carcinoma,Ovary/Fallopian Tube,NCIT:C7558
 fmi,disease_ontology,Pancreas neuroendocrine carcinoma,PAAD,Pancreatic Adenocarcinoma,Pancreas,NCIT:C4022
 fmi,disease_ontology,Cervix cancer (NOS),CESC,Cervical Cancer,Cervix,NCIT:C9311
-fmi,disease_ontology,Colon neuroendocrine carcinoma,COAD,Colon Adenocarcinoma,Bowel,NCIT:C4349
+fmi,disease_ontology,Colon neuroendocrine carcinoma,COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease_ontology,Soft tissue angiomyolipoma,SARC,Soft Tissue Sarcoma,Soft Tissue,NCIT:C9118
 fmi,disease_ontology,Bone marrow myelodysplastic syndrome (MDS),BONE,Bone Malignancy,Bone,NCIT:C9293
 fmi,disease_ontology,Ovary sex-cord stromal tumor,EOC,Ovarian Epithelial Carcinoma,Ovary/Fallopian Tube,NCIT:C7558
@@ -148,7 +148,7 @@ fmi,disease_ontology,Soft tissue hemangioendothelioma,SARC,Soft Tissue Sarcoma,S
 fmi,disease_ontology,Breast carcinoma (NOS),BRCA,Breast Cancer,Breast,NCIT:C4872
 fmi,disease_ontology,Bladder urothelial (transitional cell) carcinoma,BLCA,Bladder Urothelial Carcinoma,Bladder/Urinary,NCIT:C4908
 fmi,disease_ontology,Uterus endometrial adenocarcinoma endometrioid,UCEC,Endometrial Carcinoma,Uterus,NCIT:C4000
-fmi,disease_ontology,Rectum squamous cell carcinoma (SCC),READ,Rectal Adenocarcinoma,Bowel,NCIT:C9385
+fmi,disease_ontology,Rectum squamous cell carcinoma (SCC),COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease_ontology,Lung non-small cell lung carcinoma (NOS),NSCLC,Non-Small Cell Lung Cancer,Lung,NCIT:C2926
 fmi,disease_ontology,Uterus leiomyosarcoma,UCEC,Endometrial Carcinoma,Uterus,NCIT:C4000
 fmi,disease_ontology,Unknown primary germ cell tumor,GCT,Germ Cell Tumor,Other,NCIT:C3052
@@ -270,7 +270,7 @@ fmi,disease_ontology,Gallbladder adenocarcinoma,CHOL,Cholangiocarcinoma,Biliary 
 fmi,disease_ontology,Liver cholangiocarcinoma,CHOL,Cholangiocarcinoma,Biliary Tract,NCIT:C4436
 fmi,disease_ontology,Uterus sarcoma (NOS),UCEC,Endometrial Carcinoma,Uterus,NCIT:C4000
 fmi,disease_ontology,Breast invasive lobular carcinoma (ILC),BRCA,Breast Cancer,Breast,NCIT:C4872
-fmi,disease_ontology,Colon carcinoid tumor,COAD,Colon Adenocarcinoma,Bowel,NCIT:C4349
+fmi,disease_ontology,Colon carcinoid tumor,COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease_ontology,Ampullary adenocarcinoma,SMC,Small Bowel Carcinoma,Bowel,NCIT:C3384
 fmi,disease_ontology,Nasopharynx and paranasal sinuses squamous cell carcinoma,HNSC,Head and Neck Carcinoma,Head and Neck,NCIT:C3088
 fmi,disease_ontology,Ovary endometrioid adenocarcinoma,EOC,Ovarian Epithelial Carcinoma,Ovary/Fallopian Tube,NCIT:C7558
@@ -320,7 +320,7 @@ fmi,disease_ontology,Bone marrow multiple myeloma,BONE,Bone Malignancy,Bone,NCIT
 fmi,disease_ontology,Lung typical carcinoid,NET,Neuroendocrine Tumor,Endocrine,NCIT:C3262
 fmi,disease_ontology,Ovary serous carcinoma,EOC,Ovarian Epithelial Carcinoma,Ovary/Fallopian Tube,NCIT:C7558
 fmi,disease_ontology,Soft tissue synovial sarcoma,SARC,Soft Tissue Sarcoma,Soft Tissue,NCIT:C9118
-fmi,disease_ontology,Rectum adenocarcinoma (CRC),READ,Rectal Adenocarcinoma,Bowel,NCIT:C9385
+fmi,disease_ontology,Rectum adenocarcinoma (CRC),COADREAD,Colorectal Adenocarcinoma,Bowel,NCIT:C9384
 fmi,disease_ontology,Soft tissue sarcoma (NOS),SARC,Soft Tissue Sarcoma,Soft Tissue,NCIT:C9118
 fmi,disease_ontology,Kidney renal cell carcinoma (NOS),RCC,Renal Cell Carcinoma,Kidney,NCIT:C9386
 fmi,disease_ontology,Skin dermatofibrosarcoma,SKIN_OTHER,Other Skin Malignancy,Skin,NCIT:C3224
