@@ -150,7 +150,7 @@ pure client-side filtering over that JSON.
    Headline counts and prevalence come from all-years totals (year × disease × gene cells
    are mostly suppressed); expected accrual = prevalence × tested volume in the window;
    the arithmetic lives in `src/components/cohort.js` and is covered by `npm test`.
-3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, one gene across diseases.
+3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, exact protein changes within a gene (sub-floor changes pooled as "other"), one gene or one exact alteration across diseases.
 4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions.
 5. **Coverage & quality** (`/coverage`) — panels, gene coverage, report status, purity, known gaps.
 

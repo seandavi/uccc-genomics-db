@@ -67,6 +67,18 @@ summary = {
         FROM alt a JOIN rep r USING (vendor, report_id)
         WHERE a.gene IN (SELECT gene FROM top)
         GROUP BY GROUPING SETS ((a.vendor, r.disease, a.gene, a.alt_type), (a.vendor, a.gene, a.alt_type))"""),
+    # Exact protein change within a gene, pathogenic only. Vendors disagree on the `p.` prefix
+    # (FMI bare, Caris mixed), so it is stripped before grouping. Per (vendor, disease, gene) cell,
+    # changes under the floor are pooled into one "other" bucket rather than silently vanishing.
+    "gene_variant": rows(ALT + f""",
+        top AS (SELECT gene FROM alt WHERE alt_type <> 'VUS' GROUP BY gene ORDER BY count(DISTINCT report_id) DESC LIMIT 60),
+        gv AS (
+          SELECT v.vendor, r.disease, v.gene, regexp_replace(v.hgvs_p, '^p\\.', '') AS aa, count(DISTINCT v.report_id) AS n
+          FROM unified.variant v JOIN rep r USING (vendor, report_id)
+          WHERE NOT coalesce(v.is_vus, false) AND v.hgvs_p IS NOT NULL AND v.gene IN (SELECT gene FROM top)
+          GROUP BY GROUPING SETS ((v.vendor, r.disease, v.gene, aa), (v.vendor, v.gene, aa)))
+        SELECT vendor, disease, gene, CASE WHEN n >= {MIN_CELL} THEN aa ELSE 'other (each < {MIN_CELL})' END AS aa, sum(n)::BIGINT AS n
+        FROM gv GROUP BY ALL"""),
     "tmb_hist": rows("""
         SELECT vendor, least(floor(value / 2) * 2, 50) AS bin, count(*) AS n
         FROM unified.biomarker WHERE name = 'TMB' AND value IS NOT NULL GROUP BY ALL ORDER BY ALL"""),
@@ -116,7 +128,7 @@ summary = {
 }
 
 # GROUPING SETS rollups arrive with disease = NULL; name them.
-for key in ("denom", "gene_alt", "biomarker_call"):
+for key in ("denom", "gene_alt", "gene_variant", "biomarker_call"):
     for r in summary[key]:
         r["disease"] = r["disease"] or "All diseases"
 
@@ -126,5 +138,6 @@ for key, val in summary.items():
         for k in ("n", "n_patients"):
             assert r.get(k) is None or r[k] >= MIN_CELL, (key, r)
         assert not {"report_id", "research_id"} & r.keys(), (key, r)
+assert not any(r["aa"].startswith("p.") for r in summary["gene_variant"]), "hgvs_p prefix not normalised"
 
 json.dump(summary, sys.stdout, default=str)

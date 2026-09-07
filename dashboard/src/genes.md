@@ -77,21 +77,55 @@ const gene = view(Inputs.select(overallOrder, {label: "Gene"}));
 ```
 
 ```js
-const byDisease = (() => {
-  const den = new Map(s.denom.filter((d) => d.vendor === vendor).map((d) => [d.disease, d.n]));
-  return s.gene_alt
-    .filter((d) => d.vendor === vendor && d.gene === gene && d.disease !== "All diseases" && (showVus || d.alt_type !== "VUS"))
-    .map((d) => ({...d, pct: d.n / den.get(d.disease)}));
-})();
+// Exact protein changes (pathogenic only) for the chosen gene, in the disease chosen at the top.
+// The loader pools changes under the floor into one "other" bucket, which sorts last.
+const OTHER = `other (each < ${s.meta.min_cell})`;
+const variants = s.gene_variant
+  .filter((d) => d.vendor === vendor && d.gene === gene && d.disease === disease)
+  .map((d) => ({...d, pct: d.n / denom}))
+  .sort((a, b) => (a.aa === OTHER) - (b.aa === OTHER) || b.n - a.n);
+const aaChoices = ["All alterations", ...s.gene_variant
+  .filter((d) => d.vendor === vendor && d.gene === gene && d.disease === "All diseases" && d.aa !== OTHER)
+  .sort((a, b) => b.n - a.n).map((d) => d.aa)];
 ```
 
 <div class="card">
-  <h2>${gene} across diseases, ${vendor}</h2>
-  <h3>Share of each disease's reports carrying a ${gene} alteration</h3>
-  ${resize((width) => Plot.plot({
+  <h2>${gene} exact alterations: ${disease}, ${vendor}</h2>
+  <h3>Reports with each pathogenic/likely protein change (VUS excluded). Changes with fewer than ${s.meta.min_cell} reports are pooled into "other". Amplifications and fusions are not shown here.</h3>
+  ${variants.length ? resize((width) => Plot.plot({
+    width, height: 22 * variants.length + 70, marginLeft: 120,
+    x: {grid: true, label: "reports", domain: [0, Math.max(...variants.map((d) => d.n)) * 1.2]},
+    y: {label: null, domain: variants.map((d) => d.aa)},
+    marks: [
+      Plot.barX(variants, {x: "n", y: "aa", fill: (d) => d.aa === OTHER ? "#bbb" : altColor.range[0], tip: true}),
+      Plot.text(variants, {x: "n", y: "aa", text: (d) => `${d.n} (${(d.pct * 100).toFixed(1)}%)`, dx: 6, textAnchor: "start", fill: "currentColor", fontSize: 11}),
+      Plot.ruleX([0])
+    ]
+  })) : html`<div class="muted" style="padding: 2rem 0;">No ${gene} protein change reaches ${s.meta.min_cell} reports in ${disease}.</div>`}
+</div>
+
+```js
+const aa = view(Inputs.select(aaChoices, {label: "Alteration"}));
+```
+
+```js
+const byDisease = (() => {
+  const den = new Map(s.denom.filter((d) => d.vendor === vendor).map((d) => [d.disease, d.n]));
+  const rows = aa === "All alterations"
+    ? s.gene_alt.filter((d) => d.vendor === vendor && d.gene === gene && (showVus || d.alt_type !== "VUS"))
+    : s.gene_variant.filter((d) => d.vendor === vendor && d.gene === gene && d.aa === aa).map((d) => ({...d, alt_type: "pathogenic/likely"}));
+  return rows.filter((d) => d.disease !== "All diseases").map((d) => ({...d, pct: d.n / den.get(d.disease)}));
+})();
+const across = aa === "All alterations" ? `a ${gene} alteration` : `${gene} ${aa}`;
+```
+
+<div class="card">
+  <h2>${across} across diseases, ${vendor}</h2>
+  <h3>Share of each disease's reports carrying ${across}. Diseases under ${s.meta.min_cell} reports are omitted.</h3>
+  ${byDisease.length ? resize((width) => Plot.plot({
     width, height: 24 * new Set(byDisease.map((d) => d.disease)).size + 70, marginLeft: 260, color: altColor,
     x: {percent: true, grid: true, label: "% of reports"},
     y: {label: null},
     marks: [Plot.barX(byDisease, {x: "pct", y: "disease", fill: "alt_type", sort: {y: "-x"}, tip: true}), Plot.ruleX([0])]
-  }))}
+  })) : html`<div class="muted" style="padding: 2rem 0;">No disease has ${s.meta.min_cell}+ reports with ${across}.</div>`}
 </div>
