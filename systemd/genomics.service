@@ -1,4 +1,4 @@
-# Daily vendor-genomics refresh: sync raw Caris (S3) + FMI (dccapp720) files,
+# Daily vendor-genomics refresh: sync raw Caris (S3) + FMI (CIFS host) files,
 # rebuild genomics_phi.duckdb, derive genomics.duckdb. Instance of the
 # monode/infrastructure SCHEDULING.md convention; copied from cdsci-lake's units.
 [Unit]

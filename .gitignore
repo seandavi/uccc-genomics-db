@@ -32,3 +32,4 @@ dashboard/src/.observablehq/
 *.tmp
 *.jsonl
 .DS_Store
+!.env.example

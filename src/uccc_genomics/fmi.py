@@ -1,4 +1,4 @@
-"""Foundation Medicine: mirror report XMLs from dccapp720, load into schema `fmi`.
+"""Foundation Medicine: mirror report XMLs from the FMI host, load into schema `fmi`.
 
 Covers what seandavi/foundation-medicine-xml-parser extracted (short variants,
 CNA, rearrangements, biomarkers, PMI) plus the blocks it skipped: curated
@@ -20,7 +20,7 @@ NS = "{http://foundationmedicine.com/compbio/variant-report-external}"
 
 
 def sync():
-    # ponytail: full tar copy every run (rsync isn't on dccapp720); ~450 MB, fine daily
+    # ponytail: full tar copy every run (rsync isn't on the FMI host); ~450 MB, fine daily
     host, path = FMI_SRC.split(":", 1)
     os.makedirs(RAW_FMI, exist_ok=True)
     subprocess.run(f"ssh -o BatchMode=yes {host} 'cd {path} && tar cf - *.xml' | tar xf - -C {RAW_FMI}",

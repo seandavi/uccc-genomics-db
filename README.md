@@ -5,7 +5,7 @@ per-vendor schemas and a cross-vendor `unified` layer for cohort queries.
 
 ```
 Caris S3 bucket ──aws s3 sync──▶ $DATA/raw/caris/<case>/   (json + geneTPM csv)
-FMI CIFS share on dccapp720 ──tar|ssh──▶ $DATA/raw/fmi/*.xml
+FMI CIFS share on FMI host ──tar|ssh──▶ $DATA/raw/fmi/*.xml
                                    │  genomics load
                                    ▼
                  $DATA/genomics_phi.duckdb   schemas caris.*, fmi.*     — identifiers present, never leaves this host
@@ -14,8 +14,10 @@ FMI CIFS share on dccapp720 ──tar|ssh──▶ $DATA/raw/fmi/*.xml
                  $DATA/genomics.duckdb       schemas caris.*, fmi.*, unified.*   — de-identified, the one you query
 ```
 
-`DATA` defaults to `/data/davsean/genomics`. Caris creds are the `[default]`
-AWS profile; FMI needs passwordless ssh to dccapp720 (override with `FMI_SRC=host:dir`).
+`DATA` defaults to `/data/davsean/genomics`. `CARIS_BUCKET` (s3://bucket/) and
+`FMI_SRC` (host:dir) are site-specific and live in the gitignored `.env` at the
+repo root, which `config.py` reads (copy `.env.example`). Caris creds are the `[default]` AWS profile; FMI needs
+passwordless ssh to the FMI host.
 
 ## Run
 

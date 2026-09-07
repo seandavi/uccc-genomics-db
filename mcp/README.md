@@ -2,13 +2,13 @@
 
 Official Model Context Protocol (MCP v2) server providing read-only access to the de-identified UCCC genomics database (`genomics.duckdb`) over **Streamable HTTP** with **Tailscale HTTPS**.
 
-Running live as a continuous systemd user service on `onclappc02` and proxied over Tailscale MagicDNS with valid TLS certificates.
+Running live as a continuous systemd user service on the pipeline host and proxied over Tailscale MagicDNS with valid TLS certificates.
 
 ---
 
 ## Live Endpoint (Tailnet HTTPS)
 
-* **URL**: `https://onclappc02.tail892754.ts.net:8088/mcp`
+* **URL**: `https://<pipeline-host>.<tailnet>.ts.net:8088/mcp`
 * **Transport**: MCP v2 Streamable HTTP (POST / streaming responses with `Mcp-Session-Id`)
 
 ---
@@ -29,7 +29,7 @@ Client (Claude / Cursor / Pi)
          │
          │  HTTPS (MagicDNS TLS)
          ▼
-[tailscale serve :8088] (terminates TLS at onclappc02.tail892754.ts.net:8088)
+[tailscale serve :8088] (terminates TLS at <pipeline-host>.<tailnet>.ts.net:8088)
          │
          │  HTTP (localhost)
          ▼
@@ -56,7 +56,7 @@ Client (Claude / Cursor / Pi)
 {
   "mcpServers": {
     "uccc-genomics": {
-      "url": "https://onclappc02.tail892754.ts.net:8088/mcp"
+      "url": "https://<pipeline-host>.<tailnet>.ts.net:8088/mcp"
     }
   }
 }
@@ -67,11 +67,11 @@ Client (Claude / Cursor / Pi)
 {
   "mcpServers": {
     "uccc-genomics": {
-      "command": "/home/davsean/.local/bin/uv",
+      "command": "/path/to/uv",
       "args": [
         "run",
         "--directory",
-        "/home/davsean/Documents/git/uccc-genomics-db",
+        "/path/to/uccc-genomics-db",
         "genomics-mcp",
         "--transport",
         "stdio"
@@ -100,11 +100,11 @@ tailscale serve status
 
 ## Status & Open Testing Items
 
-* **Local Verification**: Passed on host (`onclappc02`). Systemd unit runs stably, DuckDB connects read-only with decryption key, and tools respond correctly.
+* **Local Verification**: Passed on the pipeline host. Systemd unit runs stably, DuckDB connects read-only with decryption key, and tools respond correctly.
 * **Tailnet Remote Testing (In Progress / Needs Further Testing)**:
   * Remote access from secondary client devices on the tailnet reported unresponsive.
   * **Items to verify**:
-    1. Tailscale ACLs / peer connectivity between client device and `onclappc02`.
-    2. MagicDNS resolution of `onclappc02.tail892754.ts.net` from client environments.
+    1. Tailscale ACLs / peer connectivity between client device and the pipeline host.
+    2. MagicDNS resolution of `<pipeline-host>.<tailnet>.ts.net` from client environments.
     3. Client MCP transport compatibility (whether client expects Streamable HTTP on `/mcp` vs legacy SSE on `/sse` vs direct stdio bridge).
 

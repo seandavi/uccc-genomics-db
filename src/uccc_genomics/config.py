@@ -1,6 +1,16 @@
-"""Paths shared by every step. Override with DATA=/some/dir."""
+"""Paths shared by every step. Override with DATA=/some/dir.
+
+Site-specific values (CARIS_BUCKET, FMI_SRC) come from the environment or from the
+gitignored repo-root .env (KEY=value lines), per infrastructure/SCHEDULING.md."""
 import os
 from importlib.resources import files
+
+_ENV = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+if os.path.exists(_ENV):
+    for _line in open(_ENV):
+        _k, _, _v = _line.strip().partition("=")
+        if _k and not _k.startswith("#"):
+            os.environ.setdefault(_k, _v)
 
 DATA = os.environ.get("DATA", "/data/davsean/genomics")
 RAW = f"{DATA}/raw"
@@ -10,8 +20,8 @@ KEY_FILE = f"{DATA}/.deid_key"          # hashing key for research_id / report_i
 PHI_DB_KEY = f"{DATA}/.db_key_phi"      # AES key for genomics_phi.duckdb
 DEID_DB_KEY = f"{DATA}/.db_key"         # AES key for genomics.duckdb (share with the file, never the phi one)
 
-CARIS_BUCKET = "s3://caris-uc-health-university-of-colorado/"
-FMI_SRC = os.environ.get("FMI_SRC", "dccapp720:/mnt/00_results")  # host:dir holding the FMI XMLs
+CARIS_BUCKET = os.environ.get("CARIS_BUCKET", "")  # s3://bucket/ holding the Caris deliveries
+FMI_SRC = os.environ.get("FMI_SRC", "")            # host:dir holding the FMI XMLs
 
 
 def sql(name: str) -> str:
