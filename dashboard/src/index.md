@@ -12,10 +12,10 @@ const s = FileAttachment("data/summary.json").json();
 import {vendorColor, fmt} from "./components/theme.js";
 ```
 
-Caris and Foundation Medicine NGS reports as one de-identified database. Site built ${s.meta.built_at.replace("T", " ")} from the latest daily load.
+Caris and Foundation Medicine NGS reports as one de-identified database. Every count on this site covers only patients tested at the University of Colorado Cancer Center (UCCC) through its institutional data feeds, not the vendors' national volumes. Site built ${s.meta.built_at.replace("T", " ")} from the latest daily load.
 
 <div class="grid grid-cols-4">
-  <div class="card"><h2>Reports</h2><span class="big">${fmt(s.meta.n_reports)}</span></div>
+  <div class="card"><h2>Reports, UCCC patients</h2><span class="big">${fmt(s.meta.n_reports)}</span></div>
   <div class="card"><h2>Patients</h2><span class="big">${fmt(s.meta.n_patients)}</span><br><span class="muted">${fmt(s.meta.n_multi_vendor)} tested by both vendors</span></div>
   <div class="card"><h2>Short variants</h2><span class="big">${fmt(s.meta.n_variants)}</span><br><span class="muted">incl. VUS</span></div>
   <div class="card"><h2>Copy number · fusions</h2><span class="big">${fmt(s.meta.n_cna)}</span> · <span class="big">${fmt(s.meta.n_fusions)}</span></div>
