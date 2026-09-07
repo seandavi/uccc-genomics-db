@@ -62,7 +62,7 @@ ${c.hasGenes && selectedGenes.length > 1 ? html`<p class="muted small">A report 
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>${c.hasGenes ? `Observed ${geneLabel} alterations by year` : "Tested reports by year"}</h2>
-    <h3>${c.hasGenes ? `Only year × vendor cells with ${data.meta.min_cell}+ reports survive suppression, so rare alterations show low or empty here; the all-years count above is the reliable number.` : `Stacked by vendor, ${diseaseLabel}. Collection year, shifted per patient by up to ±6 months.`}</h3>
+    <h3>${c.hasGenes ? `Only year × vendor cells with ${data.meta.min_cell}+ reports survive suppression, so rare alterations show low or empty here; the all-years count above is the reliable number.` : `${diseaseLabel}, stacked by vendor because each vendor's panel covers a different gene set (see Coverage & quality), so the split shows which assay a cohort was actually tested on. Collection year, shifted per patient by up to ±6 months.`}</h3>
     ${(() => {
       const rows = c.hasGenes ? c.annualGene : c.annualDenoms;
       if (!rows.length) return empty(c.hasGenes ? "No year has enough matching reports to show." : "No tested reports in this window.");
