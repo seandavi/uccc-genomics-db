@@ -10,6 +10,9 @@ const s = FileAttachment("data/summary.json").json();
 
 ```js
 import {vendorColor, fmt} from "./components/theme.js";
+// Count printed at the end of each bar, so nobody has to hover to read it.
+// Summed per row because the assay bars stack tissue/liquid segments of one assay.
+const countLabel = (rows, y) => Plot.text(rows, Plot.groupY({x: "sum", text: (ns) => fmt(d3.sum(ns))}, {x: "n", y, text: "n", dx: 4, textAnchor: "start"}));
 ```
 
 Caris Life Sciences and Foundation Medicine, Inc. (FMI) NGS reports as one de-identified database. Every count on this site covers only patients tested at the University of Colorado Cancer Center (UCCC) through its institutional data feeds, not the vendors' national volumes. Site built ${s.meta.built_at.replace("T", " ")} from the latest daily load.
@@ -36,22 +39,24 @@ Caris Life Sciences and Foundation Medicine, Inc. (FMI) NGS reports as one de-id
     <h2>Assays</h2>
     <h3>Tissue, liquid and heme panels across both vendors</h3>
     ${resize((width) => Plot.plot({
-      width, height: 320, marginLeft: 230, color: vendorColor,
+      width, height: 320, marginLeft: 230, marginRight: 50, color: vendorColor,
       x: {grid: true, label: "reports"},
       y: {label: null},
-      marks: [Plot.barX(s.assays, {x: "n", y: "assay_name", fill: "vendor", sort: {y: "-x"}, tip: true}), Plot.ruleX([0])]
+      marks: [Plot.barX(s.assays, {x: "n", y: "assay_name", fill: "vendor", sort: {y: "-x"}, tip: true}), countLabel(s.assays, "assay_name"), Plot.ruleX([0])]
     }))}
   </div>
 </div>
 
 ```js
 function diseaseBars(vendor, i) {
+  const rows = s.disease.filter((d) => d.vendor === vendor);
   return resize((width) => Plot.plot({
-    width, height: 560, marginLeft: 260,
+    width, height: 560, marginLeft: 260, marginRight: 50,
     x: {grid: true, label: "reports"},
     y: {label: null},
     marks: [
-      Plot.barX(s.disease.filter((d) => d.vendor === vendor), {x: "n", y: "disease", fill: vendorColor.range[i], sort: {y: "-x"}, tip: true}),
+      Plot.barX(rows, {x: "n", y: "disease", fill: vendorColor.range[i], sort: {y: "-x"}, tip: true}),
+      countLabel(rows, "disease"),
       Plot.ruleX([0])
     ]
   }));
