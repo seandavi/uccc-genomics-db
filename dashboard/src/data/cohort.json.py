@@ -1,4 +1,4 @@
-"""Framework data loader: cohort and feasibility aggregates.
+"""Framework data loader: cohort and accrual-volume aggregates.
 
 Small-cell rule: any count below MIN_CELL is dropped here, before it leaves the loader.
 Nothing row-level is emitted. Dates in the de-id file are already shifted per patient.

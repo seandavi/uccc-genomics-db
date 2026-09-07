@@ -2,7 +2,7 @@
 title: Cohort exploration
 ---
 
-# Cohort exploration and feasibility
+# Cohort exploration
 
 ```js
 import {vendorColor, altColor, assayColor, fmt, pct, vendorLabel} from "./components/theme.js";
@@ -51,7 +51,7 @@ const empty = (msg) => html`<div class="muted" style="padding: 2rem 0;">${msg}</
     <br><span class="muted">${c.hasGenes ? "matching reports / yr: prevalence × tested / yr" : "reports / yr in window"}</span>
   </div>
   <div class="card" style="background: ${c.tier.bg}; color: ${c.tier.fg};">
-    <h2 style="color: inherit;">Feasibility</h2>
+    <h2 style="color: inherit;">Accrual volume</h2>
     <span class="big">${c.tier.name}</span>
     <br><span style="font-size: 0.85em;">${c.tier.desc}</span>
   </div>
@@ -141,7 +141,7 @@ ${c.hasGenes && selectedGenes.length > 1 ? html`<p class="muted small">A report 
   <ul>
     <li><strong>Matching reports</strong> counts reports with at least one qualifying alteration in a selected gene, across all years, because year-level cells for rare alterations fall under the small-cell floor.</li>
     <li><strong>Expected accrual</strong> applies that all-years prevalence to the testing volume in the selected window. It is an estimate, not a count.</li>
-    <li><strong>Feasibility tiers</strong>: ≥ 50 matching reports/yr high, 10–49 moderate, under 10 pilot. Thresholds are a rule of thumb for institutional single-site accrual.</li>
+    <li><strong>Accrual volume tiers</strong> classify expected matching reports per year: ≥ 50 high, 10–49 moderate, under 10 pilot. They are a rule of thumb for how much single-site material exists to start sample-size planning. They say nothing about whether a study is feasible, which also depends on eligibility, consent, competing studies and follow-up.</li>
     <li>Reports, not patients: a patient tested twice counts twice. Patient counts are shown where they are exact.</li>
   </ul>
 </div>
