@@ -5,7 +5,7 @@ title: Cohort exploration
 # Cohort exploration and feasibility
 
 ```js
-import {vendorColor, altColor, assayColor, fmt, pct} from "./components/theme.js";
+import {vendorColor, altColor, assayColor, fmt, pct, vendorLabel} from "./components/theme.js";
 import {cohort} from "./components/cohort.js";
 const data = FileAttachment("data/cohort.json").json();
 ```
@@ -22,7 +22,7 @@ const selectedDiseases = view(Inputs.select(data.diseases.map((d) => d.disease),
 ```js
 const startYear = view(Inputs.range([min_year, max_year], {step: 1, value: defaultEnd - 7, label: "Start year"}));
 const endYear = view(Inputs.range([min_year, max_year], {step: 1, value: defaultEnd, label: "End year"}));
-const selectedVendor = view(Inputs.radio(["All", "caris", "fmi"], {label: "Vendor", value: "All"}));
+const selectedVendor = view(Inputs.radio(["All", "caris", "fmi"], {label: "Vendor", value: "All", format: (v) => vendorLabel[v] ?? v}));
 const includeVus = view(Inputs.toggle({label: "Include VUS", value: false}));
 ```
 

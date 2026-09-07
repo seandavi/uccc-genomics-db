@@ -12,7 +12,7 @@ const s = FileAttachment("data/summary.json").json();
 import {vendorColor, fmt} from "./components/theme.js";
 ```
 
-Caris and Foundation Medicine NGS reports as one de-identified database. Every count on this site covers only patients tested at the University of Colorado Cancer Center (UCCC) through its institutional data feeds, not the vendors' national volumes. Site built ${s.meta.built_at.replace("T", " ")} from the latest daily load.
+Caris Life Sciences and Foundation Medicine, Inc. (FMI) NGS reports as one de-identified database. Every count on this site covers only patients tested at the University of Colorado Cancer Center (UCCC) through its institutional data feeds, not the vendors' national volumes. Site built ${s.meta.built_at.replace("T", " ")} from the latest daily load.
 
 <div class="grid grid-cols-4">
   <div class="card"><h2>Reports, UCCC patients</h2><span class="big">${fmt(s.meta.n_reports)}</span></div>

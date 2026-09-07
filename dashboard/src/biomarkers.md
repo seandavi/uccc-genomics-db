@@ -9,7 +9,7 @@ const s = FileAttachment("data/summary.json").json();
 ```
 
 ```js
-import {vendorColor} from "./components/theme.js";
+import {vendorColor, vendorLabel} from "./components/theme.js";
 const callColor = {domain: ["high", "intermediate", "low", "stable", "indeterminate"], range: ["#eb6834", "#eda100", "#2a78d6", "#2a78d6", "#9a9a9a"], legend: true};
 ```
 
@@ -42,7 +42,7 @@ const callColor = {domain: ["high", "intermediate", "low", "stable", "indetermin
 </div>
 
 ```js
-const vendor = view(Inputs.radio(["caris", "fmi"], {label: "Vendor", value: "caris"}));
+const vendor = view(Inputs.radio(["caris", "fmi"], {label: "Vendor", value: "caris", format: (v) => vendorLabel[v] ?? v}));
 const marker = view(Inputs.radio(["TMB", "MSI"], {label: "Marker", value: "TMB"}));
 ```
 

@@ -1,6 +1,8 @@
 // Colors and formatters shared by every page, so vendors and alteration classes
 // look the same everywhere.
-export const vendorColor = {domain: ["caris", "fmi"], range: ["#2a78d6", "#eb6834"], legend: true};
+// Internal vendor keys stay "caris"/"fmi"; readers see the spelled-out name.
+export const vendorLabel = {caris: "Caris", fmi: "Foundation Medicine (FMI)"};
+export const vendorColor = {domain: ["caris", "fmi"], range: ["#2a78d6", "#eb6834"], legend: true, tickFormat: (d) => (d === "fmi" ? "FMI" : "Caris")};
 export const altColor = {
   domain: ["pathogenic/likely", "amplification", "loss", "fusion", "VUS"],
   range: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"],

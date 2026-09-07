@@ -9,12 +9,12 @@ const s = FileAttachment("data/summary.json").json();
 ```
 
 ```js
-import {altColor} from "./components/theme.js";
+import {altColor, vendorLabel} from "./components/theme.js";
 const sumBy = (rows, key) => d3.rollups(rows, (v) => d3.sum(v, (d) => d.n), (d) => d[key]).sort((a, b) => b[1] - a[1]).map((d) => d[0]);
 ```
 
 ```js
-const vendor = view(Inputs.radio(["caris", "fmi"], {label: "Vendor", value: "caris"}));
+const vendor = view(Inputs.radio(["caris", "fmi"], {label: "Vendor", value: "caris", format: (v) => vendorLabel[v] ?? v}));
 ```
 
 ```js
