@@ -178,6 +178,13 @@ there, not in this repo. If the Access application is ever deleted, comment
 out `routes` in `dashboard/wrangler.toml` first: the Worker would otherwise
 serve the site unauthenticated on the custom domain.
 
+Known One-time PIN failure: the PIN email also carries a sign-in link that
+redeems the same code, and campus mail scanners (Safe Links, Proofpoint)
+follow it on arrival, so the user sees "this PIN has already been used". No
+Access setting removes the link. Workaround is "Request new code" and typing
+it at once; the durable fix is switching the IdP to Microsoft Entra ID for
+the campus tenant (issue #17).
+
 The site only ever contains suppressed aggregates, but it does leave campus:
 if the DUA reads "data or any derivative", host it on the box behind Traefik
 instead (nginx over `dist/`, IP allowlist).
