@@ -228,6 +228,128 @@ Do not do (i) as a stepping stone. It would spend two days on a ceiling the
 requirement is already past, and #18 already covers the one static addition
 worth having (exact change on the Genes page).
 
+## d2. Service spec for the recommended option
+
+Sean approved a light backend on 2026-09-08 if the static cube cannot hold
+the filters. It cannot (2.6%), so this is the concrete spec.
+
+### Where it runs
+
+| Item | Value |
+|---|---|
+| Code | `mcp/src/uccc_genomics_mcp/cohort_api.py`, one Starlette app. Imports `get_db` and `harden` from `server.py`. Starlette, uvicorn, PyJWT and cryptography are already installed by the `mcp` dependency, so no new packages. |
+| Entry point | `genomics-cohort-api` in `mcp/pyproject.toml`, next to `genomics-mcp`. |
+| Unit | `systemd/genomics-cohort-api.service`, a copy of `genomics-mcp.service`: `Type=simple`, `Restart=always`, `RestartSec=5`, `Nice=10`, `WorkingDirectory` the repo, `ExecStart=%h/.local/bin/uv run genomics-cohort-api --host 172.19.0.1 --port 8090`. |
+| Bind address | `172.19.0.1`, the gateway of the `proxy` docker bridge, so the process is reachable from Traefik's container and the host and from nothing else. The MCP server stays on `127.0.0.1:8089` and is untouched. |
+| DB access | One read-only encrypted attach per request through `get_db()`, as the MCP server does. The daily `genomics deid` replaces the file, and a per-request open sees the new file with no restart. Measured cost is under 20 ms per query including the open. |
+| Vocabularies | Loaded from the DB on first request and reloaded when the file's mtime changes. They drive both parameter validation and the page's pickers (`GET /api/options`). |
+
+### How it is exposed behind Cloudflare Access
+
+1. DNS: `uccc-genomics.cancerdatasci.org` becomes a proxied (orange-cloud)
+   A record to the campus IP `140.226.4.71`, replacing the record the Worker
+   custom domain owns today. Managed in Tofu under
+   `monode/infrastructure/terraform/apps/uccc_genomics/`, like `cfde_atlas`.
+2. Worker: `dashboard/wrangler.toml` swaps `custom_domain = true` for a zone
+   route `uccc-genomics.cancerdatasci.org/*`, sets `run_worker_first =
+   ["/api/*"]` and `main = "worker.js"`. `worker.js` is one export whose
+   fetch returns `fetch(request)`, which on a zone route goes to the origin.
+   Every other path is still served from `dist/` by the assets binding.
+   `workers_dev` and preview URLs stay off.
+3. Traefik: a file-provider fragment
+   `monode/infrastructure/compose/traefik/config/uccc-genomics-api.yml`
+   with a router `Host(\`uccc-genomics.cancerdatasci.org\`) &&
+   PathPrefix(\`/api\`)` on `websecure`, `tls: true` with no certresolver
+   (the Cloudflare Origin Certificate is the default cert), service
+   `http://172.19.0.1:8090`, and the existing `rate-limit` middleware from
+   `example.yml` attached. Traefik already publishes `140.226.4.71:443`.
+4. Access: the existing self-hosted application covers the hostname, so
+   `/api/*` is behind the same one-time PIN and the browser sends the same
+   cookie. Same origin, so no CORS. A second Access application for
+   `uccc-genomics.cancerdatasci.org/api/health` with a Bypass policy for
+   Everyone lets the uptime check through.
+5. JWT: every `/api/*` request except `/api/health` must carry
+   `Cf-Access-Jwt-Assertion`. The API verifies it with PyJWT against the
+   team's certificate endpoint
+   `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` (cached, refetched on
+   an unknown key id) and checks `aud` against the application's AUD tag,
+   read from `.env` as `ACCESS_AUD` and `ACCESS_TEAM`. A missing or invalid
+   token is 401. This is what stops a request that reaches the origin IP
+   directly, and it is where the user's email comes from.
+
+Equivalent alternative if Traefik to a host process proves awkward:
+`cloudflared` as a systemd user service with ingress to `127.0.0.1:8090`
+and a CNAME to the tunnel. Same Worker, same Access, same JWT check. It is a
+new component on the host and would need its own section in the platform
+docs, which is why Traefik is first choice.
+
+### Request and response
+
+`GET /api/cohort` with the parameters in the phase 1 table below.
+Validation: unknown parameter name, any value outside the vocabulary, a
+year outside the data's range, or `aa` without exactly one `gene` is 400
+with the offending name. Values only ever enter SQL as `?` placeholders in
+one fixed template; nothing from the request is interpolated into the
+query text.
+
+Query shape, one statement:
+
+```sql
+WITH base AS (            -- reports passing the non-gene filters
+  SELECT r.vendor, r.report_id, r.research_id, year(r.collected_on) AS year, ...
+  FROM unified.report r LEFT JOIN caris_age USING (report_id)
+  WHERE r.disease_text IN (?) AND lower(r.gender) IN (?) AND age_band IN (?)
+    AND r.vendor IN (?) AND r.assay_class IN (?) AND year BETWEEN ? AND ?),
+alt AS (                  -- the loader's ALT union, plus aa and class
+  SELECT vendor, report_id FROM ... WHERE gene IN (?) AND alt_class IN (?) AND aa IN (?)),
+hit AS (SELECT * FROM base WHERE (? = 0) OR report_id IN (SELECT report_id FROM alt)),
+first AS (SELECT research_id, min(year) AS year FROM hit GROUP BY 1)
+SELECT ... count(DISTINCT research_id), count(*), per-year from first, breakdowns from hit
+```
+
+### How the floor and the differencing protections are enforced
+
+All of these live in the API, not the page, so the page can never show a
+number the API did not clear.
+
+| Control | Mechanism |
+|---|---|
+| Primary suppression | One function walks the response tree and replaces every integer under 5 with `null`. It runs last, on the final dict, so no code path can skip it. A test asserts no integer 1 to 4 appears anywhere in any response. |
+| Secondary suppression | In each breakdown, if exactly one cell is `null` and the total is shown, the next-smallest cell is also nulled, so the hidden cell cannot be recovered as total minus the rest. Same rule for `by_year`. |
+| Whole-cohort rule | If `patients` is `null`, every breakdown and the per-year list are emptied, not just nulled. |
+| No complements | There is no negation, exclusion or "not tested" parameter. Every filter is an allow-list of vocabulary values. Adding `NOT` later needs its own differencing review. |
+| Vocabulary only | No free text reaches SQL. A value outside the vocabulary is rejected before the query, so probing by typo is impossible. |
+| Audit log | One JSON line per request to stdout, hence journald: time, email from the JWT, the parameters, `patients` before suppression. Kept for the journal's retention. Reviewable with `journalctl --user -u genomics-cohort-api`. |
+| Rate limit | Traefik's existing `rate-limit` middleware (100 per second average, burst 50) at the edge; if a per-user limit is wanted, a dict of email to timestamps in the API, one screen of code. |
+| Rounding | `COHORT_ROUND` in `.env`, default 1 (exact at 5 and above). Set to 5 to round every cleared count to the nearest 5 if open question 1 lands that way. |
+| Row-level data | The response has no ids and no dates. A test asserts no key named `research_id` or `report_id` in any response. |
+
+Residual risk, stated plainly: with exact counts, a user who already
+knows one patient's disease, sex, age band, vendor, class and collection
+year can difference two allowed queries and learn that patient's
+alteration status. Secondary suppression removes the single-query version
+of this; it does not remove a two-query version. The audience is
+institutional staff who authenticate by email and could read the chart
+directly, and every query is logged with their email. Rounding to 5 closes
+most of the two-query version at a precision cost users will notice. That
+is open question 1.
+
+### Fit with the always-on service conventions
+
+`OBSERVABILITY.md` asks for an externally probed health endpoint whose
+200 body contains "Healthy", a 503 on dependency failure, a GCP uptime
+check in Tofu with the shared notification channels, and first-debug-step
+text in the alert.
+
+| Convention | This service |
+|---|---|
+| `/health` contract | `GET /api/health` runs `SELECT count(*) FROM unified.report` through `get_db()`; 200 `{"status": "Healthy", "reports": n}` on success, 503 `{"status": "unhealthy", "error": ...}` otherwise. Exempt from the JWT check and from the audit log. |
+| Probe path | The Access Bypass application on `/api/health` (above) so Google's probers are not redirected to the PIN page. |
+| Tofu | `terraform/apps/uccc_genomics/main.tf`: the DNS record, one `google_monitoring_uptime_check_config` on `/api/health` with the "Healthy" content matcher, one alert policy with the 2-failures-in-20-minutes shape, wired in `apps.tf` with `notification_channel_ids` from `nf_telemetry`. Alert documentation: "check `systemctl --user status genomics-cohort-api`, then whether `$DATA/genomics.duckdb` opens with `uv run genomics shell`; the daily rebuild replaces the file at about 10:50 MT". |
+| Registration | One row in `INDEX.md` under Public services: hostname, backend `genomics-cohort-api` (host process, not a container), upstream 8090, orange-cloud, Origin cert, `uccc-genomics-db/systemd/genomics-cohort-api.service`. Also a line in the Repos table. |
+| Daily rebuild | No change to `genomics.service`. The API opens per request, so the file swap needs no restart. The dashboard build still runs the static loaders for the other pages. |
+| Secrets | None. The Access AUD tag and team name are not secret and live in `.env`. The DB key is read from `$DATA/.db_key` exactly as the MCP server does. |
+
 ## e. Phased plan
 
 ### Phase 1: the smallest thing materially better than today's page
