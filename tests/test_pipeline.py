@@ -155,3 +155,11 @@ def test_unified_views(db):
     gt = db.execute("SELECT vendor, gene, evidence FROM db.unified.gene_tested ORDER BY 1").fetchall()
     assert gt == [("caris", "KRAS", "wildtype"), ("fmi", "KRAS", "pertinent_negative")]
     assert one(db, "SELECT count(*), round(max(tpm), 1) FROM db.caris.gene_tpm") == (2, 300.1)
+
+
+def test_crosswalk_keeps_colon_and_rectum_under_colorectal():
+    """Caris reports "Colorectal Adenocarcinoma" (COADREAD) while FMI splits colon and rectum;
+    mapping FMI to COAD/READ split KRAS counts across two disease labels (issue #18)."""
+    with open(os.path.join(ROOT, "src", "uccc_genomics", "data", "disease_crosswalk.csv"), newline="") as f:
+        codes = {r["oncotree_code"] for r in csv.DictReader(f)}
+    assert "COADREAD" in codes and not codes & {"COAD", "READ"}

@@ -150,7 +150,7 @@ pure client-side filtering over that JSON.
    Headline counts and prevalence come from all-years totals (year × disease × gene cells
    are mostly suppressed); expected accrual = prevalence × tested volume in the window;
    the arithmetic lives in `src/components/cohort.js` and is covered by `npm test`.
-3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, one gene across diseases.
+3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, exact protein changes within a gene (sub-floor changes pooled as "other"), one gene or one exact alteration across diseases.
 4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions.
 5. **Coverage & quality** (`/coverage`) — panels, gene coverage, report status, purity, known gaps.
 
@@ -177,6 +177,13 @@ policy Allow "Emails ending in" `@cuanschutz.edu`, session 24h. Add domains
 there, not in this repo. If the Access application is ever deleted, comment
 out `routes` in `dashboard/wrangler.toml` first: the Worker would otherwise
 serve the site unauthenticated on the custom domain.
+
+Known One-time PIN failure: the PIN email also carries a sign-in link that
+redeems the same code, and campus mail scanners (Safe Links, Proofpoint)
+follow it on arrival, so the user sees "this PIN has already been used". No
+Access setting removes the link. Workaround is "Request new code" and typing
+it at once; the durable fix is switching the IdP to Microsoft Entra ID for
+the campus tenant (issue #17).
 
 The site only ever contains suppressed aggregates, but it does leave campus:
 if the DUA reads "data or any derivative", host it on the box behind Traefik

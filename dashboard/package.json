@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "observable preview",
-    "build": "observable build",
+    "build": "rm -rf src/.observablehq/cache && observable build",
     "deploy": "wrangler deploy",
     "test": "node --test"
   },
