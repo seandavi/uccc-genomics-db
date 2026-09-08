@@ -44,6 +44,10 @@ CARIS = {
                    {"copyNumberAlteration": {"gene": "ERBB2", "result": "Amplified", "copyNumberType": "Amplified", "copyNumber": "12"}},
                    {"tumorMutationBurden": {"mutationBurdenCall": "High", "mutationBurdenScore": "22 per Mb"}},
                    {"microsatelliteInstability": {"msiCall": "Stable"}},
+                   {"expressionAlteration": {"biomarkerName": "ERBB2 (Her2/Neu)", "gene": "ERBB2", "result": "HER2-Low",
+                                             "expressionType": "IHC", "stainPercent": "15"}},
+                   {"expressionAlteration": {"biomarkerName": "Mismatch Repair Status", "result": "Proficient (Intact)",
+                                             "expressionType": "IHC"}},
                ]}],
     "therapies": None,
 }
@@ -150,7 +154,10 @@ def test_unified_views(db):
     assert db.execute("SELECT vendor, gene, cn_type FROM db.unified.cna ORDER BY 1").fetchall() == [("caris", "ERBB2", "amplification"), ("fmi", "ERBB2", "amplification")]
     assert one(db, "SELECT gene1, gene2, supporting_reads FROM db.unified.fusion") == ("ALK", "EML4", 40)
     bm = dict(((r[0], r[1]), r[2]) for r in db.execute("SELECT vendor, name, call_norm FROM db.unified.biomarker").fetchall())
-    assert bm == {("caris", "TMB"): "high", ("caris", "MSI"): "stable", ("fmi", "TMB"): "high", ("fmi", "MSI"): "stable"}
+    # IHC rides along with the raw call kept (HER2-Low stays HER2-Low); only the MMR spelling is folded (issue #22).
+    assert bm == {("caris", "TMB"): "high", ("caris", "MSI"): "stable", ("fmi", "TMB"): "high", ("fmi", "MSI"): "stable",
+                  ("caris", "ERBB2 (Her2/Neu)"): "her2-low", ("caris", "Mismatch Repair Status"): "proficient"}
+    assert one(db, "SELECT call, value, unit FROM db.unified.biomarker WHERE name = 'ERBB2 (Her2/Neu)'") == ("HER2-Low", 15.0, "% stained")
     assert one(db, "SELECT 22.0 IN (SELECT value FROM db.unified.biomarker WHERE name = 'TMB' AND vendor = 'caris')") == (True,)
     gt = db.execute("SELECT vendor, gene, evidence FROM db.unified.gene_tested ORDER BY 1").fetchall()
     assert gt == [("caris", "KRAS", "wildtype"), ("fmi", "KRAS", "pertinent_negative")]

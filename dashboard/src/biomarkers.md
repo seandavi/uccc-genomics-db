@@ -63,6 +63,31 @@ const diseaseOrder = d3.rollups(calls, (v) => d3.sum(v, (d) => d.n), (d) => d.di
   }))}
 </div>
 
+```js
+// Caris IHC beyond PD-L1. Calls are shown exactly as Caris reports them: HER2 in breast uses
+// low / null / ultralow, elsewhere positive / negative / equivocal, and those are not the same scale.
+const ihcTotals = d3.rollups(s.ihc.filter((d) => d.disease === "All diseases"), (v) => d3.sum(v, (d) => d.n), (d) => d.name).sort((a, b) => b[1] - a[1]);
+const ihcMarker = view(Inputs.select(ihcTotals.map((d) => d[0]), {label: "IHC marker", value: "ERBB2 (Her2/Neu)", format: (m) => `${m} (${ihcTotals.find((d) => d[0] === m)[1].toLocaleString("en-US")})`}));
+```
+
+```js
+const ihc = s.ihc.filter((d) => d.name === ihcMarker && d.disease !== "All diseases");
+const ihcDiseases = d3.rollups(ihc, (v) => d3.sum(v, (d) => d.n), (d) => d.disease).sort((a, b) => b[1] - a[1]).map((d) => d[0]);
+const ihcCalls = d3.rollups(s.ihc.filter((d) => d.name === ihcMarker && d.disease === "All diseases"), (v) => d3.sum(v, (d) => d.n), (d) => d.call).sort((a, b) => b[1] - a[1]).map((d) => d[0]);
+```
+
+<div class="card">
+  <h2>${ihcMarker} immunohistochemistry by disease (Caris)</h2>
+  <h3>Calls as reported by Caris, not harmonised across diseases. Foundation Medicine reports carry no IHC. Disease × call cells under ${s.meta.min_cell} reports are omitted, so bars can sum low.</h3>
+  ${ihc.length ? resize((width) => Plot.plot({
+    width, height: 24 * ihcDiseases.length + 70, marginLeft: 260,
+    color: {domain: ihcCalls, scheme: "observable10", legend: true},
+    x: {grid: true, label: "reports"},
+    y: {domain: ihcDiseases, label: null},
+    marks: [Plot.barX(ihc, {x: "n", y: "disease", fill: "call", order: ihcCalls, tip: true, insetTop: 1, insetBottom: 1}), Plot.ruleX([0])]
+  })) : html`<div class="muted" style="padding: 2rem 0;">No disease has ${s.meta.min_cell}+ ${ihcMarker} results.</div>`}
+</div>
+
 <div class="grid grid-cols-2">
   <div class="card">
     <h2>PD-L1 immunohistochemistry (Caris)</h2>

@@ -87,6 +87,16 @@ summary = {
         FROM unified.biomarker b JOIN unified.report r USING (vendor, report_id)
         WHERE b.name IN ('TMB', 'MSI')
         GROUP BY GROUPING SETS ((b.vendor, b.name, disease, b.call_norm), (b.vendor, b.name, b.call_norm))"""),
+    # Caris IHC beyond PD-L1, raw marker names and raw calls (see issue #22: HER2's breast scale is
+    # deliberately not folded into positive/negative). FMI has no IHC.
+    "ihc": rows("""
+        WITH x AS (
+          SELECT b.name, r.disease_text AS disease,
+                 CASE WHEN b.name = 'Mismatch Repair Status' THEN upper(b.call_norm[1]) || b.call_norm[2:] ELSE b.call END AS call
+          FROM unified.biomarker b JOIN unified.report r USING (vendor, report_id)
+          WHERE b.vendor = 'caris' AND b.name NOT IN ('TMB', 'MSI', 'LOH', 'PD-L1'))
+        SELECT name, disease, call, count(*) AS n FROM x
+        GROUP BY GROUPING SETS ((name, disease, call), (name, call))"""),
     "pdl1": rows("""
         SELECT unit, call, count(*) AS n FROM unified.biomarker WHERE name = 'PD-L1' GROUP BY ALL ORDER BY unit, n DESC"""),
     "loh_hist": rows("""
@@ -128,7 +138,7 @@ summary = {
 }
 
 # GROUPING SETS rollups arrive with disease = NULL; name them.
-for key in ("denom", "gene_alt", "gene_variant", "biomarker_call"):
+for key in ("denom", "gene_alt", "gene_variant", "biomarker_call", "ihc"):
     for r in summary[key]:
         r["disease"] = r["disease"] or "All diseases"
 

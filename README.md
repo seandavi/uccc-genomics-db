@@ -151,7 +151,7 @@ pure client-side filtering over that JSON.
    are mostly suppressed); expected accrual = prevalence × tested volume in the window;
    the arithmetic lives in `src/components/cohort.js` and is covered by `npm test`.
 3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, exact protein changes within a gene (sub-floor changes pooled as "other"), one gene or one exact alteration across diseases.
-4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions.
+4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions, and every other Caris IHC marker (HER2, ER/PR, AR, MMR, ALK, CLDN18, FOLR1 …) by disease with calls shown as Caris reports them. FMI has no IHC.
 5. **Coverage & quality** (`/coverage`) — panels, gene coverage, report status, purity, known gaps.
 
 Google Analytics (`G-HR1PFD75WN`) is in the page head.
