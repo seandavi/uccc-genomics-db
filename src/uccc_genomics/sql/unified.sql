@@ -120,6 +120,11 @@ SELECT *,
               CASE WHEN lower(call) IN ('high', 'tmb-h') THEN 'high'
                    WHEN lower(call) = 'intermediate' THEN 'intermediate'
                    WHEN lower(call) IN ('low', 'tmb-l') THEN 'low' ELSE 'indeterminate' END
+            -- Caris spells the same MMR call two ways; other IHC calls are kept as reported (HER2's
+            -- breast scale, low/null/ultralow, is not the same thing as positive/negative elsewhere)
+            WHEN name = 'Mismatch Repair Status' THEN
+              CASE WHEN lower(call) LIKE 'proficient%' THEN 'proficient'
+                   WHEN lower(call) LIKE 'deficient%' THEN 'deficient' ELSE 'indeterminate' END
             ELSE lower(call) END AS call_norm
 FROM (
 SELECT 'caris' AS vendor, t.case_id AS report_id, r.research_id, 'TMB' AS name, t.call, t.score_per_mb AS value, 'mut/Mb' AS unit
@@ -135,6 +140,12 @@ SELECT 'caris' AS vendor, i.case_id AS report_id, r.research_id, 'PD-L1' AS name
        coalesce(i.tps, i.cps, i.stain_pct) AS value,
        CASE WHEN i.tps IS NOT NULL THEN 'TPS' WHEN i.cps IS NOT NULL THEN 'CPS' ELSE '% stained' END AS unit
 FROM caris.ihc i JOIN caris.report r USING (case_id) WHERE i.biomarker_name ILIKE 'PD-L1%'
+UNION ALL BY NAME
+-- Every other Caris IHC marker (HER2, ER, PR, AR, MMR proteins, ALK, CLDN18, FOLR1 ...) under its own name.
+-- FMI has no IHC; ERBB2 amplification in unified.cna is the nearest sequencing proxy, not the same measurement.
+SELECT 'caris' AS vendor, i.case_id AS report_id, r.research_id, i.biomarker_name AS name, i.result AS call,
+       i.stain_pct AS value, CASE WHEN i.stain_pct IS NOT NULL THEN '% stained' END AS unit
+FROM caris.ihc i JOIN caris.report r USING (case_id) WHERE i.biomarker_name NOT ILIKE 'PD-L1%'
 UNION ALL BY NAME
 SELECT 'fmi' AS vendor, b.report_id, r.research_id,
        CASE b.name WHEN 'tumor-mutation-burden' THEN 'TMB' WHEN 'microsatellite-instability' THEN 'MSI'
