@@ -30,9 +30,12 @@ Checked against hand-written SQL on the real DB (2026-09-25): TP53 R175H is 109 
 gives 5,446 tested; the one patient is in "Nervous System" (2 patients), which the
 vocabulary floor removes.
 
-Not done yet: the edge (DNS, Traefik fragment, Access bypass for `/api/health`,
-uptime check, `INDEX.md`) and `ACCESS_TEAM` / `ACCESS_AUD` in `.env`. Merging
-changes `wrangler.toml` to a zone route, so the DNS record must exist first.
+Deployed 2026-09-25 with one change to d2: the dashboard keeps its Worker custom
+domain, and `worker.js` forwards `/api/*` to a separate proxied hostname,
+`uccc-genomics-api.cancerdatasci.org`, routed by Traefik to the API. That avoids
+moving the dashboard's DNS record, and the uptime check probes the API hostname
+directly, so no Access bypass is needed. The API hostname is open to the internet,
+exactly as the origin IP would be under d2, so the JWT check is what guards it.
 
 ## a. What users need
 

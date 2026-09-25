@@ -221,7 +221,8 @@ def user(request: Request) -> str:
     """Email from a valid Cloudflare Access JWT. A request straight to the origin IP has none."""
     if AUTH["team"] is None:
         return "dev@localhost"
-    token = request.headers.get("cf-access-jwt-assertion")
+    # Access sends the same JWT as a header and as the CF_Authorization cookie; the Worker forwards both.
+    token = request.headers.get("cf-access-jwt-assertion") or request.cookies.get("CF_Authorization")
     if not token:
         raise PermissionError("missing Access token")
     try:

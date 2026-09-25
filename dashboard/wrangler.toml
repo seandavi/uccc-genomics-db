@@ -1,5 +1,5 @@
 # Static-assets Worker for the genomics dashboard: Cloudflare serves dist/ directly, and
-# worker.js passes /api/* through to the cohort API on the campus host (COHORT_TOOL.md).
+# worker.js forwards /api/* to the cohort API (README "Cohort API").
 # Deployed daily by systemd/genomics.service after the build.
 #
 # Access control is Cloudflare Access on the custom domain (one-time PIN to
@@ -11,9 +11,7 @@ compatibility_date = "2026-09-01"
 workers_dev = false
 preview_urls = false
 
-# A zone route, not a custom domain, so fetch() in worker.js reaches the origin. Needs the
-# hostname as a proxied (orange-cloud) A record to the campus IP.
-routes = [{ pattern = "uccc-genomics.cancerdatasci.org/*", zone_name = "cancerdatasci.org" }]
+routes = [{ pattern = "uccc-genomics.cancerdatasci.org", custom_domain = true }]
 
 [assets]
 directory = "./dist"

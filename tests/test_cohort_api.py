@@ -177,6 +177,7 @@ def test_access_jwt(client, monkeypatch, capsys):
     assert client.get("/api/cohort", headers={"cf-access-jwt-assertion": token(aud="other")}).status_code == 401
     assert client.get("/api/cohort", headers={"cf-access-jwt-assertion": token(iss="https://evil")}).status_code == 401
     assert client.get("/api/health").status_code == 200  # the uptime probe has no token
+    assert client.get("/api/options", cookies={"CF_Authorization": token()}).status_code == 200
     capsys.readouterr()
     r = client.get("/api/cohort?gene=BRAF", headers={"cf-access-jwt-assertion": token()})
     assert r.status_code == 200

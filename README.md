@@ -206,10 +206,15 @@ uv run genomics-cohort-api --insecure-no-auth --static dashboard/dist --port 809
 journalctl --user -u genomics-cohort-api   # audit log, one JSON line per query
 ```
 
-In production the Worker passes `/api/*` through to Traefik on this host,
-which routes to `172.19.0.1:8090`; the API refuses any request without a
-valid `Cf-Access-Jwt-Assertion` for `ACCESS_TEAM` / `ACCESS_AUD` (set in
-`.env`). `/api/health` is open for the uptime check.
+In production the dashboard Worker (`dashboard/worker.js`) forwards `/api/*`
+to `uccc-genomics-api.cancerdatasci.org`, a proxied hostname for Traefik on
+this host (`monode/infrastructure/compose/traefik/config/uccc-genomics-api.yml`),
+which routes to `172.19.0.1:8090`. That hostname is not behind Access itself:
+the API refuses any request without a valid Access JWT (header or
+`CF_Authorization` cookie, both forwarded by the Worker) for `ACCESS_TEAM` /
+`ACCESS_AUD` in `.env`, the team and AUD tag of the `uccc-genomics` Access
+application. Only `/api/health` is open, for the GCP uptime check
+(`monode/infrastructure/terraform/apps/uccc_genomics/`).
 
 The site only ever contains suppressed aggregates, but it does leave campus:
 if the DUA reads "data or any derivative", host it on the box behind Traefik
