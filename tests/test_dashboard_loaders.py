@@ -18,8 +18,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECTIONS = {
     "summary": {"meta", "reports_by_year", "assays", "status", "disease", "denom", "gene_alt", "tmb_hist",
                 "biomarker_call", "pdl1", "loh_hist", "vaf_hist", "purity_hist", "coverage", "panels", "quality"},
-    "cohort": {"meta", "diseases", "genes", "denoms", "annual_denoms", "gene_totals", "gene_alt_types",
-               "annual_gene", "top_comutations"},
 }
 
 
@@ -48,13 +46,3 @@ def test_sections_present(loaders):
         data = loaders[name]
         assert expected <= data.keys(), name
         assert all(len(data[k]) > 0 for k in expected - {"meta"}), name
-
-
-def test_cohort_shapes(loaders):
-    data = loaders["cohort"]
-    m = data["meta"]
-    assert m["n_reports"] >= m["n_patients"] > 0 and m["min_year"] <= 2014 <= m["max_year"]
-    assert {r["disease"] for r in data["denoms"]} >= {"All diseases"}
-    assert all(r["gene_a"] != r["gene_b"] for r in data["top_comutations"])
-    assert all(isinstance(r["vus"], bool) for r in data["gene_totals"])
-    assert all(r["gene"] not in ("", "N/A") for r in data["genes"])

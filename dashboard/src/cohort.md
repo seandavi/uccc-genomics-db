@@ -5,143 +5,168 @@ title: Cohort exploration
 # Cohort exploration
 
 ```js
-import {vendorColor, altColor, assayColor, fmt, pct, vendorLabel} from "./components/theme.js";
-import {cohort} from "./components/cohort.js";
-const data = FileAttachment("data/cohort.json").json();
+import {vendorLabel, pct} from "./components/theme.js";
+import {ORGAN_PRESETS, accrual, cohortQuery, fmtCount, organPreset, readQuery, tierFor} from "./components/cohort.js";
+// Live counts from the cohort API on this host (dashboard/COHORT_TOOL.md), behind the same Access login.
+const options = fetch("/api/options").then((r) => (r.ok ? r.json() : Promise.reject(new Error(`options: HTTP ${r.status}`))));
 ```
 
 ```js
-const {min_year, max_year} = data.meta;
-const defaultEnd = max_year - 2;  // the last two years are still accruing, and dates are shifted forward up to 6 months
-const selectedGenes = view(Inputs.select(data.genes.map((d) => d.gene), {multiple: 6, label: "Genes", value: []}));
-const selectedDiseases = view(Inputs.select(data.diseases.map((d) => d.disease), {multiple: 6, label: "Diseases", value: []}));
-```
-
-<p class="muted small">Both lists are sorted by report count. Leave a list empty for any gene / all diseases; select several for OR.</p>
-
-```js
-const startYear = view(Inputs.range([min_year, max_year], {step: 1, value: defaultEnd - 7, label: "Start year"}));
-const endYear = view(Inputs.range([min_year, max_year], {step: 1, value: defaultEnd, label: "End year"}));
-const selectedVendor = view(Inputs.radio(["All", "caris", "fmi"], {label: "Vendor", value: "All", format: (v) => vendorLabel[v] ?? v}));
-const includeVus = view(Inputs.toggle({label: "Include VUS", value: false}));
+const init = readQuery(location.search, options);
+const n = (d) => fmtCount(d, options.min_cell);
+const preset = view(Inputs.radio(ORGAN_PRESETS, {label: "Organ group", value: null}));
 ```
 
 ```js
-const c = cohort(data, {genes: selectedGenes, diseases: selectedDiseases, vendor: selectedVendor, years: [startYear, endYear], includeVus});
-const geneLabel = selectedGenes.length ? selectedGenes.join(", ") : "any gene";
-const diseaseLabel = selectedDiseases.length ? selectedDiseases.join(", ") : "all diseases";
-const yearsLabel = `${c.y0}–${c.y1}`;
+const organ = view(Inputs.select(options.organ, {multiple: 8, label: "Organ system", value: preset ? organPreset(preset, options.organ) : init.organ}));
+const disease = view(Inputs.select(options.disease, {multiple: 8, label: "Disease", value: init.disease}));
+```
+
+<p class="muted small">Leave a list empty for any; select several for OR. Organ and disease combine with AND. The presets fill the organ list: solid tumors is every organ system except Blood/Bone Marrow; GI is esophagus/stomach, bowel, pancreas, biliary tract and liver.</p>
+
+```js
+const gene = view(Inputs.select(options.gene, {multiple: 6, label: "Genes", value: init.gene}));
+```
+
+```js
+const aa = gene.length === 1 && options.aa[gene[0]]
+  ? view(Inputs.select(options.aa[gene[0]], {multiple: 6, label: `${gene[0]} protein change`, value: init.aa}))
+  : [];
+const alt_class = gene.length ? view(Inputs.checkbox(options.alt_class, {label: "Alteration class", value: init.alt_class})) : [];
+```
+
+```js
+const sex = view(Inputs.checkbox(options.sex, {label: "Sex", value: init.sex}));
+const age = view(Inputs.checkbox(options.age, {label: "Age band", value: init.age}));
+const vendor = view(Inputs.checkbox(options.vendor, {label: "Vendor", value: init.vendor, format: (v) => vendorLabel[v] ?? v}));
+const assay_class = view(Inputs.checkbox(options.assay_class, {label: "Assay class", value: init.assay_class}));
+const yearFrom = view(Inputs.range([options.year_min, options.year_max], {step: 1, value: init.years[0], label: "From year"}));
+const yearTo = view(Inputs.range([options.year_min, options.year_max], {step: 1, value: init.years[1], label: "To year"}));
+```
+
+```js
+const years = [Math.min(yearFrom, yearTo), Math.max(yearFrom, yearTo)];
+const qs = cohortQuery({organ, disease, gene, aa, alt_class, sex, age, vendor, assay_class, years}, options);
+// An empty checkbox group matches nobody; say so without asking the API.
+const NONE = {patients: 0, reports: 0, tested: 0, by_year: [], by_disease: [], by_vendor_class: [], by_alt_class: [], by_sex: [], by_age: []};
+const result = qs == null ? NONE : fetch(`/api/cohort?${qs}`).then(async (r) => {
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+  return body;
+});
+const link = `${location.origin}${location.pathname}${qs ? `?${qs}` : ""}`;
+```
+
+```js
+const label = [
+  gene.length ? `${gene.join(" or ")}${aa.length ? ` ${aa.join(" or ")}` : ""}` : "any alteration",
+  organ.length ? organ.join(", ") : "", disease.length ? disease.join(", ") : "",
+].filter(Boolean).join(" in ") || "all tested patients";
+const yearsLabel = years[0] === options.year_min && years[1] === options.year_max ? "all years" : `${years[0]}–${years[1]}`;
 const empty = (msg) => html`<div class="muted" style="padding: 2rem 0;">${msg}</div>`;
+display(html`<p><a href="${link}">Link to this cohort</a> ${Inputs.button("Copy link", {reduce: () => navigator.clipboard.writeText(link)})}</p>`);
+```
+
+```js
+if (qs == null) display(html`<div class="card">A checkbox group is empty, so no patient can match. Tick at least one value in each group.</div>`);
+```
+
+```js
+const c = result;
+const prevalence = c && c.patients != null && c.tested ? c.patients / c.tested : null;
+const perYear = c && accrual(c.patients, years);
+const tier = perYear == null ? null : tierFor(perYear);
 ```
 
 <div class="grid grid-cols-4">
   <div class="card">
-    <h2>Matching reports, all years</h2>
-    <span class="big">${fmt(c.matching)}</span>
-    <br><span class="muted">${c.hasGenes ? `${pct(c.prevalence)} of ${fmt(c.testedAll)} tested` : `${fmt(c.patientsAll)} patients`}, ${diseaseLabel}</span>
+    <h2>Matching patients</h2>
+    <span class="big">${n(c.patients)}</span>
+    <br><span class="muted">${label}, ${yearsLabel}</span>
   </div>
   <div class="card">
-    <h2>Tested in window</h2>
-    <span class="big">${fmt(c.testedWindow)}</span>
-    <br><span class="muted">${fmt(Math.round(c.testedWindow / c.span))} reports / yr, ${yearsLabel}</span>
+    <h2>Prevalence</h2>
+    <span class="big">${prevalence == null ? "–" : pct(prevalence)}</span>
+    <br><span class="muted">of ${n(c.tested)} tested patients with the same non-gene filters</span>
   </div>
   <div class="card">
-    <h2>Expected accrual</h2>
-    <span class="big">${c.accrual.toFixed(1)}</span>
-    <br><span class="muted">${c.hasGenes ? "matching reports / yr: prevalence × tested / yr" : "reports / yr in window"}</span>
+    <h2>Matching reports</h2>
+    <span class="big">${n(c.reports)}</span>
+    <br><span class="muted">a patient tested twice has two reports</span>
   </div>
-  <div class="card" style="background: ${c.tier.bg}; color: ${c.tier.fg};">
-    <h2 style="color: inherit;">Accrual volume</h2>
-    <span class="big">${c.tier.name}</span>
-    <br><span style="font-size: 0.85em;">${c.tier.desc}</span>
+  <div class="card" style="${tier ? `background: ${tier.bg}; color: ${tier.fg};` : ""}">
+    <h2 style="color: inherit;">Accrual, ${perYear == null ? "–" : perYear.toFixed(1)} patients / yr</h2>
+    <span class="big">${tier ? tier.name : "–"}</span>
+    <br><span style="font-size: 0.85em;">${tier ? tier.desc : "Too few patients to publish."}</span>
   </div>
 </div>
 
-${c.hasGenes && selectedGenes.length > 1 ? html`<p class="muted small">A report altered in more than one selected gene is counted once per gene, so the matching count is an upper bound for OR.</p>` : ""}
+```js
+const bars = (rows, {height, format = (d) => d, marginLeft = 160} = {}) => {
+  if (!rows.length) return empty(c.patients == null ? "Hidden: the cohort is under the small-cell floor." : "Nothing to show.");
+  const shown = rows.map((d) => ({...d, label: format(d), value: d.patients ?? 0}));
+  return resize((width) => Plot.plot({
+    width, height: height ?? 24 * rows.length + 40, marginLeft,
+    x: {grid: true, label: "patients", domain: [0, Math.max(5, ...shown.map((d) => d.value)) * 1.2]},
+    y: {label: null, domain: shown.map((d) => d.label)},
+    marks: [
+      Plot.barX(shown, {x: "value", y: "label", fill: "#2a78d6", tip: true}),
+      Plot.text(shown, {x: "value", y: "label", text: (d) => n(d.patients), dx: 6, textAnchor: "start", fill: "currentColor"}),
+      Plot.ruleX([0]),
+    ],
+  }));
+};
+```
 
 <div class="grid grid-cols-2">
   <div class="card">
-    <h2>${c.hasGenes ? `Observed ${geneLabel} alterations by year` : "Tested reports by year"}</h2>
-    <h3>${c.hasGenes ? `Only year × vendor cells with ${data.meta.min_cell}+ reports survive suppression, so rare alterations show low or empty here; the all-years count above is the reliable number.` : `${diseaseLabel}, stacked by vendor because each vendor's panel covers a different gene set (see Coverage & quality), so the split shows which assay a cohort was actually tested on. Collection year, shifted per patient by up to ±6 months.`}</h3>
-    ${(() => {
-      const rows = c.hasGenes ? c.annualGene : c.annualDenoms;
-      if (!rows.length) return empty(c.hasGenes ? "No year has enough matching reports to show." : "No tested reports in this window.");
-      return resize((width) => Plot.plot({
-        width, height: 300, color: vendorColor,
-        x: {type: "band", domain: Array.from({length: c.span}, (_, i) => c.y0 + i), tickFormat: String, tickRotate: -45, label: null},
-        y: {grid: true, label: "reports"},
-        marks: [Plot.barY(rows, {x: "year", y: "n", fill: "vendor", tip: true}), Plot.ruleY([0])]
-      }));
-    })()}
-  </div>
-  <div class="card">
-    <h2>Assay class in window</h2>
-    <h3>Tissue, liquid and heme reports, ${diseaseLabel}, ${yearsLabel}</h3>
-    ${c.modality.length === 0 ? empty("No tested reports in this window.") : resize((width) => Plot.plot({
-      width, height: 300, marginLeft: 60, color: assayColor,
-      x: {grid: true, label: "reports", domain: [0, Math.max(...c.modality.map((d) => d.n)) * 1.2]},
-      y: {label: null, domain: c.modality.map((d) => d.assay_class)},
+    <h2>Patients by first qualifying year</h2>
+    <h3>Each patient counts once, in the collection year of their first matching report. Years under ${options.min_cell} show "<${options.min_cell}"; if only one year would be hidden, the next-smallest is hidden too so it cannot be worked out from the total.</h3>
+    ${c.by_year.length === 0 ? empty(c.patients == null ? "Hidden: the cohort is under the small-cell floor." : "No dated reports.") : resize((width) => Plot.plot({
+      width, height: 280,
+      x: {type: "band", domain: c.by_year.map((d) => d.year), tickFormat: String, tickRotate: -45, label: null},
+      y: {grid: true, label: "patients"},
       marks: [
-        Plot.barX(c.modality, {x: "n", y: "assay_class", fill: "assay_class", tip: true}),
-        Plot.text(c.modality, {x: "n", y: "assay_class", text: (d) => `${fmt(d.n)} (${pct(d.pct)})`, dx: 6, textAnchor: "start", fill: "currentColor"}),
-        Plot.ruleX([0])
-      ]
-    }))}
-  </div>
-</div>
-
-<div class="grid grid-cols-2">
-  <div class="card">
-    <h2>Alteration classes, ${geneLabel}</h2>
-    <h3>Reports per class, all years, ${diseaseLabel}. A report with two classes in one gene counts once per class.</h3>
-    ${c.altTypes.length === 0 ? empty("No class has enough reports to show.") : resize((width) => Plot.plot({
-      width, height: 260, marginLeft: 120, color: altColor,
-      x: {grid: true, label: "reports", domain: [0, Math.max(...c.altTypes.map((d) => d.n)) * 1.2]},
-      y: {label: null, domain: c.altTypes.map((d) => d.alt_type)},
-      marks: [
-        Plot.barX(c.altTypes, {x: "n", y: "alt_type", fill: "alt_type", tip: true}),
-        Plot.text(c.altTypes, {x: "n", y: "alt_type", text: (d) => fmt(d.n), dx: 6, textAnchor: "start", fill: "currentColor"}),
-        Plot.ruleX([0])
-      ]
+        Plot.barY(c.by_year.filter((d) => d.patients != null), {x: "year", y: "patients", fill: "#2a78d6", tip: true}),
+        Plot.text(c.by_year.filter((d) => d.patients == null), {x: "year", y: 0, text: () => `<${options.min_cell}`, dy: -8, fill: "currentColor"}),
+        Plot.ruleY([0]),
+      ],
     }))}
   </div>
   <div class="card">
-    <h2>${c.hasGenes ? `Co-altered with ${geneLabel}` : `Most altered genes, ${diseaseLabel}`}</h2>
-    <h3>${c.hasGenes ? "Reports carrying both genes, all diseases and years (per-disease pairs are too sparse to publish)." : "Reports with ≥ 1 alteration in the gene, all years."}</h3>
-    ${(() => {
-      const rows = c.hasGenes ? c.coAltered : c.topGenes;
-      if (!rows.length) return empty("Nothing meets the small-cell floor.");
-      return resize((width) => Plot.plot({
-        width, height: 22 * rows.length + 60, marginLeft: 80,
-        x: {grid: true, label: c.hasGenes ? "co-altered reports" : "reports", domain: [0, Math.max(...rows.map((d) => d.n)) * 1.2]},
-        y: {label: null, domain: rows.map((d) => d.gene)},
-        marks: [
-          Plot.barX(rows, {x: "n", y: "gene", fill: vendorColor.range[0], tip: true}),
-          Plot.text(rows, {x: "n", y: "gene", text: (d) => c.hasGenes ? fmt(d.n) : `${fmt(d.n)} (${pct(d.pct)})`, dx: 6, textAnchor: "start", fill: "currentColor", fontSize: 11}),
-          Plot.ruleX([0])
-        ]
-      }));
-    })()}
+    <h2>By disease</h2>
+    <h3>Matching patients per disease. A patient with reports in two diseases counts in both.</h3>
+    ${bars(c.by_disease, {format: (d) => d.disease, marginLeft: 220})}
   </div>
 </div>
 
-<div class="card">
-  <h2>By year, ${yearsLabel}</h2>
-  <h3>Tested reports by vendor and assay class${c.hasGenes ? `, and observed ${geneLabel} alterations where the year × vendor cell survives suppression` : ""}. Cells under ${data.meta.min_cell} are omitted, so rows can sum low.</h3>
-  ${Inputs.table(c.table, {
-    columns: c.hasGenes ? ["year", "tested", "observed", "share", "caris", "fmi", "tissue", "liquid", "heme"] : ["year", "tested", "caris", "fmi", "tissue", "liquid", "heme"],
-    header: {year: "Year", tested: "Tested", observed: "Observed", share: "Share", caris: "Caris", fmi: "FMI", tissue: "Tissue", liquid: "Liquid", heme: "Heme"},
-    format: {year: String, share: (d) => pct(d)},
-    sort: "year", reverse: true, rows: 25
-  })}
+<div class="grid grid-cols-4">
+  <div class="card">
+    <h2>Vendor and assay</h2>
+    ${bars(c.by_vendor_class, {format: (d) => `${d.vendor === "fmi" ? "FMI" : "Caris"} ${d.assay_class}`, marginLeft: 100})}
+  </div>
+  <div class="card">
+    <h2>Alteration class</h2>
+    ${bars(c.by_alt_class, {format: (d) => d.alt_class, marginLeft: 100})}
+  </div>
+  <div class="card">
+    <h2>Sex</h2>
+    ${bars(c.by_sex, {format: (d) => d.sex, marginLeft: 70})}
+  </div>
+  <div class="card">
+    <h2>Age band</h2>
+    ${bars(c.by_age, {format: (d) => d.age, marginLeft: 70})}
+  </div>
 </div>
 
 <div class="card">
   <h2>How to read this page</h2>
   <ul>
-    <li><strong>Matching reports</strong> counts reports with at least one qualifying alteration in a selected gene, across all years, because year-level cells for rare alterations fall under the small-cell floor.</li>
-    <li><strong>Expected accrual</strong> applies that all-years prevalence to the testing volume in the selected window. It is an estimate, not a count.</li>
-    <li><strong>Accrual volume tiers</strong> classify expected matching reports per year: ≥ 50 high, 10–49 moderate, under 10 pilot. They are a rule of thumb for how much single-site material exists to start sample-size planning. They say nothing about whether a study is feasible, which also depends on eligibility, consent, competing studies and follow-up.</li>
-    <li>Reports, not patients: a patient tested twice counts twice. Patient counts are shown where they are exact.</li>
+    <li><strong>Patients, not reports.</strong> A patient matches if any of their reports passes every filter and carries a qualifying alteration in a selected gene. Filters combine with AND across lists and OR within one list.</li>
+    <li><strong>Prevalence</strong> is matching patients over patients tested under the same organ, disease, demographic, assay and year filters, whether or not the gene was altered. Every vendor panel covers TP53, KRAS and the other common drivers, but not every rare gene; check Coverage & quality before reading a rare gene's prevalence.</li>
+    <li><strong>Protein change</strong> appears when exactly one gene is selected. It lists changes seen in at least ${options.min_cell} patients; rarer ones could only ever read "<${options.min_cell}".</li>
+    <li><strong>Accrual</strong> is matching patients divided by the number of years in the window. With the full range selected it averages over the whole history, including early years with little testing, so narrow the window to recent years for a forward estimate. The tiers are a rule of thumb for single-site material, not a feasibility verdict.</li>
+    <li><strong>Small cells.</strong> Every count under ${options.min_cell} shows as "<${options.min_cell}", including each bar. Bars can sum to less than the total. Every query is logged with your email.</li>
+    <li><strong>Age is known for Caris tissue reports only</strong>; every other report is in the "unknown" band, so an age filter that leaves out "unknown" drops all FMI and liquid-biopsy patients. Dates are shifted per patient by up to ±6 months, so years near the edges of the window can move by one.</li>
   </ul>
 </div>

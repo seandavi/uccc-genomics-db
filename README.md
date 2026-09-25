@@ -78,14 +78,15 @@ src/uccc_genomics/
   deid.py       generic: drop PHI columns, keyed-hash ids, per-patient date shift, leak assert
   sql/caris_views.sql, fmi_views.sql, unified.sql
   data/disease_crosswalk.csv   vendor disease term -> OncoTree code/name, organ system, NCIt (-> reference.disease_crosswalk)
-mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/README.md)
+mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/README.md);
+                genomics-cohort-api: the cohort page's floored-count endpoint (below)
 dashboard/      Observable Framework site over aggregates of the de-id file (below)
-tests/          pytest: synthetic load -> deid -> unified, MCP query guard, dashboard loader governance
+tests/          pytest: synthetic load -> deid -> unified, MCP query guard, cohort API, dashboard loader governance
 ```
 
 ```bash
 uv run pytest          # ~30 s; the loader tests skip when $DATA/genomics.duckdb is absent
-cd dashboard && npm test   # cohort page arithmetic
+cd dashboard && npm test   # cohort page helpers
 ```
 
 ## Schemas
@@ -140,16 +141,17 @@ WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%';
 ## Dashboard
 
 `dashboard/` is an [Observable Framework](https://observablehq.com/framework/)
-site: five pages of aggregates over `genomics.duckdb`. Two data loaders
-(`src/data/summary.json.py`, `src/data/cohort.json.py`) run at build time,
-drop every cell under `MIN_CELL = 5` and emit no row-level ids; the pages are
-pure client-side filtering over that JSON.
+site: five pages of aggregates over `genomics.duckdb`. Four pages run on one
+data loader (`src/data/summary.json.py`) that runs at build time, drops every
+cell under `MIN_CELL = 5` and emits no row-level ids. The cohort page instead
+asks the cohort API (below) live.
 
 1. **Overview** (`/`) — counts, reports by collection year, assays, top diseases per vendor.
-2. **Cohort exploration** (`/cohort`) — gene(s) × disease(s) × vendor × year window × VUS.
-   Headline counts and prevalence come from all-years totals (year × disease × gene cells
-   are mostly suppressed); expected accrual = prevalence × tested volume in the window;
-   the arithmetic lives in `src/components/cohort.js` and is covered by `npm test`.
+2. **Cohort exploration** (`/cohort`) — patient counts and prevalence for any combination of
+   organ system (with solid-tumor and GI presets), disease, gene, exact protein change,
+   alteration class, sex, age band, vendor, assay class and year window, from
+   `GET /api/cohort`. The filter state is the page's query string, so a link is a cohort
+   definition. Display helpers are in `src/components/cohort.js`, covered by `npm test`.
 3. **Genes** (`/genes`) — alteration frequency by gene, disease × gene heatmap, exact protein changes within a gene (sub-floor changes pooled as "other"), one gene or one exact alteration across diseases.
 4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions, and every other Caris IHC marker (HER2, ER/PR, AR, MMR, ALK, CLDN18, FOLR1 …) by disease with calls shown as Caris reports them. FMI has no IHC.
 5. **Coverage & quality** (`/coverage`) — panels, gene coverage, report status, purity, known gaps.
@@ -184,6 +186,30 @@ follow it on arrival, so the user sees "this PIN has already been used". No
 Access setting removes the link. Workaround is "Request new code" and typing
 it at once; the durable fix is switching the IdP to Microsoft Entra ID for
 the campus tenant (issue #17).
+
+### Cohort API
+
+`mcp/src/uccc_genomics_mcp/cohort_api.py` (`genomics-cohort-api`,
+`systemd/genomics-cohort-api.service`), designed in `dashboard/COHORT_TOOL.md`.
+A fixed-parameter endpoint: every parameter is an allow-list read from the DB
+(values with under 5 patients are left out), values reach SQL only as bound
+parameters, every count under 5 becomes `null` (plus secondary suppression and
+the whole-cohort rule), and every request is logged to journald with the
+user's email from the Access JWT. It uses the MCP server's hardened read-only
+connection, one per request, so the daily rebuild needs no restart.
+`tests/test_cohort_api.py` pins all of that on a synthetic DB and checks the
+real DB against hand-written SQL.
+
+```bash
+uv run genomics-cohort-api --insecure-no-auth --static dashboard/dist --port 8091
+# local dev: API + built site same-origin at http://localhost:8091/cohort.html
+journalctl --user -u genomics-cohort-api   # audit log, one JSON line per query
+```
+
+In production the Worker passes `/api/*` through to Traefik on this host,
+which routes to `172.19.0.1:8090`; the API refuses any request without a
+valid `Cf-Access-Jwt-Assertion` for `ACCESS_TEAM` / `ACCESS_AUD` (set in
+`.env`). `/api/health` is open for the uptime check.
 
 The site only ever contains suppressed aggregates, but it does leave campus:
 if the DUA reads "data or any derivative", host it on the box behind Traefik

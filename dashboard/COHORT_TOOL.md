@@ -8,6 +8,32 @@ can judge trial feasibility. Inputs: issues #18 (exact protein change) and
 de-identified DuckDB on 2026-09-08 with `uv run python` from the repo root;
 the scripts are one-off and not committed.
 
+## Status
+
+Phase 1 is built (`mcp/src/uccc_genomics_mcp/cohort_api.py`, `dashboard/src/cohort.md`,
+`tests/test_cohort_api.py`); the static cohort loader is gone. Where it differs from
+the spec below:
+
+- Vocabularies are floored too: a disease, organ, gene or protein change with under 5
+  patients is not offered and is a 400. Alone it could only return "<5"; OR-ed with a
+  larger value it would be recoverable by differencing.
+- The response adds `tested`, patients passing the non-gene filters, so the page can
+  show prevalence.
+- `alt_class` without `gene` is a 400 rather than ignored.
+- The page defaults to the full year range, because prevalence questions want all
+  years; accrual is patients over the window's length.
+- Organ-group presets (solid tumors, GI) fill the organ list on the page; the API still
+  sees only an allow-list.
+
+Checked against hand-written SQL on the real DB (2026-09-25): TP53 R175H is 109 of
+5,445 solid-tumor patients (2.0%) and 63 of 1,276 GI (4.9%). SQL over every organ
+gives 5,446 tested; the one patient is in "Nervous System" (2 patients), which the
+vocabulary floor removes.
+
+Not done yet: the edge (DNS, Traefik fragment, Access bypass for `/api/health`,
+uptime check, `INDEX.md`) and `ACCESS_TEAM` / `ACCESS_AUD` in `.env`. Merging
+changes `wrangler.toml` to a zone route, so the DNS record must exist first.
+
 ## a. What users need
 
 A trialist or disease-group lead wants to know, before writing a protocol,

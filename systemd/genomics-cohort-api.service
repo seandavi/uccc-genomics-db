@@ -1,0 +1,17 @@
+[Unit]
+Description=UCCC Genomics cohort API (floored counts for the dashboard, behind Cloudflare Access)
+Documentation=file:///home/davsean/Documents/git/uccc-genomics-db/dashboard/COHORT_TOOL.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/davsean/Documents/git/uccc-genomics-db
+# 172.19.0.1 is the `proxy` docker bridge gateway: reachable from Traefik and this host only.
+ExecStart=%h/.local/bin/uv run genomics-cohort-api --host 172.19.0.1 --port 8090
+Restart=always
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=default.target
