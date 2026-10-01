@@ -6,13 +6,21 @@ export default {
   root: "src",
   interpreters: {".py": ["uv", "run", "python"]},
   head: `
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-HR1PFD75WN"></script>
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-HR1PFD75WN');
+      (function () {
+        var h = location.hostname;
+        if (h === "localhost" || h === "127.0.0.1" || h === "[::1]" ||
+            /\.(workers\.dev|netlify\.app|ts\.net)$/.test(h) ||
+            /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.indexOf(":") !== -1) return;
+        var s = document.createElement("script");
+        s.async = true;
+        s.src = "https://www.googletagmanager.com/gtag/js?id=G-KLLV1GCF4E";
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { dataLayer.push(arguments); };
+        gtag("js", new Date());
+        gtag("config", "G-KLLV1GCF4E", {content_group: "uccc-genomics"});
+      })();
     </script>
   `,
   pages: [

@@ -154,7 +154,7 @@ pure client-side filtering over that JSON.
 4. **Biomarkers** (`/biomarkers`) — TMB, MSI, PD-L1, LOH, VAF distributions, and every other Caris IHC marker (HER2, ER/PR, AR, MMR, ALK, CLDN18, FOLR1 …) by disease with calls shown as Caris reports them. FMI has no IHC.
 5. **Coverage & quality** (`/coverage`) — panels, gene coverage, report status, purity, known gaps.
 
-Google Analytics (`G-HR1PFD75WN`) is in the page head.
+Google Analytics (`G-KLLV1GCF4E`) is in the page head.
 
 ```bash
 cd dashboard && npm install
