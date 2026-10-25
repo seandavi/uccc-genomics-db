@@ -237,7 +237,7 @@ anywhere else. Refused, invalid and rate-limited requests are not logged as quer
 ### REST routes
 
 `FastAPI(title="UCCC genomics cohort app", lifespan=..., openapi_url="/api/openapi.json",
-docs_url="/api/docs", redoc_url=None)`. All routes are sync `def`. Errors are
+docs_url=None, redoc_url=None)` (#54: no Swagger UI; it loaded CDN script without SRI). All routes are sync `def`. Errors are
 `{"detail": "<message>"}`:
 
 | Route | Body / query | Response | Errors |
@@ -313,7 +313,8 @@ def main(argv: list[str] | None = None) -> None
    `server.py`: every request carries credentials checked by `RequireUser`, and with protection
    on, the SDK would refuse any Host it was not told about (the tailnet address,
    `testserver`). Stateless JSON means no sessions and no SSE: each POST is self-contained, and
-   its `Request` carries the authenticated user.
+   its `Request` carries the authenticated user. `GET /mcp` is answered 405 by an app route ahead of
+   the SDK's (#54), so no standalone SSE stream opens.
 2. The FastAPI lifespan is `async with manager.run(): yield`.
 3. Register the REST routes and exception handlers, then
    `application.router.routes.extend(sub.routes)` (exact `/mcp`, no redirect).
