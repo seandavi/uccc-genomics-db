@@ -170,7 +170,9 @@ WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%';
   Losing it breaks linkage to any downstream cohort lists — back it up with
   the PHI file.
 - Asserts no Caris/FMI accession or sample-id pattern survives in any text
-  column of the output.
+  column of the output. The new file is built as `genomics.duckdb.tmp` and
+  renamed onto `genomics.duckdb` only when that check passes, so a failed
+  rebuild leaves the previous file (and the MCP server / cohort API) as they were.
 
 ## Dashboard
 

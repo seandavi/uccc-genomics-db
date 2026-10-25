@@ -10,7 +10,9 @@ column is copied with
 Also builds `mart.*` (cohort report/fact tables) from `unified.*` (sql/mart.sql).
 Tables without the key column (e.g. load-error logs naming files) are not copied.
 Key in $DATA/.deid_key (mode 600); same key => same IDs on rebuild.
-Fails (assert) if any text column in the vendor or mart schemas still contains an ID_PATTERN token, in any case.
+Built into genomics.duckdb.tmp and renamed onto genomics.duckdb only after the leak check passes:
+it fails (AssertionError) if any text column in the vendor or mart schemas still contains an
+ID_PATTERN token, in any case, and a failed run leaves the previous genomics.duckdb in place.
 """
 import os
 
@@ -50,72 +52,88 @@ def find_leaks(con, schemas):
     return leaks
 
 
-def run():
-    if os.path.exists(DEID_DB):
-        os.remove(DEID_DB)
-    con = connect(deid=(DEID_DB, DEID_DB_KEY), phi=(PHI_DB, PHI_DB_KEY, "READ_ONLY"))
-    con.execute("SET VARIABLE k = ?", [read_key(KEY_FILE)])
+def build(path):
+    """Write the de-identified database to `path` (which must not exist); raise AssertionError if
+    find_leaks reports any identifier-like token. The connection is closed on return or raise."""
+    with connect(deid=(path, DEID_DB_KEY), phi=(PHI_DB, PHI_DB_KEY, "READ_ONLY")) as con:
+        con.execute("SET VARIABLE k = ?", [read_key(KEY_FILE)])
 
-    present = [s for s in KEY_COL if con.execute(
-        "SELECT count(*) FROM information_schema.tables WHERE table_catalog='phi' AND table_schema=? AND table_name='report'", [s]).fetchone()[0]]
-    union = " UNION ALL ".join(
-        f"SELECT '{s}' AS vendor, {KEY_COL[s]}::VARCHAR AS id, {IDENTITY[s]} AS pid FROM phi.{s}.report"
-        for s in present)
-    con.execute(f"""
-        CREATE TEMP TABLE xw AS
-        SELECT vendor, id,
-               substr(sha256(getvariable('k') || 'id' || vendor || id), 1, 16) AS hid,
-               substr(sha256(getvariable('k') || 'pid' || coalesce(pid, 'nopid:' || vendor || id)), 1, 16) AS research_id,
-               (hash(getvariable('k') || 'shift' || coalesce(pid, vendor || id)) % 365)::INT - 182 AS shift_days
-        FROM ({union})""")
+        present = [s for s in KEY_COL if con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_catalog='phi' AND table_schema=? AND table_name='report'", [s]).fetchone()[0]]
+        union = " UNION ALL ".join(
+            f"SELECT '{s}' AS vendor, {KEY_COL[s]}::VARCHAR AS id, {IDENTITY[s]} AS pid FROM phi.{s}.report"
+            for s in present)
+        con.execute(f"""
+            CREATE TEMP TABLE xw AS
+            SELECT vendor, id,
+                   substr(sha256(getvariable('k') || 'id' || vendor || id), 1, 16) AS hid,
+                   substr(sha256(getvariable('k') || 'pid' || coalesce(pid, 'nopid:' || vendor || id)), 1, 16) AS research_id,
+                   (hash(getvariable('k') || 'shift' || coalesce(pid, vendor || id)) % 365)::INT - 182 AS shift_days
+            FROM ({union})""")
 
-    for s in present:
-        key = KEY_COL[s]
-        con.execute(f"CREATE SCHEMA {s}")
-        tables = [r[0] for r in con.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_catalog='phi' AND table_schema=? AND table_type='BASE TABLE'", [s]).fetchall()]
-        for t in tables:
-            cols = con.execute(
-                "SELECT column_name, data_type FROM information_schema.columns WHERE table_catalog='phi' AND table_schema=? AND table_name=? ORDER BY ordinal_position",
-                [s, t]).fetchall()
-            if key not in {c for c, _ in cols}:
-                continue
-            sel = []
-            for c, typ in cols:
-                if c == key:
-                    sel.append(f'x.hid AS "{c}"')
-                    if t == "report":
-                        sel.append("x.research_id")
-                elif c in DROP:
+        for s in present:
+            key = KEY_COL[s]
+            con.execute(f"CREATE SCHEMA {s}")
+            tables = [r[0] for r in con.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_catalog='phi' AND table_schema=? AND table_type='BASE TABLE'", [s]).fetchall()]
+            for t in tables:
+                cols = con.execute(
+                    "SELECT column_name, data_type FROM information_schema.columns WHERE table_catalog='phi' AND table_schema=? AND table_name=? ORDER BY ordinal_position",
+                    [s, t]).fetchall()
+                if key not in {c for c, _ in cols}:
                     continue
-                elif c in HASH:
-                    sel.append(f'substr(sha256(getvariable(\'k\') || \'sid\' || r."{c}"), 1, 16) AS "{c}"')
-                elif typ in ("DATE", "TIMESTAMP"):  # DATE + INTERVAL is a TIMESTAMP; keep the declared type
-                    sel.append(f'(r."{c}" + to_days(x.shift_days))::{typ} AS "{c}"')
-                elif "age" in c and typ in ("INTEGER", "BIGINT", "DOUBLE"):
-                    sel.append(f'least(r."{c}", 89) AS "{c}"')
-                else:
-                    sel.append(f'r."{c}"')
-            con.execute(f"""CREATE TABLE {s}.{t} AS SELECT {', '.join(sel)}
-                            FROM phi.{s}.{t} r JOIN xw x ON x.vendor = '{s}' AND x.id = r."{key}"::VARCHAR""")
-            n = con.execute(f"SELECT count(*) FROM {s}.{t}").fetchone()[0]
-            print(f"{s}.{t:16s} {n:>12,}")
-        con.execute(sql(f"{s}_views.sql"))
+                sel = []
+                for c, typ in cols:
+                    if c == key:
+                        sel.append(f'x.hid AS "{c}"')
+                        if t == "report":
+                            sel.append("x.research_id")
+                    elif c in DROP:
+                        continue
+                    elif c in HASH:
+                        sel.append(f'substr(sha256(getvariable(\'k\') || \'sid\' || r."{c}"), 1, 16) AS "{c}"')
+                    elif typ in ("DATE", "TIMESTAMP"):  # DATE + INTERVAL is a TIMESTAMP; keep the declared type
+                        sel.append(f'(r."{c}" + to_days(x.shift_days))::{typ} AS "{c}"')
+                    elif "age" in c and typ in ("INTEGER", "BIGINT", "DOUBLE"):
+                        sel.append(f'least(r."{c}", 89) AS "{c}"')
+                    else:
+                        sel.append(f'r."{c}"')
+                con.execute(f"""CREATE TABLE {s}.{t} AS SELECT {', '.join(sel)}
+                                FROM phi.{s}.{t} r JOIN xw x ON x.vendor = '{s}' AND x.id = r."{key}"::VARCHAR""")
+                n = con.execute(f"SELECT count(*) FROM {s}.{t}").fetchone()[0]
+                print(f"{s}.{t:16s} {n:>12,}")
+            con.execute(sql(f"{s}_views.sql"))
 
-    # Reference data shipped with the package: vendor disease term -> OncoTree / NCIt.
-    con.execute("CREATE SCHEMA reference")
-    con.execute(f"CREATE TABLE reference.disease_crosswalk AS SELECT * FROM read_csv('{data_file('disease_crosswalk.csv')}')")
-    print(f"reference.disease_crosswalk {con.execute('SELECT count(*) FROM reference.disease_crosswalk').fetchone()[0]:>6,}")
+        # Reference data shipped with the package: vendor disease term -> OncoTree / NCIt.
+        con.execute("CREATE SCHEMA reference")
+        con.execute(f"CREATE TABLE reference.disease_crosswalk AS SELECT * FROM read_csv('{data_file('disease_crosswalk.csv')}')")
+        print(f"reference.disease_crosswalk {con.execute('SELECT count(*) FROM reference.disease_crosswalk').fetchone()[0]:>6,}")
 
-    con.execute(sql("unified.sql"))
-    print("views: unified.*")
+        con.execute(sql("unified.sql"))
+        print("views: unified.*")
 
-    con.execute(sql("mart.sql"))
-    for t in ("report", "fact"):
-        print(f"mart.{t:12s} {con.execute(f'SELECT count(*) FROM mart.{t}').fetchone()[0]:>12,}")
+        con.execute(sql("mart.sql"))
+        for t in ("report", "fact"):
+            print(f"mart.{t:12s} {con.execute(f'SELECT count(*) FROM mart.{t}').fetchone()[0]:>12,}")
 
-    # ponytail: leak check — no vendor accession / sample id may survive in any text column
-    leaks = find_leaks(con, [*present, "mart"])
-    assert not leaks, "identifier-like tokens survived de-identification: " + "; ".join(leaks)
-    con.close()
+        # ponytail: leak check — no vendor accession / sample id may survive in any text column
+        leaks = find_leaks(con, [*present, "mart"])
+        if leaks:  # not `assert`: python -O would strip it, and this check is what gates the rename
+            raise AssertionError("identifier-like tokens survived de-identification: " + "; ".join(leaks))
+
+
+def run():
+    tmp = f"{DEID_DB}.tmp"  # built here, renamed onto DEID_DB only after the leak check passes
+    stale = (tmp, f"{tmp}.wal")
+    for f in stale:  # left by an interrupted run; a leftover WAL could be replayed into the new file
+        if os.path.exists(f):
+            os.remove(f)
+    try:
+        build(tmp)
+    except BaseException:
+        for f in stale:
+            if os.path.exists(f):
+                os.remove(f)
+        raise
+    os.replace(tmp, DEID_DB)
     print("wrote", DEID_DB)

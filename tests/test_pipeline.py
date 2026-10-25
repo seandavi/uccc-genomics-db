@@ -249,6 +249,41 @@ def test_find_leaks_matches_embedded_and_lower_case_ids():
     assert find_leaks(con, ["caris"]) == []
 
 
+def test_deid_replaces_file_only_after_leak_check(tmp_path):
+    data = str(tmp_path)
+    con = pipeline(data, {"ORD-0001234-01.xml": FMI})
+    ids = con.execute("SELECT vendor, research_id FROM db.unified.report ORDER BY ALL").fetchall()
+    con.close()
+    path, tmp = f"{data}/genomics.duckdb", f"{data}/genomics.duckdb.tmp"
+    first = os.stat(path)
+
+    # A leftover temp file and WAL from an interrupted run are cleared, not attached
+    for f in (tmp, f"{tmp}.wal"):
+        open(f, "wb").write(b"not a duckdb file")
+    genomics(data, "deid")
+    good = os.stat(path)
+    assert good.st_ino != first.st_ino  # renamed into place, not rewritten
+    assert not os.path.exists(tmp) and not os.path.exists(f"{tmp}.wal")
+
+    # An id embedded in FMI free text fails the leak check: the previous file stays
+    open(f"{data}/raw/fmi/ORD-0001234-01.xml", "w").write(
+        FMI.replace("TP53 R175H was reviewed.", "TP53 R175H ORD-0001234-01 was reviewed."))
+    genomics(data, "load", "--vendor", "fmi")
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        genomics(data, "deid")
+    assert "identifier-like tokens survived de-identification" in e.value.stderr
+    after = os.stat(path)
+    assert (after.st_ino, after.st_mtime_ns, after.st_size) == (good.st_ino, good.st_mtime_ns, good.st_size)
+    assert not os.path.exists(tmp) and not os.path.exists(f"{tmp}.wal")
+
+    from uccc_genomics.deid import find_leaks
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{path}' AS db (ENCRYPTION_KEY '{open(f'{data}/.db_key').read().strip()}', READ_ONLY)")
+    con.execute("USE db")
+    assert find_leaks(con, ["caris", "fmi", "mart"]) == []
+    assert con.execute("SELECT vendor, research_id FROM unified.report ORDER BY ALL").fetchall() == ids
+
+
 def test_same_mrn_is_one_patient_across_vendors(db):
     assert one(db, "SELECT count(*), max(n_vendors) FROM db.unified.patient") == (1, 2)
     assert one(db, "SELECT count(DISTINCT research_id), count(*) FROM db.unified.report") == (1, 2)
