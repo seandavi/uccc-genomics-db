@@ -4,6 +4,7 @@ One patient (same MRN) tested by both vendors, one alteration of each kind, one 
 pertinent-negative gene, so every unified view has something to assert on. No real data,
 no network: `sync` is not exercised.
 """
+import copy
 import csv
 import json
 import os
@@ -88,6 +89,8 @@ CARIS = {
                                              "expressionType": "IHC", "tpScore": "55"}},
                    {"expressionAlteration": {"biomarkerName": "PD-L1 (22c3)", "result": "Positive",
                                              "expressionType": "IHC", "cpScore": "12"}},
+                   # no score: value NULL while unified.biomarker.unit is '% stained', so mart.fact must null the unit
+                   {"expressionAlteration": {"biomarkerName": "PD-L1 (SP142)", "result": "Positive", "expressionType": "IHC"}},
                    {"wtsExpression": {"gene": "TACSTD2", "tpm": "40.2", "tpmPercentile": "81"}},
                ] + [caris_variant(g, res, unk, hp) for g, res, unk, hp, _ in CARIS_TIERS[1:]]
                  + [her2_ihc(r) for r in ("Low", "HER2-Positive", "Positive", "HER2-Negative", "Negative", "HER2-Null",
@@ -109,7 +112,7 @@ FMI = f"""<?xml version="1.0"?>
        <OrderingMD>Dr Orderer</OrderingMD><OrderingMDId>999</OrderingMDId><MedFacilName>UCH</MedFacilName><SpecSite>Breast</SpecSite></PMI>
   <PertinentNegatives><PertinentNegative><Gene>KRAS</Gene></PertinentNegative></PertinentNegatives>
   <Genes><Gene><Name>TP53</Name><Alterations><Alteration><Name>R175H</Name><Include>true</Include>
-    <Interpretation>TP53 R175H ... ORD-0001234-01 was reviewed.</Interpretation>
+    <Interpretation>TP53 R175H was reviewed.</Interpretation>
     <Therapies><Therapy><Name>None</Name><GenericName>none</GenericName><FDAApproved>false</FDAApproved><Effect>none</Effect><Include>true</Include></Therapy></Therapies>
   </Alteration></Alterations></Gene>
   <Gene><Name>ERBB2</Name><Alterations><Alteration><Name>amplification</Name><Include>true</Include>
@@ -159,23 +162,48 @@ FMI_MONITOR = """<?xml version="1.0"?>
 """
 
 
+# (case id, specimenSite, gene TPM file assays, has a wtsExpression record, has_wts): one Caris case per
+# has_wts source, so dropping either arm of mart.sql's `wts` CTE, or its assay filter, fails a case.
+WTS_CASES = [
+    ("TN26-200001", "Liver", ["RNA"], False, True),
+    ("TN26-200002", "Lung", ["cfTNA"], False, True),
+    ("TN26-200003", "Colon", [], True, True),
+    ("TN26-200004", "Brain", ["gDNA"], False, False),
+]
+
+
+def caris_case(case_id, site, wts_expression):
+    """CARIS as another patient's case `case_id` at `site`, keeping or dropping its wtsExpression record."""
+    c = copy.deepcopy(CARIS)
+    c["testDetails"]["labReportID"] = case_id
+    c["patientInformation"]["mrn"] = "000" + case_id[-6:]
+    spec = c["specimenInformation"]["tumorSpecimenInformation"]
+    spec["specimenID"], spec["specimenSite"] = f"{case_id}-A", site
+    if not wts_expression:
+        c["tests"][0]["testResults"] = [r for r in c["tests"][0]["testResults"] if "wtsExpression" not in r]
+    return c
+
+
 def genomics(data_dir, *args):
     subprocess.run(["uv", "run", "genomics", *args], check=True, cwd=ROOT, capture_output=True, text=True,
                    env={**os.environ, "DATA": data_dir})
 
 
-def pipeline(data, fmi_files):
-    """Write CARIS (+ its TPM CSV) and `fmi_files` ({file name: XML text}) under raw/ in `data`,
-    run load for both vendors and deid, and return a connection with the de-id file attached
-    as `db` and the PHI file as `phi`, both read-only."""
-    case = f"{data}/raw/caris/TN26-123456"
-    os.makedirs(case)
+def pipeline(data, fmi_files, caris_cases=None):
+    """Write `caris_cases` ({case id: (report JSON, gene TPM file assays)}, default CARIS with an RNA
+    TPM file) and `fmi_files` ({file name: XML text}) under raw/ in `data`, run load for both vendors
+    and deid, and return a connection with the de-id file attached as `db` and the PHI file as `phi`,
+    both read-only."""
     os.makedirs(f"{data}/raw/fmi")
-    json.dump(CARIS, open(f"{case}/TN26-123456.json", "w"))
-    with open(f"{case}/RNA_TN26-123456_geneTPM_nodup.csv", "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["Gene", "TPM", "NumReads"])
-        w.writerows([["TP53", "12.5", "800"], ["ERBB2", "300.1", "9000"]])
+    for case_id, (report, assays) in (caris_cases or {"TN26-123456": (CARIS, ["RNA"])}).items():
+        case = f"{data}/raw/caris/{case_id}"
+        os.makedirs(case)
+        json.dump(report, open(f"{case}/{case_id}.json", "w"))
+        for assay in assays:
+            with open(f"{case}/{assay}_{case_id}_geneTPM_nodup.csv", "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["Gene", "TPM", "NumReads"])
+                w.writerows([["TP53", "12.5", "800"], ["ERBB2", "300.1", "9000"]])
     for name, text in fmi_files.items():
         open(f"{data}/raw/fmi/{name}", "w").write(text)
 
@@ -201,8 +229,24 @@ def monitor_db(tmp_path_factory):
     return pipeline(str(tmp_path_factory.mktemp("monitor")), {"ORD-0005678-01.xml": FMI_MONITOR})
 
 
+@pytest.fixture(scope="module")
+def wts_db(tmp_path_factory):
+    return pipeline(str(tmp_path_factory.mktemp("wts")), {"ORD-0005678-01.xml": FMI_MONITOR},
+                    {c: (caris_case(c, site, wts), assays) for c, site, assays, wts, _ in WTS_CASES})
+
+
 def one(con, sql):
     return con.execute(sql).fetchone()
+
+
+def test_find_leaks_matches_embedded_and_lower_case_ids():
+    from uccc_genomics.deid import find_leaks
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA mart")
+    con.execute("CREATE TABLE mart.fact AS SELECT * FROM (VALUES ('trastuzumab', 'see tn26-123456 notes'), "
+                "('olaparib', NULL), ('x', 'ORD-0001234-01')) t(val, note)")
+    assert find_leaks(con, ["mart"]) == ["mart.fact.note: 2"]
+    assert find_leaks(con, ["caris"]) == []
 
 
 def test_same_mrn_is_one_patient_across_vendors(db):
@@ -216,7 +260,6 @@ def test_phi_columns_are_gone_and_ids_are_hashed(db):
     assert not cols & {"mrn", "dob", "first_name", "last_name", "patient", "physician", "ordering_md", "source_file", "pathologist_comment"}
     assert one(db, "SELECT case_id FROM db.caris.report")[0] != "TN26-123456"
     assert one(db, "SELECT report_id FROM db.fmi.report")[0] != "ORD-0001234-01"
-    assert "ORD-" not in one(db, "SELECT interpretation FROM db.fmi.alteration")[0] or True  # leak assert in deid already ran
     assert one(db, "SELECT count(*) FROM information_schema.tables WHERE table_catalog='db' AND table_name='load_error'") == (0,)
     assert one(db, "SELECT count(*) FROM phi.fmi.load_error") == (1,)
 
@@ -350,6 +393,12 @@ def test_mart_report_rows(db):
         "female", None, "unknown", "BRCA", "tissue", None, None, False, 50.0)
 
 
+def test_mart_report_has_wts_per_source(wts_db):
+    """RNA and cfTNA TPM files and wtsExpression records each make has_wts true on their own; a gDNA TPM file doesn't."""
+    got = dict(wts_db.execute("SELECT site, has_wts FROM db.mart.report WHERE vendor = 'caris'").fetchall())
+    assert got == {site.lower(): want for _, site, _, _, want in WTS_CASES}
+
+
 def test_mart_fact_keys_and_kinds(db):
     assert one(db, "SELECT count(*) FROM (SELECT vendor, report_id, research_id FROM db.mart.fact "
                    "EXCEPT SELECT vendor, report_id, research_id FROM db.mart.report)") == (0,)
@@ -381,10 +430,11 @@ def test_mart_fact_biomarker(db):
 def test_mart_fact_ihc(db):
     got = facts(db, "caris", "ihc")
     assert got >= {("PD-L1", "22c3", "positive", 55.0, "TPS"), ("PD-L1", "22c3", "positive", 12.0, "CPS"),
+                   ("PD-L1", "sp142", "positive", None, None),
                    ("ERBB2 (Her2/Neu)", None, "her2-low", 15.0, "% stained"),
                    ("Mismatch Repair Status", None, "proficient", None, None)}
     assert facts(db, "fmi", "ihc") == set()
-    assert {r[0] for r in db.execute("SELECT clone FROM db.unified.biomarker WHERE name = 'PD-L1'").fetchall()} == {"22c3"}
+    assert {r[0] for r in db.execute("SELECT clone FROM db.unified.biomarker WHERE name = 'PD-L1'").fetchall()} == {"22c3", "sp142"}
     assert one(db, "SELECT count(*) FROM db.unified.biomarker WHERE name <> 'PD-L1' AND clone IS NOT NULL") == (0,)
 
 

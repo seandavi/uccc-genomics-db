@@ -87,10 +87,11 @@ for t in ("report", "fact"):
 ```
 
 Update the module docstring with one line saying it also builds `mart.*` from
-`unified.*` (`sql/mart.sql`). Nothing else in `deid.py` changes. The leak assert keeps scanning
-the vendor schemas only. Every text value in `mart.*` is copied from a column it already
-scanned (or from `reference.disease_crosswalk`, which ships in the package), so the mart adds
-no new text source.
+`unified.*` (`sql/mart.sql`). Nothing else in `deid.py` changes. The leak assert scans the
+vendor schemas and `mart.*`, as a case-insensitive substring match (#45). Every text value in
+`mart.*` is copied from a column it already scanned (or from `reference.disease_crosswalk`,
+which ships in the package), so the mart scan is defense in depth, in case a later arm adds a
+new text source.
 
 ### `unified.sql`: `unified.biomarker.clone`
 
