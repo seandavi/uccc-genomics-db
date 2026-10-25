@@ -8,12 +8,45 @@ import csv
 import json
 import os
 import subprocess
+from datetime import date, timedelta
 
 import duckdb
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MRN = "000123456"
+
+# (gene, result, unknownSignificance, hgvsProteinChange, expected tier): one row per Caris vendor
+# value in the tier mapping (docs/specs/32-data-readiness-significance-tier-her2.md). TP53 is the
+# fixture's own pathogenic record below.
+CARIS_TIERS = [
+    ("TP53", "Pathogenic Variant", "false", "p.R175H", "pathogenic"),
+    ("BRCA2", "Mutated, Pathogenic", None, "p.S1982fs", "pathogenic"),
+    ("ATM", "Likely Pathogenic Variant", None, "p.R3008C", "likely_pathogenic"),
+    ("PTEN", "Mutated, Presumed Pathogenic", None, "p.R130Q", "likely_pathogenic"),
+    ("NF1", "Variant of Uncertain Significance", None, "p.A100T", "vus"),
+    ("RB1", "Mutated, Variant of Unknown Significance", "true", "p.A200T", "vus"),
+    ("MLH1", "New Caris Term", "true", "p.A700T", "vus"),
+    ("SMAD4", "Likely Benign Variant", None, "p.A300T", "likely_benign_or_benign"),
+    ("CDH1", "Benign Variant", None, "p.A400T", "likely_benign_or_benign"),
+    ("STK11", "Mutated, Presumed Benign", None, "p.A500T", "likely_benign_or_benign"),
+    ("ARID1A", "Mutated, Unclassified", None, "p.A600T", "unclassified"),
+    ("APC", "Risk Allele", None, "p.I1307K", "unclassified"),
+    ("MSH2", "New Caris Term", None, "p.A800T", "unclassified"),
+]
+
+
+def caris_variant(gene, result, unknown_significance, hgvs_p):
+    alt = {"biomarkerName": gene, "gene": gene, "result": result, "genomicSource": "Somatic",
+           "hgvsProteinChange": hgvs_p}
+    if unknown_significance is not None:
+        alt["unknownSignificance"] = unknown_significance
+    return {"genomicAlteration": alt}
+
+
+def her2_ihc(result, name="ERBB2 (Her2/Neu)"):
+    return {"expressionAlteration": {"biomarkerName": name, "result": result, "expressionType": "IHC"}}
+
 
 CARIS = {
     "testDetails": {"labReportID": "TN26-123456", "testCode": "CMI025", "reportType": "Final",
@@ -35,7 +68,7 @@ CARIS = {
                    {"genomicAlteration": {"biomarkerName": "TP53", "gene": "TP53", "result": "Pathogenic Variant",
                                           "result_group": "Mutated", "genomicSource": "Somatic",
                                           "hgvsCodingChange": "c.524G>A", "hgvsProteinChange": "p.R175H",
-                                          "chromosome": "chr17", "genomeBuild": "GRCh38",
+                                          "chromosome": "chr17", "genomeBuild": "GRCh38", "molecularConsequence": "Missense",
                                           "alleleFrequencyInformation": {"alleleFrequency": "42.1"},
                                           "readInformation": {"readDepth": "500"}, "unknownSignificance": "false",
                                           "labSpecific": {"NGSPanelName": "Hybrid_Exome_plus_720G"}}},
@@ -48,7 +81,10 @@ CARIS = {
                                              "expressionType": "IHC", "stainPercent": "15"}},
                    {"expressionAlteration": {"biomarkerName": "Mismatch Repair Status", "result": "Proficient (Intact)",
                                              "expressionType": "IHC"}},
-               ]}],
+               ] + [caris_variant(g, res, unk, hp) for g, res, unk, hp, _ in CARIS_TIERS[1:]]
+                 + [her2_ihc(r) for r in ("Low", "HER2-Positive", "Positive", "HER2-Negative", "Negative", "HER2-Null",
+                                          "HER2-Ultralow", "Equivocal", "Insufficient Tumor")]
+                 + [her2_ihc(r, "ER/PR/Her2/Neu") for r in ("HR-Positive HER2-Low", "Triple Negative")]}],
     "therapies": None,
 }
 
@@ -75,6 +111,8 @@ FMI = f"""<?xml version="1.0"?>
   <short-variants>
    <short-variant gene="TP53" cds-effect="524G>A" protein-effect="R175H" position="chr17:7578406" allele-fraction="0.42" depth="500" status="known" functional-effect="missense"/>
    <short-variant gene="PIK3CA" cds-effect="1633G>A" protein-effect="E545K" position="chr3:178936091" allele-fraction="0.1" depth="300" status="unknown" functional-effect="missense"/>
+   <short-variant gene="BRAF" cds-effect="1799T>A" protein-effect="V600E" position="chr7:140453136" allele-fraction="0.3" depth="400" status="likely" functional-effect="missense"/>
+   <short-variant gene="ARID1A" cds-effect="298C>T" protein-effect="Q100*" position="chr1:27023000" allele-fraction="0.2" depth="400" status="unknown" functional-effect="Nonsense"/>
   </short-variants>
   <copy-number-alterations><copy-number-alteration gene="ERBB2" type="amplification" copy-number="12" ratio="6" status="known"/></copy-number-alterations>
   <rearrangements><rearrangement targeted-gene="ALK" other-gene="EML4" description="EML4-ALK fusion" type="fusion" status="known" in-frame="Yes" supporting-read-pairs="40"/></rearrangements>
@@ -149,19 +187,63 @@ def test_dates_shift_together_and_age_is_capped(db):
 def test_unified_views(db):
     assert one(db, "SELECT count(DISTINCT disease_text), max(oncotree_code) FROM db.unified.report") == (1, "BRCA")
     assert one(db, "SELECT list(assay_class ORDER BY vendor) FROM db.unified.report") == (["tissue", "tissue"],)
-    v = db.execute("SELECT vendor, gene, hgvs_p, round(vaf, 3), is_vus FROM db.unified.variant ORDER BY 1, 2").fetchall()
+    v = db.execute("SELECT vendor, gene, hgvs_p, round(vaf, 3), is_vus FROM db.unified.variant "
+                   "WHERE gene IN ('TP53', 'PIK3CA') ORDER BY 1, 2").fetchall()
     assert v == [("caris", "TP53", "p.R175H", 0.421, False), ("fmi", "PIK3CA", "E545K", 0.1, True), ("fmi", "TP53", "R175H", 0.42, False)]
     assert db.execute("SELECT vendor, gene, cn_type FROM db.unified.cna ORDER BY 1").fetchall() == [("caris", "ERBB2", "amplification"), ("fmi", "ERBB2", "amplification")]
     assert one(db, "SELECT gene1, gene2, supporting_reads FROM db.unified.fusion") == ("ALK", "EML4", 40)
-    bm = dict(((r[0], r[1]), r[2]) for r in db.execute("SELECT vendor, name, call_norm FROM db.unified.biomarker").fetchall())
-    # IHC rides along with the raw call kept (HER2-Low stays HER2-Low); only the MMR spelling is folded (issue #22).
+    bm = dict(((r[0], r[1]), r[2]) for r in db.execute(
+        "SELECT vendor, name, call_norm FROM db.unified.biomarker "
+        "WHERE name NOT IN ('ERBB2 (Her2/Neu)', 'ER/PR/Her2/Neu')").fetchall())
+    # IHC rides along with the raw call kept (HER2-Low stays HER2-Low); only the MMR spelling is folded (issue #22);
+    # the HER2 spellings are in test_her2_calls_fold_spellings_only.
     assert bm == {("caris", "TMB"): "high", ("caris", "MSI"): "stable", ("fmi", "TMB"): "high", ("fmi", "MSI"): "stable",
-                  ("caris", "ERBB2 (Her2/Neu)"): "her2-low", ("caris", "Mismatch Repair Status"): "proficient"}
-    assert one(db, "SELECT call, value, unit FROM db.unified.biomarker WHERE name = 'ERBB2 (Her2/Neu)'") == ("HER2-Low", 15.0, "% stained")
+                  ("caris", "Mismatch Repair Status"): "proficient"}
+    assert one(db, "SELECT call, value, unit FROM db.unified.biomarker WHERE name = 'ERBB2 (Her2/Neu)' AND call = 'HER2-Low'") == ("HER2-Low", 15.0, "% stained")
     assert one(db, "SELECT 22.0 IN (SELECT value FROM db.unified.biomarker WHERE name = 'TMB' AND vendor = 'caris')") == (True,)
     gt = db.execute("SELECT vendor, gene, evidence FROM db.unified.gene_tested ORDER BY 1").fetchall()
     assert gt == [("caris", "KRAS", "wildtype"), ("fmi", "KRAS", "pertinent_negative")]
     assert one(db, "SELECT count(*), round(max(tpm), 1) FROM db.caris.gene_tpm") == (2, 300.1)
+
+
+def test_variant_tier_maps_every_vendor_value(db):
+    got = {(r[0], r[1]): r[2] for r in db.execute("SELECT vendor, gene, tier FROM db.unified.variant").fetchall()}
+    want = {("caris", g): tier for g, _, _, _, tier in CARIS_TIERS}
+    want |= {("fmi", "TP53"): "pathogenic", ("fmi", "PIK3CA"): "vus", ("fmi", "BRAF"): "likely_pathogenic",
+             ("fmi", "ARID1A"): "unclassified"}
+    assert got == want
+    tiers = {r[0] for r in db.execute("SELECT DISTINCT tier FROM db.unified.variant").fetchall()}
+    assert tiers <= {"pathogenic", "likely_pathogenic", "vus", "likely_benign_or_benign", "unclassified"}
+
+
+def test_consequence_is_lower_case(db):
+    got = {(r[0], r[1]): r[2] for r in db.execute(
+        "SELECT vendor, gene, consequence FROM db.unified.variant WHERE gene IN ('TP53', 'ARID1A')").fetchall()}
+    assert got[("caris", "TP53")] == "missense" and got[("fmi", "ARID1A")] == "nonsense"
+    assert one(db, "SELECT count(*) FROM db.unified.variant WHERE consequence <> lower(consequence)") == (0,)
+    assert one(db, "SELECT consequence FROM db.caris.variant WHERE gene = 'TP53'") == ("Missense",)
+    assert one(db, "SELECT functional_effect FROM db.fmi.short_variant WHERE gene = 'ARID1A'") == ("Nonsense",)
+
+
+def test_her2_calls_fold_spellings_only(db):
+    got = {(r[0], r[1]): r[2] for r in db.execute(
+        "SELECT name, call, call_norm FROM db.unified.biomarker WHERE name IN ('ERBB2 (Her2/Neu)', 'ER/PR/Her2/Neu')").fetchall()}
+    h = "ERBB2 (Her2/Neu)"
+    assert got == {(h, "HER2-Low"): "her2-low", (h, "Low"): "her2-low",
+                   (h, "HER2-Positive"): "positive", (h, "Positive"): "positive",
+                   (h, "HER2-Negative"): "negative", (h, "Negative"): "negative",
+                   (h, "HER2-Null"): "her2-null", (h, "HER2-Ultralow"): "her2-ultralow",
+                   (h, "Equivocal"): "equivocal", (h, "Insufficient Tumor"): "insufficient tumor",
+                   ("ER/PR/Her2/Neu", "HR-Positive HER2-Low"): "hr-positive her2-low",
+                   ("ER/PR/Her2/Neu", "Triple Negative"): "triple negative"}
+
+
+def test_collected_year_complete(db):
+    rows = db.execute("SELECT collected_on, collected_year_complete FROM db.unified.report").fetchall()
+    assert rows
+    for collected_on, complete in rows:
+        assert complete is not None
+        assert complete == (date(collected_on.year, 12, 31) + timedelta(days=182) < date.today())
 
 
 def test_crosswalk_keeps_colon_and_rectum_under_colorectal():
