@@ -331,7 +331,9 @@ Only the axes with a label are offered (`—` is omitted). The label reads
 CSS grid, `web/src/styles.css`. Wide (≥ 1200 px): builder `minmax(18rem, 24rem)`, answer `1fr`,
 assistant `minmax(14rem, 18rem)`. Below 1200 px the assistant column is not rendered (it is
 empty); below 800 px builder and answer stack. Readable at 1280 × 800 with no horizontal
-scroll.
+scroll. Pivot and breakdown tables render through `GridTable`, which wraps the table in a
+focusable `.table-scroll` (`overflow-x: auto`) so a wide pivot scrolls inside the answer column
+and never the page; row headers are sticky.
 
 **Top bar** (`<header>`): name input (`aria-label="Cohort name"`, placeholder "Untitled
 cohort"), version select, `cohort_id` in `<code>`, "Share link" button.

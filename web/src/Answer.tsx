@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   BREAKDOWN_DIMS, accrualPerYear, criterionLabel, fmtCount, pct, pivotAxes, populationLabel, tierFor,
 } from "./cohort.ts";
@@ -140,7 +140,7 @@ function BreakdownTab({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: O
         ))}
       </fieldset>
       {chosen.map((dim) => (
-        <table key={dim} className="grid">
+        <GridTable key={dim}>
           <caption>{BREAKDOWN_DIMS.find((b) => b.value === dim)?.label ?? dim}</caption>
           <thead><tr><th scope="col">Value</th><th scope="col">Patients</th><th scope="col">Of</th><th scope="col">Share</th></tr></thead>
           <tbody>{(r.breakdowns[dim] ?? []).map((c) => (
@@ -151,10 +151,15 @@ function BreakdownTab({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: O
               <td>{pct(c.patients, c.denominator) ?? "–"}</td>
             </tr>
           ))}</tbody>
-        </table>
+        </GridTable>
       ))}
     </div>
   );
+}
+
+// Every count table goes through here so a wide one scrolls inside the answer column, not the page.
+function GridTable({children}: {children: ReactNode}) {
+  return <div className="table-scroll" tabIndex={0}><table className="grid">{children}</table></div>;
 }
 
 function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult | null; minCell: number; onOp: (op: Operation) => void}) {
@@ -185,7 +190,7 @@ function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult 
       {!d.pivot || !pivot
         ? <p>Choose rows and columns.</p>
         : (
-          <table className="grid">
+          <GridTable>
             <caption>{rows} × {cols}</caption>
             <thead><tr>
               <th scope="col">{pivot.rows}</th>
@@ -211,7 +216,7 @@ function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult 
                 <td className={pivot.patients == null ? "hatched" : ""}><Count n={pivot.patients} minCell={minCell} /></td>
               </tr>
             </tbody>
-          </table>
+          </GridTable>
         )}
     </div>
   );
