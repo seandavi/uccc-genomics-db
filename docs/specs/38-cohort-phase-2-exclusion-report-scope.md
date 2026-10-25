@@ -58,7 +58,16 @@ defeats it.
 
 1. **Union rule: applied.** This is the issue's default. It covers every population field that
    lists two or more values (`oncotree`, `organ`, `sex`, `age_band`, `vendor`, `assay_class`), and
-   `years` when `from < to`, because a range is a union of years.
+   `years` when `from < to`, because a range is a union of years. **An empty field and
+   `years: null` mean "every value" and "every year", and get no neighbours.** The rule guards the
+   values a caller names. Giving an equivalent definition by leaving the field open (`vendor: []`
+   against `["caris"]`, `years: null` against `[2023, 2025]`) is a two-query subtraction that
+   stays open and is accepted under the audit log, like OR lists inside a criterion (Risks). The
+   alternative, a neighbour per vocabulary value of every open field and per end year of every open
+   range, gives almost every count 15 or more neighbours, turns loosen off everywhere (decision 6),
+   and leaves a definition with three negated criteria and a few listed values over the cap of 32
+   (decision 5). `oncotree` and `organ` could not be covered anyway: the complement of one value is
+   a list of more values than a field takes.
 2. **`tested_negative` with several genes means every gene.** The patient has no matching finding
    for any listed gene, and each listed gene was reported wild-type or as a pertinent negative.
    This is the negation of the OR the criterion's genes mean (De Morgan). "RAS wild-type" means
@@ -589,7 +598,7 @@ export function feasibility(d: Definition, r: CountResult, years: readonly [numb
 
 ```tsx
 export interface CompareColumn {
-  label: string; result: CountResult | null; error: string | null;
+  label: string; definition: string; result: CountResult | null; error: string | null;
   window?: readonly [number, number] | null;   // the year span of this version's accrual
 }
 export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minCell: number})   // pure
@@ -607,7 +616,11 @@ export function Compare({versions, transport, years, onClose}: {
   `population.years`, falling back to `years`), then one row per year
   in the union of the results' `by_year` years, with each column's `patients` for that year (blank
   when that result has no such year). Every count goes through `Count` (null → "<5"). Each column
-  header's `title` is the `cohort_id`.
+  header's `title` is the `cohort_id`. The first body row, "Definition", gives each column's
+  `definition` string: `populationLabel(population)` and each `criterionLabel` joined with `"; "`,
+  plus "same report" for `scope: "report"`, because the name is shared by every version of a cohort
+  and the header alone cannot say what changed. `Compare` also sets it as the `title` of each
+  version's checkbox label.
   Under the table, when any count is null, the same legend line as the Answer funnel
   (`<5: fewer than 5 patients, or hidden so that a small count cannot be worked out by
   subtraction.`), because a hover title does not reach a touch screen and two versions one edit
@@ -812,7 +825,7 @@ neighbours is a 400 whose detail starts with `population:` on REST, and a tool e
   same-report checkbox is checked for `scope: "report"`. A sequence card renders both member
   lists.
 - `compare.test.tsx` (new): `CompareTable` with two columns renders "<5" and its legend for a null count, one row
-  per year in the union of the years, and each column's `cohort_id` as the header `title`.
+  per year in the union of the years, each column's `cohort_id` as the header `title`, and a first "Definition" row with each column's definition string.
 - `builder.test.tsx`: `withoutMember` (the any_of card's remove-member step) keeps the mode of
   an excluded `any_of` on the member left, so removing a member never turns an exclusion into an
   include.
@@ -834,6 +847,10 @@ Dashboard check: n/a (no change under `dashboard/` other than `COHORT_DISCOVERY.
   - Combinations of three or more queries, for example
     `[(A∧¬B over {X,Y}) − (A∧¬B over {X})]` against the same pair without the exclusion.
   - OR lists inside a criterion (decision 1's scope).
+  - An open population field or open year range against the same cohort with some values listed
+    (decision 1): with a synthetic `NSCLC` + `KRAS` cohort, `years: null` and `years: [2023, 2024]`
+    can both be shown, and their difference is the patients collected after 2024. Pinned by
+    `test_open_population_field_has_no_neighbours`.
   - The mirror case: A and A ∧ B are both phase 1 queries, so A ∧ ¬B was already computable before
     #38.
 

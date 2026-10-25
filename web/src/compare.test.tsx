@@ -9,9 +9,9 @@ const result = (over: Partial<CountResult>): CountResult => ({
 });
 
 const columns: CompareColumn[] = [
-  {label: "v1 · Untitled", window: [2023, 2024], error: null, result: result({
+  {label: "v1 · Untitled", definition: "NSCLC; KRAS mutation", window: [2023, 2024], error: null, result: result({
     cohort_id: "v1-aaaa", by_year: [{year: 2023, patients: 20, complete: true}, {year: 2024, patients: null, complete: true}]})},
-  {label: "v2 · Wider", window: [2023, 2025], error: null, result: result({
+  {label: "v2 · Wider", definition: "NSCLC · 2023–2025; KRAS mutation; no TP53 mutation; same report", window: [2023, 2025], error: null, result: result({
     cohort_id: "v1-bbbb", patients: null, by_year: [{year: 2024, patients: 30, complete: true}, {year: 2025, patients: 25, complete: false}]})},
 ];
 const html = renderToStaticMarkup(<CompareTable columns={columns} minCell={5} />);
@@ -23,7 +23,7 @@ describe("CompareTable", () => {
   });
   test("a null count comes with the legend that says why, and no null no legend", () => {
     expect(html).toContain('<p class="legend">&lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction.</p>');
-    const shownOnly = renderToStaticMarkup(<CompareTable minCell={5} columns={[{label: "v1", error: null, result: result({})}]} />);
+    const shownOnly = renderToStaticMarkup(<CompareTable minCell={5} columns={[{label: "v1", definition: "All patients", error: null, result: result({})}]} />);
     expect(shownOnly).not.toContain("legend");
   });
   test("one row per year in the union of the years, blank where a result has none", () => {
@@ -36,11 +36,14 @@ describe("CompareTable", () => {
     expect(html).toContain('title="v1-aaaa"');
     expect(html).toContain('title="v1-bbbb"');
   });
+  test("each column says what it selects, in the first body row", () => {
+    expect(html).toContain('<tbody><tr><th scope="row">Definition</th><td>NSCLC; KRAS mutation</td><td>NSCLC · 2023–2025; KRAS mutation; no TP53 mutation; same report</td></tr>');
+  });
   test("accrual uses each column's own window, and a suppressed patient count has none", () => {
     expect(html).toContain("<th scope=\"row\">Accrual a year</th><td>30.0</td><td>–</td>");
   });
   test("a failed column says why", () => {
-    const out = renderToStaticMarkup(<CompareTable minCell={5} columns={[...columns, {label: "v3", result: null, error: "request failed (500)"}]} />);
+    const out = renderToStaticMarkup(<CompareTable minCell={5} columns={[...columns, {label: "v3", definition: "All patients", result: null, error: "request failed (500)"}]} />);
     expect(out).toContain("request failed (500)");
   });
 });

@@ -303,6 +303,18 @@ def test_attack_union_population(db):
     assert shown(defn(population=pop("NSCLC", "PAAD"))) == [42]
 
 
+def test_open_population_field_has_no_neighbours(db):
+    """An open field or open year range is the full union and gets no neighbour (spec decision 1): the
+    equivalent listed form is shown, and the two differ by the patients of the last year."""
+    open_years = defn([KRAS], population=NSCLC)
+    listed = defn([KRAS], population=pop("NSCLC", years=[2023, 2024]))
+    assert neighbours(open_years) == []
+    assert len(neighbours(defn([KRAS], population=pop("NSCLC", vendor=["caris"])))) == 0
+    assert shown(open_years) == [32, 27]
+    assert shown(listed)[-1] == 25
+    assert [n.definition.population.years for n in neighbours(listed)] == [(2024, 2024), (2023, 2023)]
+
+
 def test_attack_union_years(db):
     d = defn([KRAS], population=pop("NSCLC", years=[2024, 2025]))
     assert raw_funnel(d)[-1] == 22

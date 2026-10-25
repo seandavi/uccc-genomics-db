@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { Count, GridTable, SUPPRESSED } from "./Answer.tsx";
-import { accrualPerYear, pct, type Version } from "./cohort.ts";
+import { accrualPerYear, criterionLabel, pct, populationLabel, type Version } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
 import type { CountResult } from "./types.ts";
 
 /** One definition's answer: a result, or why there is none. `window` is the year span its accrual is over. */
 export interface CompareColumn {
   label: string;
+  definition: string;   // what the version selects, since a name is shared by every version of a cohort
   result: CountResult | null;
   error: string | null;
   window?: readonly [number, number] | null;
@@ -25,6 +26,7 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
         {columns.map((c) => <th key={c.label} scope="col" title={c.result?.cohort_id}>{c.label}</th>)}
       </tr></thead>
       <tbody>
+        <tr><th scope="row">Definition</th>{columns.map((c) => <td key={c.label}>{c.definition}</td>)}</tr>
         <tr><th scope="row">Patients</th>{columns.map((c) => <td key={c.label}>{cell(c, (r) => <Count n={r.patients} minCell={minCell} />)}</td>)}</tr>
         <tr><th scope="row">Population</th>{columns.map((c) => <td key={c.label}>{cell(c, (r) => <Count n={r.denominator} minCell={minCell} />)}</td>)}</tr>
         <tr><th scope="row">Share</th>{columns.map((c) => <td key={c.label}>{cell(c, (r) => pct(r.patients, r.denominator) ?? "–")}</td>)}</tr>
@@ -61,7 +63,7 @@ export function Compare({versions, transport, years, onClose}: {
     setColumns(chosen.map((v, i) => {
       const s = settled[i];
       return {
-        label: versionLabel(v), window: v.definition.population.years ?? years,
+        label: versionLabel(v), definition: definitionLabel(v), window: v.definition.population.years ?? years,
         result: s.status === "fulfilled" ? s.value : null, error: s.status === "rejected" ? describeError(s.reason) : null,
       };
     }));
@@ -75,7 +77,7 @@ export function Compare({versions, transport, years, onClose}: {
         {versions.map((v) => (
           <label key={v.n}>
             <input type="checkbox" checked={picked.includes(v.n)} disabled={!picked.includes(v.n) && picked.length >= MAX_PICKED}
-              onChange={() => toggle(v.n)} /> {versionLabel(v)}
+              onChange={() => toggle(v.n)} /> <span title={definitionLabel(v)}>{versionLabel(v)}</span>
           </label>
         ))}
       </fieldset>
@@ -89,3 +91,6 @@ export function Compare({versions, transport, years, onClose}: {
 }
 
 const versionLabel = (v: Version) => `v${v.n} · ${v.definition.name || "Untitled"}`;
+
+const definitionLabel = ({definition: d}: Version) =>
+  [populationLabel(d.population), ...d.criteria.map(criterionLabel), ...(d.scope === "report" ? ["same report"] : [])].join("; ");
