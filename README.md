@@ -110,6 +110,15 @@ failed to parse — nothing is dropped silently). Views `tmb`, `msi`, `loh`.
 (Caris wild-type records + FMI pertinent negatives). Each is a
 `UNION ALL BY NAME` across vendors with a `vendor` column; vendor-specific
 detail stays in `caris.*` / `fmi.*` and joins back on `report_id`.
+`variant.tier` (`pathogenic`, `likely_pathogenic`, `vus`, `likely_benign_or_benign`,
+`unclassified`) is the one significance column to filter on, derived per vendor;
+`is_vus` and `vendor_call` stay as the vendor's own flags, and the cohort API's
+default "pathogenic" is the first two tiers. `variant.consequence` is lower case
+(vendor terms are otherwise unchanged). `biomarker.call_norm` folds the Caris HER2
+IHC spellings (`HER2-Low`/`Low`, `HER2-Positive`/`Positive`, ...) while `call` keeps
+the raw string. `report.collected_year_complete` is false while the date-shifted
+collection year can still gain reports (the ±182-day shift), so a trailing partial
+year can be flagged.
 `report.disease_text` / `oncotree_code` / `organ_system` / `ncit_code` come from
 `reference.disease_crosswalk` (hand-curated, in the package) where the vendor's
 term is mapped; unmapped terms keep the vendor string as `disease_text` with
@@ -231,6 +240,11 @@ rm -f $DATA/.duckdb_init_*                      # shell init files (contain the 
 ```
 
 Never `--delete` toward the bucket or share; mirrors are read-only from the source's point of view.
+
+## Known gaps
+
+FMI viral calls (`fmi.non_human`) are loaded but not offered as a cohort filter until
+someone with domain knowledge has reviewed them (`dashboard/COHORT_DISCOVERY.md` §1).
 
 ## Not in scope
 
