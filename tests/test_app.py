@@ -42,7 +42,8 @@ def ids(mart_file, monkeypatch):
 
 
 @pytest.fixture
-def client(ids, tmp_path):
+def client(ids, tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)   # never touch a host .env database
     (tmp_path / "static").mkdir()
     (tmp_path / "static" / "index.html").write_text("<p>site</p>")
     with TestClient(app.app(str(tmp_path / "static"))) as c:
@@ -190,7 +191,10 @@ def test_errors_agree(client, method, path, payload, tool, args, word):
 
 def test_tools_list(client):
     tools = {t["name"]: t for t in mcp_list(client)["tools"]}
-    assert set(tools) == {"search_vocabulary", "apply_op", "count", "pivot", "describe_definition"}
+    assert set(tools) == {"search_vocabulary", "apply_op", "count", "pivot", "describe_definition", "save_cohort",
+                          "list_saved_cohorts", "get_saved_cohort", "apply_saved_op", "saved_cohort_history",
+                          "revert_saved_cohort", "snapshot_saved_cohort", "delete_saved_cohort", "list_snapshots",
+                          "get_cohort_version"}
     assert "definition" in tools["count"]["inputSchema"]["properties"]
     assert "definition" in tools["pivot"]["inputSchema"]["properties"]
     assert "patients" not in json.dumps(tools["search_vocabulary"]["outputSchema"])
@@ -204,7 +208,9 @@ def test_openapi_names_the_models(client):
 
 GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply"), ("GET", "/api/options"),
          ("GET", "/api/schema"), ("GET", "/api/openapi.json"), ("GET", "/api/docs"), ("POST", "/mcp"),
-         ("GET", "/mcp"), ("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path")]
+         ("GET", "/mcp"), ("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path"),
+         ("POST", "/api/saved"), ("GET", "/api/saved"), ("GET", "/api/snapshots"),
+         ("GET", "/api/versions/v1-0000000000000000")]
 
 
 @pytest.mark.parametrize("method, path", GATED)
@@ -215,6 +221,13 @@ def test_refused_without_login(client, method, path):
     assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
     assert client.request(method, path, auth=("sean", "wrong"), **kw).status_code == 401
     assert client.request(method, path, auth=AUTH, **kw).status_code != 401
+
+
+def test_saved_unconfigured(client):
+    r = rest(client, "POST", "/api/saved", {})
+    assert r.status_code == 503 and "not configured" in r.json()["detail"]
+    m = mcp_call(client, "list_saved_cohorts", {})
+    assert m["isError"] and "not configured" in m["content"][0]["text"]
 
 
 def test_health_is_open(client):

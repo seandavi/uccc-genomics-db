@@ -43,6 +43,7 @@ mcp/src/uccc_genomics_mcp/
   server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
   cohort_api.py genomics-cohort-api: fixed-parameter, floored patient counts, Access JWT auth
   app.py        genomics-app: FastAPI REST (/api/*) + MCP (/mcp) over cohort/, behind authen
+  saved.py      saved cohorts in Postgres (SQLAlchemy async): revisions, snapshots; migrations/ is Alembic (mcp/alembic.ini)
   cohort/       cohort definition + operations + cohort_id, compile to SQL over mart.*, suppression (the seam REST/MCP/chat sit on)
 dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
                 src/components/cohort.js + test/; worker.js proxies /api/* to the cohort API
@@ -64,6 +65,8 @@ systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
 - **De-identification is a seam.** Changes to `deid.py`, the PHI column lists, id hashing, date
   shifting or the leak assert must keep `research_id` stable for the same key and same patient
   (downstream cohort lists depend on it). They need a test in `tests/test_pipeline.py`.
+- **`TEST_DATABASE_URL` must point at a throwaway Postgres:** the tests drop and recreate the
+  schema. Without it the saved-cohort tests skip.
 - **Keys and data are never touched by agents.** `$DATA/.db_key_phi`, `.db_key` and `.deid_key`
   are not regenerable: losing `.deid_key` changes every id. Never delete, rotate, move or read
   them into output. Never commit `.env`, `*.duckdb*`, key files or `.duckdb_init_*` (they're
@@ -95,6 +98,7 @@ systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
 uv sync                             # root + mcp/ workspace member (via the root dev group)
 uv run pytest -q                    # ~10-30 s; real-DB tests skip when $DATA/genomics.duckdb is absent
 (cd dashboard && npm ci && npm test)   # cohort page helpers
+TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres uv run pytest -q   # also runs the Postgres tests (throwaway container, README)
 uvx ruff check src mcp tests        # advisory
 uv run genomics-cohort-api --auth none --static dashboard/dist --port 8091   # local cohort API + site
 uv run genomics-app --auth password --port 8092   # local cohort app: REST /api/* + MCP /mcp (APP_USER, APP_PASSWORD_HASH in .env)
@@ -103,7 +107,8 @@ uv run genomics-app --auth password --port 8092   # local cohort app: REST /api/
 `npm run build` in `dashboard/` needs the real de-id file (the loader queries it), so it only
 works on the pipeline host. CI (`.github/workflows/ci.yml`) runs `uv sync --locked`,
 `uv run pytest -q` and the dashboard `npm ci && npm test` on every PR and push to `main`; it has no
-`$DATA`, so real-DB tests skip there.
+`$DATA`, so real-DB tests skip there. The pytest job runs a Postgres service container
+(`TEST_DATABASE_URL`) for the saved-cohort tests.
 
 Tests build synthetic Caris JSON / FMI XML / DuckDB in temp dirs and need no network or
 credentials. On the pipeline host, `test_dashboard_loaders.py` and the cohort API's real-DB test

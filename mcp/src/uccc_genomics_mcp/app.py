@@ -12,8 +12,9 @@ import math
 import sys
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Annotated, Literal
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -22,13 +23,15 @@ from fastapi.staticfiles import StaticFiles
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PASSWORD_HASH, ACCESS_*)
-from uccc_genomics_mcp import authen, cohort
+from uccc_genomics_mcp import authen, cohort, saved
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
+from uccc_genomics_mcp.saved import (CohortVersion, Deleted, History, SavedCohort, SavedList, Snapshot,
+                                     Snapshots)
 from uccc_genomics_mcp.server import get_db
 
 Surface = Literal["rest", "mcp"]
@@ -38,7 +41,9 @@ INSTRUCTIONS = (
     "map the user's words to vocabulary values with search_vocabulary, then count it, or pivot it once its "
     "pivot is set. Counts are distinct patients. null means suppressed (1-4, or recoverable by subtraction), "
     "never zero. Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, "
-    "race or ethnicity.")
+    "race or ethnicity. Saved cohorts belong to the logged-in user: save_cohort, then edit with apply_saved_op "
+    "(each edit is a new revision; revert_saved_cohort undoes). Saved cohorts hold no counts; count the head "
+    "definition. Snapshots store the suppressed count with its data date for grant text.")
 
 
 # --- auth ----------------------------------------------------------------------------------------
@@ -92,6 +97,14 @@ class ApplyRequest(BaseModel):
 class ApplyResult(BaseModel):
     definition: Definition
     cohort_id: str
+
+
+class SavedApplyRequest(BaseModel):
+    op: Operation
+
+
+class RevertRequest(BaseModel):
+    to: int = Field(ge=1)
 
 
 class Option(BaseModel):
@@ -182,7 +195,27 @@ def run_schema() -> SchemaInfo:
                       min_cell=cohort.MIN_CELL)
 
 
+async def run_save(email: str, d: Definition) -> SavedCohort:
+    await run_in_threadpool(lambda: cohort.vocabulary().check(d))
+    return await saved.create(email, d)
+
+
+async def run_saved_apply(email: str, id: uuid.UUID, op: Operation) -> SavedCohort:
+    c = await saved.get(email, id)
+    new = await run_in_threadpool(lambda: cohort.apply(c.head.definition, op, cohort.vocabulary()))
+    return await saved.append(email, id, new, op.model_dump(mode="json", by_alias=True), after=c.head.seq)
+
+
+async def run_snapshot(email: str, surface: Surface, id: uuid.UUID) -> Snapshot:
+    c = await saved.get(email, id)
+    day = cohort.data_date()
+    result = await run_in_threadpool(run_count, email, surface, c.head.definition)   # rate-limited + audited
+    return await saved.add_snapshot(email, c.head.definition, day, result)
+
+
 # --- MCP -----------------------------------------------------------------------------------------
+
+TOOL_ERRORS = (DefinitionError, RateLimited, saved.NotFound, saved.Conflict, saved.Unavailable)
 
 mcp_app = MCPServer(name="uccc-genomics-app", title="UCCC genomics cohort tools",
                     description="Floored patient counts over de-identified UCCC Caris + FMI reports",
@@ -214,7 +247,7 @@ def count(definition: Definition, ctx: Context) -> CountResult:
     a cohort too small to show, which criterion to loosen. null means suppressed, never zero."""
     try:
         return run_count(_mcp_user(ctx), "mcp", definition)
-    except (DefinitionError, RateLimited) as e:
+    except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
 
@@ -224,7 +257,7 @@ def pivot(definition: Definition, ctx: Context) -> PivotResult:
     with apply_op). null cells are suppressed, never zero."""
     try:
         return run_pivot(_mcp_user(ctx), "mcp", definition)
-    except (DefinitionError, RateLimited) as e:
+    except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
 
@@ -234,6 +267,100 @@ def describe_definition(ctx: Context) -> SchemaInfo:
     cut points and the minimum cell size."""
     _mcp_user(ctx)
     return run_schema()
+
+
+@mcp_app.tool()
+async def save_cohort(definition: Definition, ctx: Context) -> SavedCohort:
+    """Save a cohort definition as a new saved cohort of the logged-in user (revision 1)."""
+    try:
+        return await run_save(_mcp_user(ctx), definition)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def list_saved_cohorts(ctx: Context) -> SavedList:
+    """The logged-in user's saved cohorts with their current definition, most recently edited first."""
+    try:
+        return await saved.list_cohorts(_mcp_user(ctx))
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def get_saved_cohort(id: uuid.UUID, ctx: Context) -> SavedCohort:
+    """One saved cohort of the logged-in user, with its current (head) revision."""
+    try:
+        return await saved.get(_mcp_user(ctx), id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def apply_saved_op(id: uuid.UUID, op: Operation, ctx: Context) -> SavedCohort:
+    """Apply one edit operation to a saved cohort; the result is a new revision. Fails with the
+    offending field or criterion id if the result is invalid."""
+    try:
+        return await run_saved_apply(_mcp_user(ctx), id, op)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def saved_cohort_history(id: uuid.UUID, ctx: Context) -> History:
+    """Every revision of a saved cohort, oldest first, with the operation that made each."""
+    try:
+        return await saved.history(_mcp_user(ctx), id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def revert_saved_cohort(id: uuid.UUID, to: Annotated[int, Field(ge=1)], ctx: Context) -> SavedCohort:
+    """Make a saved cohort's definition equal to revision `to` again, as a new revision (history is kept)."""
+    try:
+        return await saved.revert(_mcp_user(ctx), id, to)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def snapshot_saved_cohort(id: uuid.UUID, ctx: Context) -> Snapshot:
+    """Count a saved cohort's current definition and store the suppressed result with the data date,
+    for a grant feasibility statement. Counts like `count`: rate-limited and audited."""
+    try:
+        return await run_snapshot(_mcp_user(ctx), "mcp", id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def delete_saved_cohort(id: uuid.UUID, ctx: Context) -> Deleted:
+    """Delete a saved cohort and its revisions. Snapshots already taken are kept."""
+    try:
+        return await saved.delete(_mcp_user(ctx), id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def list_snapshots(ctx: Context) -> Snapshots:
+    """The logged-in user's snapshots, newest first."""
+    try:
+        return await saved.list_snapshots(_mcp_user(ctx))
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def get_cohort_version(cohort_id: str, ctx: Context) -> CohortVersion:
+    """Resolve a shared cohort_id to the definition that selects its patients (no name or view
+    settings), to save as your own copy. Any logged-in user may resolve any cohort_id."""
+    try:
+        _mcp_user(ctx)
+        return await saved.get_version(cohort_id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
 
 
 # --- app -----------------------------------------------------------------------------------------
@@ -246,8 +373,14 @@ def app(static_dir: str | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        async with manager.run():
-            yield
+        url = saved.database_url()
+        if url is not None:
+            saved.start(url)
+        try:
+            async with manager.run():
+                yield
+        finally:
+            await saved.stop()
 
     application = FastAPI(title="UCCC genomics cohort app", lifespan=lifespan, openapi_url="/api/openapi.json",
                           docs_url="/api/docs", redoc_url=None)
@@ -259,6 +392,18 @@ def app(static_dir: str | None = None) -> FastAPI:
     @application.exception_handler(RateLimited)
     def rate_limited(request: Request, e: RateLimited):
         return JSONResponse({"detail": str(e)}, status_code=429, headers={"Retry-After": str(e.retry_after)})
+
+    @application.exception_handler(saved.NotFound)
+    def saved_not_found(request: Request, e: saved.NotFound):
+        return JSONResponse({"detail": str(e)}, status_code=404)
+
+    @application.exception_handler(saved.Conflict)
+    def saved_conflict(request: Request, e: saved.Conflict):
+        return JSONResponse({"detail": str(e)}, status_code=409)
+
+    @application.exception_handler(saved.Unavailable)
+    def saved_unavailable(request: Request, e: saved.Unavailable):
+        return JSONResponse({"detail": str(e)}, status_code=503)
 
     @application.post("/api/cohort")
     def post_cohort(d: Definition, email: str = Depends(user)) -> CountResult:
@@ -279,6 +424,46 @@ def app(static_dir: str | None = None) -> FastAPI:
     @application.get("/api/schema")
     def get_schema(email: str = Depends(user)) -> SchemaInfo:
         return run_schema()
+
+    @application.post("/api/saved")
+    async def post_saved(d: Definition, email: str = Depends(user)) -> SavedCohort:
+        return await run_save(email, d)
+
+    @application.get("/api/saved")
+    async def get_saved_list(email: str = Depends(user)) -> SavedList:
+        return await saved.list_cohorts(email)
+
+    @application.get("/api/saved/{id}")
+    async def get_saved(id: uuid.UUID, email: str = Depends(user)) -> SavedCohort:
+        return await saved.get(email, id)
+
+    @application.post("/api/saved/{id}/apply")
+    async def post_saved_apply(id: uuid.UUID, body: SavedApplyRequest, email: str = Depends(user)) -> SavedCohort:
+        return await run_saved_apply(email, id, body.op)
+
+    @application.get("/api/saved/{id}/history")
+    async def get_saved_history(id: uuid.UUID, email: str = Depends(user)) -> History:
+        return await saved.history(email, id)
+
+    @application.post("/api/saved/{id}/revert")
+    async def post_saved_revert(id: uuid.UUID, body: RevertRequest, email: str = Depends(user)) -> SavedCohort:
+        return await saved.revert(email, id, body.to)
+
+    @application.post("/api/saved/{id}/snapshot")
+    async def post_saved_snapshot(id: uuid.UUID, email: str = Depends(user)) -> Snapshot:
+        return await run_snapshot(email, "rest", id)
+
+    @application.delete("/api/saved/{id}")
+    async def delete_saved(id: uuid.UUID, email: str = Depends(user)) -> Deleted:
+        return await saved.delete(email, id)
+
+    @application.get("/api/snapshots")
+    async def get_snapshots(email: str = Depends(user)) -> Snapshots:
+        return await saved.list_snapshots(email)
+
+    @application.get("/api/versions/{cohort_id}")
+    async def get_version(cohort_id: str, email: str = Depends(user)) -> CohortVersion:
+        return await saved.get_version(cohort_id)
 
     @application.get("/api/health")
     def health():
