@@ -5,6 +5,7 @@ description = "MCP (v2) server for UCCC de-identified genomics DuckDB"
 requires-python = ">=3.12"
 dependencies = [
     "mcp>=2.1.0",
+    "fastapi>=0.162",
     "duckdb>=1.5.5",
     "pydantic>=2.11",
     "uccc-genomics-db",
@@ -13,6 +14,7 @@ dependencies = [
 [project.scripts]
 genomics-mcp = "uccc_genomics_mcp.server:main"
 genomics-cohort-api = "uccc_genomics_mcp.cohort_api:main"
+genomics-app = "uccc_genomics_mcp.app:main"
 
 [build-system]
 requires = ["hatchling"]
