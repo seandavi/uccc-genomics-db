@@ -135,7 +135,7 @@ class SchemaInfo(BaseModel):
 RATE_LIMIT = 60        # count + pivot calls per user per RATE_WINDOW, REST and MCP together
 RATE_WINDOW = 60.0     # seconds
 # ponytail: in-process, per user, reset on restart; per-process limits multiply with more than one
-# worker. Move to Postgres or Redis with the saved-cohorts work.
+# worker. Move to Postgres (saved.py's database) or Redis when more than one worker runs.
 _calls: dict[str, collections.deque[float]] = {}
 _calls_lock = threading.Lock()
 
