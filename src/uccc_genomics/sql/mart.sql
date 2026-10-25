@@ -42,7 +42,8 @@ SELECT research_id, vendor, report_id, year, year_complete, sex, age,
 FROM base
 ORDER BY vendor, report_id;
 
--- One row per finding; arms are positional (UNION ALL), columns as in the SELECT list of the first arm.
+-- One row per finding; arms are UNION ALL BY NAME: every arm aliases the columns it fills and
+-- the rest are NULL, so a swapped sub/val or key/sub can't load into the wrong column.
 -- kind/key/sub/val/num/unit/tier mean different things per kind (README Schemas).
 -- Gene-keyed arms drop NULL / 'N/A' / '' genes as cohort_api.ALT does. unit is NULL whenever num is.
 CREATE OR REPLACE TABLE mart.fact AS
@@ -52,52 +53,56 @@ FROM (
   -- Every tier is kept, benign included; the compiler's tier[] default (pathogenic,
   -- likely_pathogenic) is what keeps benign out of a count. A tier filter applies to sub = 'mutation' only.
   SELECT research_id, vendor, report_id, 'alteration' AS kind, gene AS key, 'mutation' AS sub,
-         regexp_replace(hgvs_p, '^p\.', '') AS val, NULL::DOUBLE AS num, NULL::VARCHAR AS unit, tier
+         regexp_replace(hgvs_p, '^p\.', '') AS val, tier
   FROM unified.variant WHERE gene IS NOT NULL AND gene NOT IN ('N/A', '')
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'alteration', gene, cn_type, NULL, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'alteration' AS kind, gene AS key, cn_type AS sub
   FROM unified.cna WHERE cn_type IN ('amplification', 'loss') AND gene IS NOT NULL AND gene NOT IN ('N/A', '')
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'alteration', gene1, 'fusion', gene2, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'alteration' AS kind, gene1 AS key, 'fusion' AS sub, gene2 AS val
   FROM unified.fusion WHERE gene1 IS NOT NULL AND gene1 NOT IN ('N/A', '')
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'alteration', gene2, 'fusion', gene1, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'alteration' AS kind, gene2 AS key, 'fusion' AS sub, gene1 AS val
   FROM unified.fusion WHERE gene2 IS NOT NULL AND gene2 <> gene1 AND gene2 NOT IN ('N/A', '')
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'biomarker', name, NULL, call_norm, value,
-         CASE name WHEN 'TMB' THEN 'mut/Mb' WHEN 'LOH' THEN '%' END, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'biomarker' AS kind, name AS key, call_norm AS val, value AS num,
+         CASE name WHEN 'TMB' THEN 'mut/Mb' WHEN 'LOH' THEN '%' END AS unit
   FROM unified.biomarker WHERE name IN ('TMB', 'MSI', 'LOH')
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'ihc', name, clone, call_norm, value, unit, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'ihc' AS kind, name AS key, clone AS sub, call_norm AS val,
+         value AS num, unit
   FROM unified.biomarker WHERE vendor = 'caris' AND name NOT IN ('TMB', 'MSI', 'LOH')
-  UNION ALL
-  SELECT r.research_id, 'caris', r.case_id, 'expression', e.gene, NULL, NULL, e.tpm_percentile, 'percentile', NULL
+  UNION ALL BY NAME
+  SELECT r.research_id, 'caris' AS vendor, r.case_id AS report_id, 'expression' AS kind, e.gene AS key,
+         e.tpm_percentile AS num, 'percentile' AS unit
   FROM caris.wts_expression e JOIN caris.report r USING (case_id)
   WHERE e.tpm_percentile IS NOT NULL AND e.gene IS NOT NULL AND e.gene NOT IN ('N/A', '')
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'tested_negative', gene, evidence, NULL, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'tested_negative' AS kind, gene AS key, evidence AS sub
   FROM unified.gene_tested WHERE gene IS NOT NULL AND gene NOT IN ('N/A', '')
-  UNION ALL
-  SELECT r.research_id, 'caris', r.case_id, 'actionability', 'caris_level1', t.biomarker, lower(t.therapy), NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT r.research_id, 'caris' AS vendor, r.case_id AS report_id, 'actionability' AS kind,
+         'caris_level1' AS key, t.biomarker AS sub, lower(t.therapy) AS val
   FROM caris.therapy t JOIN caris.report r USING (case_id)
   WHERE lower(t.level) = 'level 1' AND lower(t.association) = 'benefit'
-  UNION ALL
-  SELECT r.research_id, 'fmi', r.report_id, 'actionability', 'fmi_fda_any_indication', t.gene,
-         lower(coalesce(t.generic_name, t.name)), NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT r.research_id, 'fmi' AS vendor, r.report_id, 'actionability' AS kind,
+         'fmi_fda_any_indication' AS key, t.gene AS sub, lower(coalesce(t.generic_name, t.name)) AS val
   FROM fmi.therapy t JOIN fmi.report r USING (report_id)
   WHERE t.fda_approved AND lower(t.effect) = 'sensitizing' AND t.include IS NOT false
-  UNION ALL
-  SELECT r.research_id, 'fmi', r.report_id, 'actionability', 'fmi_trial', t.gene, t.nct_id, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT r.research_id, 'fmi' AS vendor, r.report_id, 'actionability' AS kind, 'fmi_trial' AS key,
+         t.gene AS sub, t.nct_id AS val
   FROM fmi.trial t JOIN fmi.report r USING (report_id)
   WHERE t.nct_id IS NOT NULL AND t.include IS NOT false
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'specimen', 'site_type', NULL, site_type, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'specimen' AS kind, 'site_type' AS key, site_type AS val
   FROM mart.report WHERE site_type IS NOT NULL
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'specimen', 'site', NULL, site, NULL, NULL, NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'specimen' AS kind, 'site' AS key, site AS val
   FROM mart.report WHERE site IS NOT NULL
-  UNION ALL
-  SELECT research_id, vendor, report_id, 'specimen', 'purity', NULL, NULL, purity, '%', NULL
+  UNION ALL BY NAME
+  SELECT research_id, vendor, report_id, 'specimen' AS kind, 'purity' AS key, purity AS num, '%' AS unit
   FROM mart.report WHERE purity IS NOT NULL
 )
 ORDER BY kind, key, research_id;

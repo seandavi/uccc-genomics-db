@@ -111,9 +111,17 @@ from `UNION ALL BY NAME`. Source: Caris JSON `expressionAlteration.biomarkerName
 -- reads them on every request. Built by deid.py from unified.* / vendor schemas after unified.sql.
 CREATE SCHEMA IF NOT EXISTS mart;
 CREATE OR REPLACE TABLE mart.report AS ... ORDER BY vendor, report_id;
-CREATE OR REPLACE TABLE mart.fact AS SELECT DISTINCT * FROM ( <arms below, UNION ALL BY NAME> )
+CREATE OR REPLACE TABLE mart.fact AS
+SELECT DISTINCT research_id, vendor, report_id, kind, key, sub, val, num::DOUBLE AS num,
+       CASE WHEN num IS NOT NULL THEN unit END AS unit, tier
+FROM ( <arms below, UNION ALL BY NAME> )
 ORDER BY kind, key, research_id;
 ```
+
+Each arm aliases (`AS kind`, `AS key`, …) only the columns it fills; the rest come out NULL, and
+a column is matched by name, so a swapped `sub`/`val` cannot load into the wrong column. New arms
+follow the same pattern. The outer `SELECT` casts `num` to DOUBLE and nulls `unit` whenever `num`
+is NULL (a Caris PD-L1 record with no score arrives as `value` NULL, `unit` `'% stained'`).
 
 DuckDB preserves insertion order in `CREATE TABLE AS … ORDER BY`. Sorting on `kind, key` keeps
 each kind/key in a few row groups, so the zonemaps skip the rest. `SELECT DISTINCT` removes
