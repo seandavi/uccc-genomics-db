@@ -531,7 +531,8 @@ def test_vocabulary_has_no_small_numbers_and_no_ids(cohort_db):
     for k, v in walk(vocabulary().model_dump()):
         assert not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 4), (k, v)
         assert not (isinstance(v, str) and v in cohort_db["ids"]), (k, v)
-    assert all(e.patients is None if e.parent else e.patients >= MIN_CELL for e in vocabulary().entries)
+    assert all(e.patients >= MIN_CELL for e in vocabulary().entries)        # kept to rank search
+    assert all("patients" not in e for e in vocabulary().model_dump()["entries"])
 
 
 # --- definition ---------------------------------------------------------------------------------------
@@ -687,7 +688,7 @@ def test_data_notes():
 
 def test_vocabulary_floor_and_check(cohort_db):
     v = vocabulary()
-    assert all(e.patients is None if e.parent else e.patients >= MIN_CELL for e in v.entries)
+    assert all(e.patients >= MIN_CELL for e in v.entries)
     assert v.years == (2022, 2025)
     assert "THYM" not in v.allowed("population.oncotree") and "NSCLC" in v.allowed("population.oncotree")
     assert "positive" not in v.allowed("ihc.call", "ERBB2 (Her2/Neu)") and "positive" in v.allowed("ihc.call", "ER")

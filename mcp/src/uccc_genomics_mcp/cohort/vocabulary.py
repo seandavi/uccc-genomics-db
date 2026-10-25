@@ -5,7 +5,7 @@ larger value and recovered by differencing.
 """
 from functools import cached_property
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .definition import CUT_POINTS, POP_DIMS, Definition, DefinitionError
 from .suppress import MIN_CELL
@@ -38,7 +38,9 @@ class VocabEntry(BaseModel):
     field: str            # e.g. "population.oncotree", "alteration.aa"
     parent: str | None    # alteration.aa -> gene; biomarker.call -> name; ihc.clone/ihc.call -> marker
     value: str
-    patients: int | None  # floor()ed, >= MIN_CELL; None when parent is set (see queries.vocabulary)
+    # floor()ed, >= MIN_CELL; ranks `search` only and is never serialised: any shown count lets a
+    # nested pair (a parent and its children, organ and oncotree) give back a floored-out value.
+    patients: int = Field(exclude=True)
 
 
 class Vocabulary(BaseModel):
@@ -104,7 +106,7 @@ class Vocabulary(BaseModel):
 
         def rank(e: VocabEntry):
             v = e.value.lower()
-            return (v != q, not v.startswith(q), -(e.patients or 0), e.value)
+            return (v != q, not v.startswith(q), -e.patients, e.value)
 
         return sorted((e for e in self.entries if q in e.value.lower()), key=rank)[:limit]
 

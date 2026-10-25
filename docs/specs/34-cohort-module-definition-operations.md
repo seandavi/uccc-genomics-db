@@ -101,10 +101,15 @@ mart, and the suppression tests pass.
     it would remove the answer. It is accepted under the audit log like differencing across
     queries (§3.6 of `COHORT_DISCOVERY.md`). Everything else in one result (a list, a pivot, the
     funnel, the loosen suggestions) is closed under subtraction.
-14. **The vocabulary shows `patients` only for entries without a parent.** A parent's count
-    minus the sum of its shown children would recover the floored-out children (a marker's
-    count minus its shown calls). Children (`alteration.aa`, `biomarker.call`, `ihc.clone`,
-    `ihc.call`) carry `patients = None`; they are offered, validated and ranked alphabetically.
+14. **The vocabulary never serialises `patients`.** Any shown count lets one list be
+    subtracted from a list it is nested in: a parent's count minus its shown children (a
+    marker's count minus its shown calls), an organ minus its shown OncoTree codes (the
+    crosswalk is public), or one `population.<d>` total against another. Each gives back a
+    floored-out value of 1–4. Keying the rule on a declared `parent` left the organ/OncoTree
+    pair open, so no count is sent at all. `VocabEntry.patients` is `Field(exclude=True)`: it
+    is kept to rank `search` (exact, prefix, then count, then alphabetical) and is absent from
+    `model_dump()`. Counts for typeahead can return only with a rule that closes every nested
+    pair.
 
 Docs to update: `COHORT_DISCOVERY.md` §3.1 needs a short "Phase 1 (#34)" paragraph listing
 items 2–9 and 11, the `any_of` row, and the example JSON with `age_band`, `"measure": "TPS"`,
@@ -363,7 +368,7 @@ class VocabEntry(BaseModel):
     field: str            # e.g. "population.oncotree", "alteration.aa"
     parent: str | None    # alteration.aa -> gene; biomarker.call -> name; ihc.clone/ihc.call -> marker
     value: str
-    patients: int | None  # floor()ed, >= MIN_CELL; None when parent is set (deviation 14)
+    patients: int = Field(exclude=True)  # floor()ed, >= MIN_CELL; ranks search, never serialised (deviation 14)
 
 class Vocabulary(BaseModel):
     entries: list[VocabEntry]
@@ -395,7 +400,7 @@ benign mutation rows (`NOT (kind = 'alteration' AND sub = 'mutation' AND tier = 
 | `specimen.site` | NULL | `val` | `f` where `kind = 'specimen' AND key = 'site'` |
 | `actionability.evidence` | NULL | `key` | `f` where `kind = 'actionability'` |
 
-`patients` is `count(DISTINCT research_id)`, passed through `floor()` when building entries.
+`patients` is `count(DISTINCT research_id)`, passed through `floor()` when building entries, and excluded from serialisation (deviation 14).
 `years` comes from `SELECT min(year), max(year) FROM mart.report`. The floor also keeps rare
 vendor free text (`specimen.site`) out of the vocabulary.
 
@@ -660,7 +665,7 @@ line rule, the funnel delta rule and the whole-cohort rule. Loosen counts also p
 rule against the cohort and every funnel step. The §3.6 multi-select (union) differencing stays as it is in phase 1:
 accepted under the audit log that the REST layer writes, as is a breakdown cell against its
 denominator (deviation 13). Pivot labels from `sub`/`val` axes are folded to `other` below 5
-patients (deviation 7), and the vocabulary offers counts only for parentless entries (deviation 14). Tests pin all of this (below).
+patients (deviation 7), and the vocabulary sends no counts (deviation 14). Tests pin all of this (below).
 
 `research_id`/`report_id`: unaffected. The package reads them inside SQL only. It adds no hash,
 key or hash input, and returns no ids.
@@ -687,8 +692,8 @@ key or hash input, and returns no ids.
 - [ ] Every operation works through `apply` with a dict op and leaves the input unchanged.
       `add_criterion` assigns `c{max+1}`. `remove_criterion` clears a pivot that references
       it. Unknown ids and duplicate ids raise `DefinitionError`.
-- [ ] `Vocabulary` on the synthetic mart: every parentless entry has `patients >= 5` and every
-      entry with a parent has `patients = None`; `THYM`, `positive`
+- [ ] `Vocabulary` on the synthetic mart: every entry has `patients >= 5` internally, and
+      `model_dump()` carries no `patients` key; `THYM`, `positive`
       under `ERBB2 (Her2/Neu)` and `G13D` are absent; `check` rejects them, naming the field.
       `search("erbb2")` returns `alteration.gene ERBB2` and `ihc.marker ERBB2 (Her2/Neu)`.
 - [ ] `compile`/`compile_pivot` raise `DefinitionError` for a pivot axis, criterion axis or
@@ -803,7 +808,7 @@ BRCA 15, CHOL 15, PAAD 15, MEL 10, OV 10, THYM 2.
   pivot where set) plus the suppression definitions. Walk each `result.model_dump()` as
   `tests/test_cohort_api.py::walk` does: no key `research_id`/`report_id`, no non-bool `int`
   from 1 to 4, and no string in the set of fixture research_ids and report_ids. Also walk
-  `vocabulary().model_dump()`: every parentless entry `patients >= 5`, children `None`, no fixture id.
+  `vocabulary().model_dump()`: no `patients` key in any entry, no fixture id.
 
 ### Definition, operation, vocabulary and compile tests
 
