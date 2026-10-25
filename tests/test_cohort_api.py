@@ -23,6 +23,7 @@ from starlette.testclient import TestClient
 from uccc_genomics.config import DEID_DB
 from conftest import deid_lacks_tier
 from uccc_genomics_mcp import authen, cohort_api, server
+from uccc_genomics_mcp.cohort import suppress
 
 
 def build(path):
@@ -71,6 +72,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(cohort_api, "DEID_DB", path)
     monkeypatch.setattr(cohort_api, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
     monkeypatch.setattr(cohort_api, "_vocab", {"mtime": None})
+    monkeypatch.setattr(suppress, "ROUND", 1)
     return TestClient(cohort_api.app())
 
 

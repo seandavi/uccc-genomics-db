@@ -46,8 +46,12 @@ and the decisions behind it. Tracking issue: #23.
    against today's data, except grant snapshots, which store counts with the data date. Tables
    (#36, Alembic migrations, URL from `DATABASE_URL`): `cohort_version` (content-addressed),
    `cohort`, `cohort_revision` (append-only chain; revert appends a copy) and `snapshot` (the
-   suppressed `CountResult`). Every read and write is scoped to the owner. The query audit log
-   stays one JSON line on stdout for now; moving it to Postgres is a later issue.
+   suppressed `CountResult`). Every read and write is scoped to the owner. The exception is
+   `cohort_version`: any logged-in user can resolve a `cohort_id`, so the lookup shows whether
+   anyone has saved a given definition (an existence oracle). That is accepted: users are
+   campus-only and no patient data or counts are revealed, and a keyed `cohort_id` would mean
+   another key file to manage. Revisit if the audience widens (#56). The query audit log stays one
+   JSON line on stdout for now; moving it to Postgres is a later issue.
 8. **Auth behind `authen.user(request)`.** Backends today: `access` (Cloudflare Access JWT),
    `password` (one local account, while developing), `none`. Zitadel (OIDC, campus email
    required, checked again in the backend) becomes another backend; callers do not change.

@@ -434,7 +434,7 @@ The phase 1 controls in `COHORT_TOOL.md` stay as they are. New exposure:
 | Breakdown cell against its denominator | The cell is nested in the population count, so both shown give the patients with that value who miss the criteria (questions 4 and 20 are this ratio). | Accepted under the audit log, like differencing across queries. Everything else in one result is closed under subtraction. |
 | Pivot labels from `sub`/`val` axes | They are vendor free text (protein change, fusion partner, therapy name) that the vocabulary floor keeps out. | A label held by fewer than 5 cohort patients becomes `other`; `key` axes are vocabulary values the caller chose. |
 | Vocabulary counts | Any shown count lets a nested list (a parent and its children, organ and OncoTree code) give back a floored-out value by subtraction. | No counts are returned; the floor decides which values appear and counts only rank search. |
-| `loosen[]` suggestions | Each suggestion is itself a count. | Each one is an ordinary floored cohort query and is logged like any other. |
+| `loosen[]` suggestions | Each suggestion is itself a count. | Floored; shown only if at least 5 above the current cohort's raw count, not 1 to 4 from a shown funnel step and not equal to a hidden one (§3.3); logged with the `count` request that computed it. |
 | Chat | Prompts and counts leave the host. | Only floored counts; audit log; open question 2. |
 
 ## 4. Phases
