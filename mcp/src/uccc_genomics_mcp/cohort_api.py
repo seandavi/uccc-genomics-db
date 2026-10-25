@@ -17,10 +17,9 @@ from starlette.routing import Mount, Route
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (ACCESS_TEAM, ACCESS_AUD, COHORT_ROUND)
 from uccc_genomics_mcp import authen
+from uccc_genomics_mcp.cohort.suppress import MIN_CELL, floor
 from uccc_genomics_mcp.server import DEID_DB, get_db
 
-MIN_CELL = 5
-ROUND = int(os.environ.get("COHORT_ROUND", "1"))  # 5 rounds every cleared count to the nearest 5 (open question 1)
 COUNT_KEYS = ("patients", "reports", "tested")
 LIST_PARAMS = ("disease", "organ", "sex", "age", "vendor", "assay_class", "gene", "alt_class", "aa")
 AGE_BANDS = ["<50", "50-64", "65-74", "75+", "unknown"]
@@ -190,14 +189,6 @@ def run(p: dict) -> dict:
     for k in ("by_disease", "by_vendor_class", "by_sex", "by_age", "by_alt_class"):
         out[k].sort(key=lambda r: -r["patients"])
     return out
-
-
-def floor(n):
-    if n is None or n == 0:
-        return n
-    if n < MIN_CELL:
-        return None
-    return max(MIN_CELL, ROUND * round(n / ROUND))
 
 
 def suppress(out: dict) -> dict:

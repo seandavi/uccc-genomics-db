@@ -23,3 +23,22 @@ def deid_lacks_tier():
             con.close()
     except (duckdb.Error, OSError):
         return False
+
+
+def deid_lacks_mart():
+    """True while the real de-id file has no `mart.fact` (#33), until the next daily rebuild.
+
+    Same collection-time guard as `deid_lacks_tier`: a file that can't be opened returns False.
+    """
+    if not os.path.exists(DEID_DB):
+        return False
+    from uccc_genomics_mcp import server
+    try:
+        con = server.get_db()
+        try:
+            return not con.execute("SELECT 1 FROM information_schema.tables "
+                                   "WHERE table_schema = 'mart' AND table_name = 'fact'").fetchall()
+        finally:
+            con.close()
+    except (duckdb.Error, OSError):
+        return False

@@ -147,17 +147,17 @@ serialise it. Neither the browser nor the LLM ever sends SQL.
 {
   "name": "KRAS G12C NSCLC, no STK11/KEAP1, PD-L1 high, 2023+",
   "population": {
-    "oncotree": ["NSCLC"], "sex": [], "age": [], "vendor": [],
+    "oncotree": ["NSCLC"], "sex": [], "age_band": [], "vendor": [],
     "assay_class": [], "years": [2023, 2026]
   },
   "criteria": [
     {"id": "c1", "kind": "alteration", "gene": ["KRAS"], "aa": ["G12C"], "tier": ["pathogenic", "likely_pathogenic"]},
-    {"id": "c2", "kind": "alteration", "gene": ["STK11", "KEAP1"], "mode": "exclude"},
-    {"id": "c3", "kind": "ihc", "marker": "PD-L1", "measure": "tps", "at_least": 50}
+    {"id": "c2", "kind": "alteration", "gene": ["STK11", "KEAP1"], "mode": "exclude"},   // phase 2
+    {"id": "c3", "kind": "ihc", "marker": "PD-L1", "measure": "TPS", "at_least": 50}
   ],
   "scope": "patient",
-  "breakdown": ["year", "vendor_class"],
-  "pivot": {"rows": "oncotree", "cols": "c1"}
+  "breakdown": ["oncotree", "has_wts"],
+  "pivot": {"rows": "oncotree", "cols": "year"}
 }
 ```
 
@@ -178,6 +178,31 @@ Rules:
   20, 30, 50). Free numbers would allow probing by sliding a threshold one
   patient at a time.
 
+**Phase 1 (#34)** implements the definition in `mcp/src/uccc_genomics_mcp/cohort/`
+(`docs/specs/34-cohort-module-definition-operations.md`). It differs from the text above in
+these ways:
+
+- `any_of` is a new kind: OR across modalities (2–8 leaf criteria, one funnel step), for
+  questions 4, 6 and 7.
+- `age` is `age_band` (the `mart.report` column), and `organ` is a population field.
+- `ihc.measure` is `TPS` or `CPS`, the mart's `unit` spelling. `% stained` has no cut points, so it is not a measure.
+- `expression.gene` is a list (values OR), like `alteration.gene`.
+- Breakdown dimensions are `oncotree`, `organ`, `sex`, `age_band`, `vendor`, `assay_class`,
+  `site_type` and `has_wts`. `by_year` is always returned, so `year` is not a breakdown, and
+  there is no `vendor_class` (pivot `vendor` × `assay_class`).
+- Pivot axes are a dimension (or `year`), or `c<n>.key|sub|val`: the matched fact's column.
+  There is no yes/no criterion axis; its "no" side is exclusion (phase 2).
+- Question 16's RNA part comes from the `has_wts` breakdown, because `data` is phase 2.
+- A criterion with no value filter means "has any result of this kind" (an `ihc` without
+  `call`, a `biomarker` without `call`), which restricts the cohort to tested patients.
+- `cohort_id` covers `version`, `population`, `scope` and the criteria, not the name,
+  breakdown, pivot, criterion ids or order.
+- "Any of the patient's reports" means any of the patient's *in-population* reports. The accrual
+  year is the latest, over the criteria, of the earliest matching year.
+- Pivot suppression runs on both axes to a fixed point, and also hides a row or column total when
+  its one hidden cell would otherwise equal it (the rest of the line being zeros).
+- Phase 2 and rejected with a clear error: `exclude`, `tested_negative`, `scope: "report"`, `sequence`, `data`.
+
 Criterion kinds and the questions they serve:
 
 | kind | fields | questions |
@@ -189,6 +214,7 @@ Criterion kinds and the questions they serve:
 | `specimen` | site_type[], site[], purity_at_least | 15, 16 |
 | `data` | has (wts, liquid, tissue, both_vendors, serial) | 14, 16, 17, 18 |
 | `actionability` | evidence (caris_level1, fmi_fda_any_indication, fmi_trial) | 20 |
+| `any_of` | of[] (2–8 leaf criteria above, OR) | 4, 6, 7 |
 | `sequence` (phase 2) | first, then, min_gap_days? | 14 |
 
 ### 3.2 The mart behind it
@@ -263,8 +289,9 @@ assistant collapses into a drawer below 1,200 px.
 criterion is a card with an include, exclude or tested-negative toggle and a
 "same report" lock. "Add criterion" is a typeahead over the whole
 vocabulary: typing "her2" offers *IHC HER2 call*, *ERBB2 amplification* and
-*ERBB2 mutation*, each with its patient count. Genes show their common
-protein changes ("KRAS: G12D 240, G12V 180, G12C 60 …"). Dragging a card
+*ERBB2 mutation*, ranked by how many patients they match but shown without
+counts (§3.6). Genes list their common protein changes in that order ("KRAS:
+G12D, G12V, G12C …"). Dragging a card
 reorders the funnel.
 
 **Centre: answer.**
@@ -294,7 +321,11 @@ reorders the funnel.
   the cheapest way to loosen the cohort, computed from the funnel: which
   single criterion, if dropped or widened, brings the count back above the
   floor (for example "drop PD-L1 TPS ≥ 50 → 6"). These are ordinary cohort
-  queries, so they need no new privacy review.
+  queries, so they need no new privacy review. A suggestion is shown only if
+  its count is at least 5, at least 5 above the current cohort's raw count,
+  and not 1 to 4 away from a shown funnel step or equal to a hidden one;
+  otherwise it could reveal a count the funnel's delta rule hid.
+  Phase 1 offers "drop" only.
 
 **Top bar.**
 
@@ -319,7 +350,7 @@ endpoints the page uses, so it cannot see more than a user clicking could.
 
 | Tool | Endpoint | Purpose |
 |---|---|---|
-| `search_vocabulary(text)` | `GET /api/options?q=` | map "HER2-low", "dMMR", "TROP2" to vocabulary values; returns floored counts |
+| `search_vocabulary(text)` | `GET /api/options?q=` | map "HER2-low", "dMMR", "TROP2" to vocabulary values; returns floored vocabulary values, no counts (§3.6) |
 | `count(definition)` | `POST /api/cohort` | the funnel, cards and breakdowns |
 | `pivot(definition, rows, cols)` | `POST /api/pivot` | cross-tabs |
 | `data_notes(definition)` | part of the `/api/cohort` response | coverage and caveats to quote |
@@ -379,6 +410,9 @@ The phase 1 controls in `COHORT_TOOL.md` stay as they are. New exposure:
 | Pivot | A cell can be recovered from row and column totals. | Secondary suppression along both axes (iterate until no row or column has exactly one hidden cell). |
 | Numeric thresholds | A sliding cut point can isolate one patient. | Fixed cut points only. |
 | Multi-select population (OR) | Adding one tumor type to a list exposes that type's own small count by subtraction. In the prototype, KRAS G12C since 2023 is 8 in NSCLC and 9 in NSCLC or pancreas, so pancreas contributes about 1. The phase 1 API has the same exposure through repeated `disease`. The vocabulary floor only removes tumor types with fewer than 5 patients overall, not ones whose count inside a cohort is small. | Open: apply the A ∧ ¬B rule to unions (show {A, B} only if {B} alone is 0 or at least 5 in the same cohort), or accept the risk under the audit log, as `COHORT_TOOL.md` does for differencing today. |
+| Breakdown cell against its denominator | The cell is nested in the population count, so both shown give the patients with that value who miss the criteria (questions 4 and 20 are this ratio). | Accepted under the audit log, like differencing across queries. Everything else in one result is closed under subtraction. |
+| Pivot labels from `sub`/`val` axes | They are vendor free text (protein change, fusion partner, therapy name) that the vocabulary floor keeps out. | A label held by fewer than 5 cohort patients becomes `other`; `key` axes are vocabulary values the caller chose. |
+| Vocabulary counts | Any shown count lets a nested list (a parent and its children, organ and OncoTree code) give back a floored-out value by subtraction. | No counts are returned; the floor decides which values appear and counts only rank search. |
 | `loosen[]` suggestions | Each suggestion is itself a count. | Each one is an ordinary floored cohort query and is logged like any other. |
 | Chat | Prompts and counts leave the host. | Only floored counts; audit log; open question 2. |
 
