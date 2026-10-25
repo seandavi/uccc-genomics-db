@@ -74,8 +74,8 @@ function tierSuffix(tier: string[]): string {
 }
 
 export const DATA_LABELS: Record<string, string> = {
-  wts: "Has whole-transcriptome sequencing", liquid: "Has a liquid biopsy", tissue: "Has tissue testing",
-  both_vendors: "Tested by both Caris and FMI", serial: "Two or more reports",
+  wts: "whole-transcriptome sequencing", liquid: "liquid biopsy", tissue: "tissue testing",
+  both_vendors: "testing by both Caris and FMI", serial: "serial reports (two or more)",
 };
 /** `data` has values that are per report; the other two are per patient. */
 export const REPORT_DATA = ["wts", "liquid", "tissue"];
@@ -83,6 +83,14 @@ export const REPORT_DATA = ["wts", "liquid", "tissue"];
 export const DATA_ENTRIES: Option[] = Object.keys(DATA_LABELS).map((value) => ({field: "data.has", parent: null, value}));
 export const dataEntries = (q: string): Option[] =>
   q.trim() === "" ? [] : DATA_ENTRIES.filter((e) => DATA_LABELS[e.value].toLowerCase().includes(q.trim().toLowerCase()));
+
+/** s with its first letter upper-cased, for a label that stands alone (a card heading). */
+export const capitalise = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Vocabulary entries a definition of this scope can add: report scope drops per-patient data. */
+export function forScope(entries: Option[], scope: Definition["scope"]): Option[] {
+  return scope === "report" ? entries.filter((e) => e.field !== "data.has" || REPORT_DATA.includes(e.value)) : entries;
+}
 
 const VENDOR_NAMES = {caris: "Caris", fmi: "FMI"} as const;
 

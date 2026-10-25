@@ -14,6 +14,24 @@ function loadHistory(): History {
   return {versions: [{n: 1, definition: EMPTY}], current: 0};
 }
 
+export function FeasibilityPanel({statement, copied, onCopy, onClose, textareaRef}: {
+  statement: string; copied: boolean; onCopy: () => void; onClose: () => void;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+}) {
+  return (
+    <section aria-label="Feasibility statement" className="panel">
+      {statement === ""
+        ? <p role="status">Recounting… the statement updates when the count is current.</p>
+        : <textarea readOnly aria-label="Feasibility statement" rows={6} value={statement} onFocus={(e) => e.currentTarget.select()} ref={textareaRef} />}
+      <div className="row">
+        <button type="button" disabled={statement === ""} onClick={onCopy}>Copy</button>
+        {copied && <span role="status">Copied</span>}
+        <button type="button" onClick={onClose}>Close</button>
+      </div>
+    </section>
+  );
+}
+
 export function App({transport}: {transport: Transport}) {
   const [hist, setHistState] = useState<History>(loadHistory);
   const histRef = useRef(hist);
@@ -125,8 +143,10 @@ export function App({transport}: {transport: Transport}) {
 
   const stale = !!answer && answer.d !== current;
   const statement = answer && !stale ? feasibility(answer.d, answer.r, answer.d.population.years ?? options?.years ?? null) : "";
+  useEffect(() => setStatementCopied(false), [statement]);
   const togglePanel = (p: "compare" | "feasibility") => { setPanel(panel === p ? null : p); setStatementCopied(false); };
   const copyStatement = async () => {
+    if (statement === "") return;
     if (navigator.clipboard) {
       try { await navigator.clipboard.writeText(statement); setStatementCopied(true); return; } catch { /* fall through */ }
     }
@@ -151,20 +171,15 @@ export function App({transport}: {transport: Transport}) {
         {copied && <span role="status">Link copied</span>}
         {link && <input readOnly aria-label="Share link" className="link" value={link} autoFocus onFocus={(e) => e.currentTarget.select()} />}
         <button type="button" aria-expanded={panel === "compare"} onClick={() => togglePanel("compare")}>Compare</button>
-        <button type="button" aria-expanded={panel === "feasibility"} disabled={!answer || stale}
+        <button type="button" aria-expanded={panel === "feasibility"} disabled={panel !== "feasibility" && (!answer || stale)}
           onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
       </header>
       {panel === "compare" && (
         <Compare versions={hist.versions} transport={transport} years={options?.years ?? null} onClose={() => setPanel(null)} />
       )}
       {panel === "feasibility" && (
-        <section aria-label="Feasibility statement" className="panel">
-          <textarea readOnly aria-label="Feasibility statement" rows={6} value={statement} onFocus={(e) => e.currentTarget.select()} ref={statementRef} />
-          <div className="row">
-            <button type="button" onClick={copyStatement}>Copy</button>
-            {statementCopied && <span role="status">Copied</span>}
-          </div>
-        </section>
+        <FeasibilityPanel statement={statement} copied={statementCopied} onCopy={copyStatement}
+          onClose={() => setPanel(null)} textareaRef={statementRef} />
       )}
       <div className="cols">
         <div className="col-builder">

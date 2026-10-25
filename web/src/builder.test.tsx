@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Builder, Checks, withoutMember } from "./Builder.tsx";
+import { AlterationEditor, Builder, Checks, withoutMember } from "./Builder.tsx";
 import { EMPTY } from "./cohort.ts";
 import type { Transport } from "./transport.ts";
 import type { Criterion, Definition } from "./types.ts";
@@ -51,20 +51,50 @@ describe("criterion cards", () => {
     const html = render({...EMPTY, criteria: [sequence]});
     expect(html).toContain("First report");
     expect(html).toContain("Later report");
-    expect(html).toContain("Has tissue testing");
-    expect(html).toContain("Has a liquid biopsy");
+    expect(html).toContain("Tissue testing");
+    expect(html).toContain("Liquid biopsy");
     expect(html).toContain("KRAS alteration");
     expect(html).not.toContain(">Edit</button>");
     expect(options(html, "c4")).toEqual(["include"]);
     // the only member of a side cannot be removed; the two-member side can lose one
-    expect(html).toMatch(/aria-label="Remove Has tissue testing from first report of c4" disabled=""/);
-    expect(html).not.toMatch(/aria-label="Remove Has a liquid biopsy from later report of c4" disabled=""/);
+    expect(html).toMatch(/aria-label="Remove tissue testing from first report of c4" disabled=""/);
+    expect(html).not.toMatch(/aria-label="Remove liquid biopsy from later report of c4" disabled=""/);
+  });
+  test("a data card heading is a noun phrase with a capital", () => {
+    expect(render({...EMPTY, criteria: [data]})).toContain('aria-label="Serial reports (two or more)"');
+  });
+  test("a criterion that spans reports disables the same-report box; the title says why", () => {
+    const blocked = /<input type="checkbox" disabled=""[^>]*\/> All criteria on the same report/;
+    const html = render({...EMPTY, criteria: [sequence]});
+    expect(html).toMatch(blocked);
+    expect(html).toContain("cannot be matched on one report");
+    expect(render({...EMPTY, criteria: [alt]})).not.toMatch(blocked);
+    expect(render({...EMPTY, scope: "report"})).not.toMatch(blocked);
+  });
+  test("no Then… at report scope", () => {
+    expect(render({...EMPTY, scope: "report", criteria: [alt]})).not.toContain(">Then…</button>");
   });
   test("a per-patient data criterion has no Edit; no Or… for data", () => {
     const html = render({...EMPTY, criteria: [data]});
     expect(html).not.toContain(">Edit</button>");
     expect(html).not.toContain(">Or…</button>");
     expect(html).not.toContain("Then…");
+  });
+});
+
+describe("AlterationEditor", () => {
+  const editor = (mode: "include" | "tested_negative") =>
+    renderToStaticMarkup(<AlterationEditor d={{...alt, mode} as Extract<Criterion, {kind: "alteration"}>} set={() => {}} transport={transport} />);
+  const classes = (html: string) => ["mutation", "amplification", "loss", "fusion"].filter((c) => html.includes(`/> ${c}</label>`));
+  test("tested negative offers only the mutation class, and says why", () => {
+    const html = editor("tested_negative");
+    expect(classes(html)).toEqual(["mutation"]);
+    expect(html).toContain("Tested negative is per gene");
+  });
+  test("an include criterion offers all four classes and no hint", () => {
+    const html = editor("include");
+    expect(classes(html)).toEqual(["mutation", "amplification", "loss", "fusion"]);
+    expect(html).not.toContain("Tested negative is per gene");
   });
 });
 

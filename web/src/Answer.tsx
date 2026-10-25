@@ -31,7 +31,9 @@ function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options
       <div className="card">
         <h3>Patients</h3>
         <p className="big"><Count n={r.patients} minCell={r.min_cell} /></p>
-        <p className="sub">in <Count n={r.reports} minCell={r.min_cell} /> reports</p>
+        <p className="sub">{r.reports == null
+          ? <span className="suppressed" title={SUPPRESSED}>reports not shown</span>
+          : <>in <Count n={r.reports} minCell={r.min_cell} /> reports</>}</p>
       </div>
       <div className="card">
         <h3>Accrual a year</h3>

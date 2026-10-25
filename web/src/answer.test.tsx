@@ -33,6 +33,11 @@ describe("suppressed counts", () => {
     expect(html).not.toContain(">0<");
     expect(html).toContain("patient count not shown");
   });
+  test("a hidden reports count is never shown as <5 reports", () => {
+    const html = render(result({patients: 9, reports: null}));
+    expect(html).toContain("reports not shown");
+    expect(html).not.toContain("&lt;5</span> reports");
+  });
   test("zero renders 0 and a shown count is formatted", () => {
     const html = render(result({patients: 0, reports: 1234}));
     expect(html).toContain(">0<");

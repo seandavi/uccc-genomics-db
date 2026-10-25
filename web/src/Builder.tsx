@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import {
-  EVIDENCE, POP_DIMS, REPORT_DATA, addToPopulation, biomarkerEntries, comboKey, criterionLabel, dataEntries, fieldLabel,
-  modesFor, newCriterion, type ComboState, type PopDim,
+  EVIDENCE, POP_DIMS, REPORT_DATA, addToPopulation, biomarkerEntries, capitalise, comboKey, criterionLabel, dataEntries,
+  fieldLabel, forScope, modesFor, newCriterion, type ComboState, type PopDim,
 } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
 import type { Criterion, Definition, Leaf, Mode, Operation, Option, Options, Population, SeqMember } from "./types.ts";
@@ -242,19 +242,21 @@ function KindEditor({d, set, transport, cuts}: {d: Exclude<Criterion, {kind: "an
 type Of<K extends Criterion["kind"]> = Extract<Criterion, {kind: K}>;
 interface EditorProps<K extends Criterion["kind"]> { d: Of<K>; set: (c: Criterion) => void; transport: Transport }
 
-function AlterationEditor({d, set, transport}: EditorProps<"alteration">) {
+export function AlterationEditor({d, set, transport}: EditorProps<"alteration">) {
+  const negative = d.mode === "tested_negative";   // per gene: Save takes no protein change and no class but mutation
   const oneGene = d.gene.length === 1;
   const mutationOnly = d.class.length === 0 || (d.class.length === 1 && d.class[0] === "mutation");
   const aa = useValues(transport, "alteration.aa", oneGene && mutationOnly ? d.gene[0] : undefined);
   return (
     <>
-      <Checks legend="Alteration class (none = any)" values={[...ALT_CLASSES]} selected={d.class}
+      <Checks legend="Alteration class (none = any)" values={negative ? ["mutation"] : [...ALT_CLASSES]} selected={d.class}
         onChange={(v) => {
           const cls = v as typeof d.class;
           const stillMutation = cls.length === 0 || (cls.length === 1 && cls[0] === "mutation");
           set({...d, class: cls, aa: stillMutation ? d.aa : []});
         }} />
-      {oneGene && mutationOnly && (aa.values.length > 0 || aa.error) &&
+      {negative && <p className="hint">Tested negative is per gene: it takes no protein change and no copy-number or fusion class.</p>}
+      {!negative && oneGene && mutationOnly && (aa.values.length > 0 || aa.error) &&
         <Checks legend={`${d.gene[0]} protein change (none = any)`} values={aa.values} error={aa.error} selected={d.aa} onChange={(v) => set({...d, aa: v})} />}
       <Checks legend="Classification" values={[...TIERS]} selected={d.tier} labels={TIER_LABELS}
         onChange={(v) => set({...d, tier: v as typeof d.tier})} />
@@ -326,6 +328,8 @@ const MAX_OR = 8;
 const MAX_SEQ = 4;
 const MODE_LABELS: Record<Mode, string> = {include: "Include", exclude: "Exclude", tested_negative: "Tested negative"};
 const leafOf = (c: Criterion | SeqMember): Leaf => { const {id: _id, ...rest} = c as Leaf; return {...rest, id: null, mode: "include"} as Leaf; };
+/** A criterion that spans several reports, so it cannot be matched on one report. */
+const spansReports = (c: Criterion) => c.kind === "sequence" || (c.kind === "data" && !REPORT_DATA.includes(c.has));
 const isReportData = (c: Criterion | SeqMember) => c.kind === "data" && REPORT_DATA.includes(c.has);
 /** An entry that can be a `sequence` member: a finding, or data held by one report. */
 const seqEntry = (e: Option) => !e.field.startsWith("population.") && (e.field !== "data.has" || REPORT_DATA.includes(e.value));
@@ -340,7 +344,9 @@ export function withoutMember(c: Extract<Criterion, {kind: "any_of"}>, i: number
   return rest.length === 1 ? {...rest[0], id: c.id, mode: c.mode} : {...c, of: rest};
 }
 
-function CriterionCard({c, transport, options, onOp}: {c: Criterion; transport: Transport; options: Options | null; onOp: (op: Operation) => void}) {
+function CriterionCard({c, scope, transport, options, onOp}: {
+  c: Criterion; scope: Definition["scope"]; transport: Transport; options: Options | null; onOp: (op: Operation) => void;
+}) {
   const [mode, setMode] = useState<"edit" | "or" | "then" | null>(null);
   const id = c.id ?? "";
   const update = (criterion: Criterion) => { setMode(null); onOp({op: "update_criterion", id, criterion}); };
@@ -357,11 +363,11 @@ function CriterionCard({c, transport, options, onOp}: {c: Criterion; transport: 
   const dropMember = (i: number) => { if (c.kind === "any_of") update(withoutMember(c, i)); };
   const editable = c.kind !== "any_of" && c.kind !== "sequence" && !(c.kind === "data" && !isReportData(c));
   const canOr = c.kind !== "sequence" && c.kind !== "data" && c.mode !== "tested_negative";
-  const canThen = c.mode === "include" && c.kind !== "any_of" && c.kind !== "sequence" && (c.kind !== "data" || isReportData(c));
+  const canThen = c.mode === "include" && c.kind !== "any_of" && c.kind !== "sequence" && (c.kind !== "data" || isReportData(c)) && scope !== "report";
   return (
-    <article className="criterion" aria-label={criterionLabel(c)}>
+    <article className="criterion" aria-label={capitalise(criterionLabel(c))}>
       <header>
-        <span className="cid">{id}</span> <span className="clabel">{criterionLabel(c)}</span>{" "}
+        <span className="cid">{id}</span> <span className="clabel">{capitalise(criterionLabel(c))}</span>{" "}
         <select aria-label={`Mode of ${id}`} value={c.mode}
           onChange={(e) => onOp({op: "set_mode", id, mode: e.target.value as Mode})}>
           {modesFor(c).map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
@@ -369,7 +375,7 @@ function CriterionCard({c, transport, options, onOp}: {c: Criterion; transport: 
       </header>
       {c.kind === "any_of" && (
         <ul className="members">{c.of.map((m, i) => (
-          <li key={i}>{criterionLabel(m)} <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${id}`} onClick={() => dropMember(i)}>×</button></li>
+          <li key={i}>{capitalise(criterionLabel(m))} <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${id}`} onClick={() => dropMember(i)}>×</button></li>
         ))}</ul>
       )}
       {c.kind === "sequence" && <SequenceMembers c={c} transport={transport} onChange={update} />}
@@ -401,7 +407,7 @@ function SequenceMembers({c, transport, onChange}: {c: Extract<Criterion, {kind:
           <div key={side}>
             <h4>{title}</h4>
             <ul className="members">{members.map((m, i) => (
-              <li key={i}>{criterionLabel(m)}{" "}
+              <li key={i}>{capitalise(criterionLabel(m))}{" "}
                 <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${title.toLowerCase()} of ${c.id}`}
                   disabled={members.length === 1} onClick={() => set(members.filter((_, j) => j !== i))}>×</button>
               </li>
@@ -432,6 +438,7 @@ export function Builder({definition: d, transport, options, onOp}: {
     const criterion = newCriterion(e);
     if (criterion) onOp({op: "add_criterion", criterion});
   };
+  const sameReportBlocked = d.scope !== "report" && d.criteria.some(spansReports);
   return (
     <div className="builder">
       <section aria-labelledby="pop-h">
@@ -441,12 +448,12 @@ export function Builder({definition: d, transport, options, onOp}: {
       </section>
       <section aria-labelledby="crit-h">
         <h2 id="crit-h">Criteria <small>(all must match)</small></h2>
-        <label>
-          <input type="checkbox" checked={d.scope === "report"}
+        <label title={sameReportBlocked ? "A sequence, testing by both vendors or serial reports spans several reports, so it cannot be matched on one report" : undefined}>
+          <input type="checkbox" checked={d.scope === "report"} disabled={sameReportBlocked}
             onChange={(e) => onOp({op: "set_scope", scope: e.target.checked ? "report" : "patient"})} /> All criteria on the same report
         </label>
-        {d.criteria.map((c) => <CriterionCard key={c.id} c={c} transport={transport} options={options} onOp={onOp} />)}
-        <Typeahead label="Add criterion" search={(q) => searchAll(transport, q)} onPick={add} />
+        {d.criteria.map((c) => <CriterionCard key={c.id} c={c} scope={d.scope} transport={transport} options={options} onOp={onOp} />)}
+        <Typeahead label="Add criterion" search={(q) => searchAll(transport, q).then((r) => forScope(r, d.scope))} onPick={add} />
       </section>
     </div>
   );

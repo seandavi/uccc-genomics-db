@@ -12,6 +12,7 @@ A synthetic mart of its own (`build_phase2_mart`); every value is invented. Pati
   PRAD  h0-h14     liquid; DNMT3A h0-h4, TET2 h5-h9
   IDC e0-e29, ILC w0-w29, HGSOC z0-z29   ER positive, PIK3CA, TP53 and BRCA1
 """
+import re
 from datetime import date
 
 import pytest
@@ -441,12 +442,25 @@ def test_count_rejects_too_many_neighbours_before_any_query(db, monkeypatch):
 
 def test_loosen_withheld_with_neighbours(db):
     r = count(defn([alt("c1", ["KRAS"]), exclude(alt("c2", ["STK11"]))], population=pop("PAAD")))
-    assert r.patients is None or r.loosen == []
+    assert r.loosen == [] and r.loosen_offered is False
     r = count(defn([exclude(alt("c1", ["PIK3CA"])), ihc("c2", "ER")], population=pop("IDC")))
     assert r.patients is None and r.loosen == [] and r.loosen_offered is False
     seq = {"id": "c1", "kind": "sequence", "first": [{"kind": "data", "has": "tissue"}],
            "then": [{"kind": "data", "has": "liquid"}]}
     assert count(defn([seq])).loosen_offered is True
+
+
+def test_update_criterion_clears_a_pivot_it_cannot_keep():
+    d = defn([alt("c1", ["KRAS"]), ihc("c2", "ER")], pivot={"rows": "c1.key", "cols": "year"})
+    kras = {"kind": "alteration", "gene": ["KRAS"]}
+    for new in ({"kind": "sequence", "first": [kras], "then": [{"kind": "data", "has": "liquid"}]},
+                {"kind": "data", "has": "wts"},
+                {"kind": "specimen", "site_type": ["metastatic"]},
+                kras | {"mode": "exclude"},
+                kras | {"mode": "tested_negative"}):
+        assert apply(d, {"op": "update_criterion", "id": "c1", "criterion": new}).pivot is None, new
+    assert apply(d, {"op": "update_criterion", "id": "c1", "criterion": kras | {"gene": ["NRAS"]}}).pivot == d.pivot
+    assert apply(d, {"op": "update_criterion", "id": "c2", "criterion": {"kind": "data", "has": "wts"}}).pivot == d.pivot
 
 
 # --- shapes ----------------------------------------------------------------------------------------
@@ -500,10 +514,17 @@ def test_compile_phase2_binds_values():
         d = defn(criteria, scope=scope, pivot={"rows": "c4.val", "cols": "year"})
         for sql, params in (compile(d), compile_pivot(d)):
             for value in ("KRAS", "NRAS", "EGFR", "PD-L1", "caris", "fmi", "TMB"):
-                assert value not in sql.replace("'caris'", "").replace("'fmi'", ""), (scope, value)
+                assert value not in sql, (scope, value)
             flat = [x for v in params.values() for x in (v if isinstance(v, list) else [v])]
             assert {"KRAS", "NRAS", "EGFR", "PD-L1", "caris", "fmi"} <= set(flat)
-            assert "$k0_vendor" in sql and "$k1_vendor" in sql
+            expected = set()
+            for i, c in enumerate(d.criteria):
+                if c.kind == "sequence":
+                    expected |= {f"$k{i}{s}{j}_vendor" for s, members in (("f", c.first), ("t", c.then))
+                                 for j, m in enumerate(members) if m.vendor}
+                elif c.vendor:
+                    expected.add(f"$k{i}_vendor")
+            assert set(re.findall(r"\$k\w*_vendor", sql)) == expected, (scope, sql)
 
 
 def test_report_scope_has_no_per_patient_state():

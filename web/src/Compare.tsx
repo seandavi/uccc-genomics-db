@@ -18,6 +18,9 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
   const cell = (c: CompareColumn, show: (r: CountResult) => ReactNode) =>
     c.result ? show(c.result) : <span className="error">{c.error ?? "no result"}</span>;
   const anySuppressed = columns.some((c) => c.result && [c.result.patients, c.result.denominator, ...c.result.by_year.map((y) => y.patients)].some((n) => n == null));
+  // A column whose patient count is suppressed has no year rows at all: its cells are suppressed, not blank.
+  const yearsShown = (c: CompareColumn) => c.result != null && c.result.patients != null;
+  const anyBlank = years.some((y) => columns.some((c) => yearsShown(c) && !c.result!.by_year.some((x) => x.year === y)));
   return (
     <>
     <GridTable label="Compare versions">
@@ -36,12 +39,13 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
         {years.map((y) => (
           <tr key={y}><th scope="row">{y}</th>{columns.map((c) => {
             const row = c.result?.by_year.find((x) => x.year === y);
-            return <td key={c.label}>{row ? <Count n={row.patients} minCell={minCell} /> : null}</td>;
+            return <td key={c.label}>{row ? <Count n={row.patients} minCell={minCell} /> : c.result && !yearsShown(c) ? <Count n={null} minCell={minCell} /> : null}</td>;
           })}</tr>
         ))}
       </tbody>
     </GridTable>
     {anySuppressed && <p className="legend">{`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>}
+    {anyBlank && <p className="legend">Blank: no patients that year for that version.</p>}
     </>
   );
 }

@@ -412,6 +412,7 @@ export interface components {
             loosen: components["schemas"]["Loosen"][];
             /**
              * Loosen Offered
+             * @description False when the definition has neighbours (exclusions, multi-value population fields, a year range or report scope): loosen suggestions are then not computed, so an empty loosen means 'not offered', not 'none would help'.
              * @default true
              */
             loosen_offered: boolean;

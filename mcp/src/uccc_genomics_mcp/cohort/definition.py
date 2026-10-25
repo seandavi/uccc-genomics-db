@@ -310,6 +310,15 @@ def _has_specimen(c) -> bool:
     return c.kind == "specimen" or (c.kind == "any_of" and any(m.kind == "specimen" for m in c.of))
 
 
+def _can_be_axis(c) -> bool:
+    """The rule `_check_pivot` enforces on a criterion axis, as a predicate."""
+    return c.mode not in NEGATED and c.kind not in ("data", "sequence") and not _has_specimen(c)
+
+
+def _axis_uses(pivot: dict | None, cid: str) -> bool:
+    return bool(pivot) and any(a.startswith(f"{cid}.") for a in (pivot["rows"], pivot["cols"]))
+
+
 class Definition(BaseModel):
     model_config = _CONFIG
     version: Literal[1] = 1
@@ -595,17 +604,17 @@ def apply(d: Definition, op: "Operation | dict", vocab=None) -> Definition:
                     raise DefinitionError(f"unknown criterion id '{o.id}'")
                 if isinstance(o, UpdateCriterion):
                     criteria[position[o.id]] = o.criterion.model_dump(mode="json", by_alias=True) | {"id": o.id}
+                    if _axis_uses(data["pivot"], o.id) and not _can_be_axis(o.criterion):
+                        data["pivot"] = None
                 else:
                     del criteria[position[o.id]]
-                    pivot = data["pivot"]
-                    if pivot and any(a.startswith(f"{o.id}.") for a in (pivot["rows"], pivot["cols"])):
+                    if _axis_uses(data["pivot"], o.id):
                         data["pivot"] = None
             case SetMode():
                 if o.id not in position:
                     raise DefinitionError(f"unknown criterion id '{o.id}'")
                 criteria[position[o.id]]["mode"] = o.mode
-                pivot = data["pivot"]
-                if o.mode in NEGATED and pivot and any(a.startswith(f"{o.id}.") for a in (pivot["rows"], pivot["cols"])):
+                if o.mode in NEGATED and _axis_uses(data["pivot"], o.id):
                     data["pivot"] = None
             case SetPopulation():
                 data["population"] = o.population.model_dump(mode="json", by_alias=True)

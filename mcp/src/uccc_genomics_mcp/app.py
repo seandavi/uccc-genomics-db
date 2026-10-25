@@ -44,11 +44,15 @@ INSTRUCTIONS = (
     "patient with reports from both vendors counts once). A breakdown or pivot cell counts the patients with "
     "a report having that value, so one patient can be in several cells and cells need not add up to "
     "patients. reports counts the cohort patients' in-population reports (Caris and FMI) that match at least "
-    "one criterion, or every population report when there are no criteria; it is not a patient count. null "
-    "means suppressed (1-4, or recoverable by subtraction), never zero. "
+    "one include criterion (an exclude, tested_negative, both_vendors or serial criterion never makes a report "
+    "count), or all of them when no criterion can; with scope 'report', the reports on which every criterion "
+    "holds; it is not a patient count. null means suppressed (1-4, or recoverable by subtraction), never zero. "
     "A criterion's mode is include (default), exclude or tested_negative; scope 'report' makes every criterion "
-    "match on one report. A count can also be null because it differs by 1-4 from the same cohort without an "
-    "exclusion or one population value (so a small group cannot be worked out by subtraction). "
+    "match on one report. A count can also be null because it differs by 1-4 from the same cohort one edit "
+    "away: without an exclusion, with a tested_negative criterion as a plain exclude, without one listed "
+    "population value or one end year of a year range, or at patient scope instead of report scope (the "
+    "result's notes say so). Then loosen_offered is false: loosen suggestions were not computed, so an empty "
+    "loosen does not mean that no single criterion would help. "
     "Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, race or ethnicity. Saved cohorts belong to the "
     "logged-in user: save_cohort, then edit with apply_saved_op (each edit is a new revision; "
     "revert_saved_cohort undoes). Saved cohorts hold no counts; count the head definition. Snapshots store "
@@ -271,12 +275,14 @@ def apply_op(definition: Definition, op: Operation, ctx: Context) -> ApplyResult
 @mcp_app.tool()
 def count(definition: Definition, ctx: Context) -> CountResult:
     """Count distinct patients matching a cohort definition: the funnel, breakdowns, years and, for
-    a cohort too small to show, which criterion to loosen. null means suppressed (under 5, or hidden so a
+    a cohort too small to show, which criterion to loosen (only when loosen_offered is true; when it is
+    false no suggestion was computed). null means suppressed (under 5, or hidden so a
     small count cannot be worked out by subtraction), never zero.
     `denominator` is the patients in the population (in a breakdown cell: the population's patients
     with that value), the base for a percentage. `reports` counts the cohort patients' in-population
-    reports (Caris and FMI) that match at least one criterion, or every population report when there
-    are no criteria; it is not a patient count."""
+    reports (Caris and FMI) that match at least one include criterion (an exclude, tested_negative,
+    both_vendors or serial criterion never makes a report count), or all of them when no criterion
+    can; with scope 'report', the reports on which every criterion holds; it is not a patient count."""
     try:
         return run_count(_mcp_user(ctx), "mcp", definition)
     except TOOL_ERRORS as e:
