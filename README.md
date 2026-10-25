@@ -268,7 +268,7 @@ process serves REST at `/api/*` (OpenAPI at `/api/docs`) and MCP (Streamable HTT
 `authen` (`--auth access|password|none`). `count` and `pivot` are limited to 60 a minute per user
 across both surfaces and logged to stdout as one JSON line each (user, cohort_id, definition,
 suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`, `count`, `pivot` and
-`describe_definition`; there is no SQL tool.
+`describe_definition`, plus the saved-cohort tools below; there is no SQL tool.
 
     uv run python -m uccc_genomics_mcp.authen    # once: put APP_USER and the printed APP_PASSWORD_HASH in .env
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 [--static <dir>]
@@ -276,6 +276,34 @@ suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`, `count`
 
 `--static` serves a built front end at `/` (Discover, below). Development only: no systemd
 unit or deploy yet.
+
+**Saved cohorts** (`saved.py`, #36). A logged-in user can save a cohort definition, edit it with
+operations (each edit is a new immutable revision), list and delete their cohorts, read the history,
+revert, snapshot one for a grant feasibility statement, and resolve a shared `cohort_id`. Postgres
+(SQLAlchemy async + asyncpg, Alembic migrations in `mcp/src/uccc_genomics_mcp/migrations/`) holds
+four tables: `cohort_version` (content-addressed selecting part of a definition), `cohort`,
+`cohort_revision` (the append-only chain) and `snapshot` (the suppressed `CountResult` and its data
+date). It holds definitions, operations and suppressed results only: no patient data, no
+unsuppressed count. Setting `DATABASE_URL` in `.env` (a standard `postgresql://` URI) turns it on;
+without it the saved routes answer 503 and everything else works. REST and MCP tools, one line each:
+
+- `POST /api/saved` / `save_cohort`; `GET /api/saved` / `list_saved_cohorts`; `GET /api/saved/{id}` / `get_saved_cohort`
+- `POST /api/saved/{id}/apply` / `apply_saved_op`; `GET /api/saved/{id}/history` / `saved_cohort_history`
+- `POST /api/saved/{id}/revert` / `revert_saved_cohort`; `DELETE /api/saved/{id}` / `delete_saved_cohort`
+- `POST /api/saved/{id}/snapshot` / `snapshot_saved_cohort` (rate-limited and audited like `count`);
+  `GET /api/snapshots` / `list_snapshots`
+- `GET /api/versions/{cohort_id}` / `get_cohort_version`
+
+```
+# once, by a person, on the host's shared cluster: create a database and role for the app, then
+uv run alembic -c mcp/alembic.ini upgrade head
+# tests: a throwaway Postgres (CI uses a service container)
+docker run --rm -d --name genomics-test-pg -e POSTGRES_PASSWORD=test -p 127.0.0.1:55432:5432 postgres:17
+TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/postgres uv run pytest -q
+docker rm -f genomics-test-pg
+```
+
+Without `TEST_DATABASE_URL` the Postgres tests skip with a message. The app never migrates on start.
 
 ### Discover (web/)
 

@@ -336,7 +336,10 @@ reorders the funnel.
 
 **Top bar.**
 
-- *Versions*: every change makes a new version (v1, v2, …) in local storage.
+- *Versions*: every change makes a new version (v1, v2, …). Versions are server-side saved-cohort
+  revisions (#36), not local storage: edits go through the saved-cohort API, revert appends a copy,
+  and a share link carries the `cohort_id`, which the recipient resolves and counts under their own
+  login.
 - *Compare*: two to four saved definitions side by side, with the same
   cards and accrual on one axis. For example, KRAS G12C alone compared with
   G12C plus PD-L1-high.

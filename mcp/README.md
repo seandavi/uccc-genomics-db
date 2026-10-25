@@ -20,7 +20,7 @@ Running live as a continuous systemd user service on the pipeline host and proxi
 * **`query(sql: str, limit: int = 100)`**: Executes read-only SQL queries (`SELECT`, `WITH`, `DESCRIBE`). Every connection runs with `enable_external_access = false` (no `read_text`/`read_csv`/httpfs on the host filesystem) and `lock_configuration = true`, plus a keyword denylist and a 1,000-row cap; `tests/test_mcp_query.py` pins this.
 * **`get_documentation(topic: str = "overview")`**: **Context-protection tool**. Retrieves structured schema documentation and copy-pasteable SQL cohort queries on demand (`overview`, `unified`, `vendor_schemas`, `examples`, `all`) so large documentation is not dumped into your initial prompt context.
 
-The cohort tools (no SQL) are served by `genomics-app` at `/mcp`, behind `authen`; see the root README.
+The cohort tools (no SQL), including the saved-cohort tools (Postgres, #36), are served by `genomics-app` at `/mcp`, behind `authen`; see the root README.
 
 ---
 
