@@ -39,8 +39,9 @@ Surface = Literal["rest", "mcp"]
 INSTRUCTIONS = (
     "Build a cohort definition (its JSON Schema comes from describe_definition), edit it with apply_op, "
     "map the user's words to vocabulary values with search_vocabulary, then count it, or pivot it once its "
-    "pivot is set. Counts are distinct patients. null means suppressed (1-4, or recoverable by subtraction), "
-    "never zero. Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, "
+    "pivot is set. patients, denominator and every funnel, year, breakdown and pivot cell are distinct "
+    "patients across Caris and FMI (a patient with reports from both vendors counts once); reports counts "
+    "reports. null means suppressed (1-4, or recoverable by subtraction), never zero. Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, "
     "race or ethnicity. Saved cohorts belong to the logged-in user: save_cohort, then edit with apply_saved_op "
     "(each edit is a new revision; revert_saved_cohort undoes). Saved cohorts hold no counts; count the head "
     "definition. Snapshots store the suppressed count with its data date for grant text.")
@@ -227,9 +228,12 @@ mcp_app = MCPServer(name="uccc-genomics-app", title="UCCC genomics cohort tools"
 def search_vocabulary(q: str, ctx: Context, limit: int = 20, field: str | None = None,
                       parent: str | None = None) -> Options:
     """Find the vocabulary values (genes, protein changes, oncotree codes, markers, ...) that match
-    free text, to put into a cohort definition. Returns values only, no counts. Give `field` (e.g.
-    `alteration.aa`) and optionally `parent` (e.g. `KRAS`) to list one field's values; `q` may then
-    be empty."""
+    free text, to put into a cohort definition. Returns values only, no counts. `q` is a
+    case-insensitive substring of the value, at most 100 characters; an empty `q` returns nothing
+    unless `field` is given (then that field's values). At most 50 results (`limit` is clamped to
+    1-50). Each entry's `field` names the definition field the value goes in (e.g. `alteration.gene`,
+    `alteration.aa`) and `parent` the gene, biomarker or IHC marker it belongs under (e.g. `KRAS` for
+    an `alteration.aa` value); pass `field` and `parent` back to list one field's values."""
     _mcp_user(ctx)
     return run_options(q, limit, field, parent)
 
@@ -248,7 +252,9 @@ def apply_op(definition: Definition, op: Operation, ctx: Context) -> ApplyResult
 @mcp_app.tool()
 def count(definition: Definition, ctx: Context) -> CountResult:
     """Count distinct patients matching a cohort definition: the funnel, breakdowns, years and, for
-    a cohort too small to show, which criterion to loosen. null means suppressed, never zero."""
+    a cohort too small to show, which criterion to loosen. null means suppressed, never zero.
+    `denominator` is the patients in the population (in a breakdown cell: the population's patients
+    with that value), the base for a percentage; `reports` counts reports, not patients."""
     try:
         return run_count(_mcp_user(ctx), "mcp", definition)
     except TOOL_ERRORS as e:
@@ -387,7 +393,7 @@ def app(static_dir: str | None = None) -> FastAPI:
             await saved.stop()
 
     application = FastAPI(title="UCCC genomics cohort app", lifespan=lifespan, openapi_url="/api/openapi.json",
-                          docs_url="/api/docs", redoc_url=None)
+                          docs_url=None, redoc_url=None)
 
     @application.exception_handler(DefinitionError)
     def definition_error(request: Request, e: DefinitionError):
@@ -483,6 +489,11 @@ def app(static_dir: str | None = None) -> FastAPI:
             print(f"health: {e}", file=sys.stderr, flush=True)
             return JSONResponse({"status": "unhealthy"}, status_code=503)
         return {"status": "Healthy"}
+
+    @application.get("/mcp", include_in_schema=False)
+    def get_mcp():
+        """No standalone SSE stream (stateless JSON): the MCP spec's answer is 405."""
+        return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": "POST"})
 
     application.router.routes.extend(sub.routes)   # exactly /mcp; mounting would 307 to /mcp/
     if static_dir:   # last, so lowest precedence

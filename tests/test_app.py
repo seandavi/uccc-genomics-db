@@ -12,6 +12,7 @@ import duckdb
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
+from mcp.server.mcpserver.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from test_cohort import build_mart, use_mart, write_mart
@@ -190,7 +191,7 @@ def test_errors_agree(client, method, path, payload, tool, args, word):
     assert r.status_code in (400, 422)
     assert word in json.dumps(r.json()["detail"])
     assert m["isError"]
-    assert word in m["content"][0]["text"]
+    assert word in m["content"][0]["text"].split(": ", 1)[1]   # after the SDK's "Error executing tool <name>: "
 
 
 def test_tools_list(client):
@@ -211,7 +212,7 @@ def test_openapi_names_the_models(client):
 
 
 GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply"), ("GET", "/api/options"),
-         ("GET", "/api/schema"), ("GET", "/api/openapi.json"), ("GET", "/api/docs"), ("POST", "/mcp"),
+         ("GET", "/api/schema"), ("GET", "/api/openapi.json"), ("POST", "/mcp"),
          ("GET", "/mcp"), ("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path"),
          ("POST", "/api/saved"), ("GET", "/api/saved"), ("GET", "/api/snapshots"),
          ("GET", "/api/versions/v1-0000000000000000")]
@@ -219,12 +220,24 @@ GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply")
 
 @pytest.mark.parametrize("method, path", GATED)
 def test_refused_without_login(client, method, path):
-    # Accept: json, because an authenticated GET /mcp that accepts */* opens the SDK's endless SSE stream
+    # Accept: json, so an authenticated GET /mcp is judged on the route, not on content negotiation
     kw = {"headers": {"accept": "application/json"}}
     r = client.request(method, path, **kw)
     assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
     assert client.request(method, path, auth=("sean", "wrong"), **kw).status_code == 401
     assert client.request(method, path, auth=AUTH, **kw).status_code != 401
+
+
+def test_mcp_get_is_405(client):
+    # json first: without the route the SDK answers 406 here; the event-stream request would hang
+    for accept in ("application/json", "text/event-stream"):
+        r = client.get("/mcp", auth=AUTH, headers={"accept": accept})
+        assert (r.status_code, r.headers["allow"]) == (405, "POST")
+
+
+def test_no_swagger_ui(client):
+    assert client.get("/api/docs", auth=AUTH).status_code == 404
+    assert client.get("/api/openapi.json", auth=AUTH).status_code == 200
 
 
 def test_saved_unconfigured(client):
@@ -318,13 +331,15 @@ def test_rate_limit(client, monkeypatch, capsys):
     app.rate_limit("sean")
 
 
+def test_rejected_requests_use_the_rate_limit(client, monkeypatch):
+    monkeypatch.setattr(app, "RATE_LIMIT", 1)
+    assert rest(client, "POST", "/api/pivot", {}).status_code == 400   # DefinitionError: no pivot
+    assert rest(client, "POST", "/api/cohort", {}).status_code == 429
+
+
 def test_mcp_tool_needs_the_middleware(ids):
-    try:
-        result = asyncio.run(app.mcp_app.call_tool("count", {"definition": {}}))
-    except Exception:
-        return
-    assert getattr(result, "is_error", True) or getattr(result, "isError", True)
-    assert "patients" not in str(result)
+    with pytest.raises(ToolError, match="not authenticated"):
+        asyncio.run(app.mcp_app.call_tool("count", {"definition": {}}))
 
 
 def test_openapi_snapshot():
