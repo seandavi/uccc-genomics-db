@@ -95,7 +95,7 @@ function AccrualTab({r}: {r: CountResult}) {
   return (
     <div>
       <figure className="accrual">
-        <div className="bars">
+        <div className="bars" tabIndex={0}>
           {r.by_year.map((y) => (
             <div key={y.year} className={`col${y.complete ? "" : " partial"}`}>
               <div className="barbox" aria-hidden="true">
