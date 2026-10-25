@@ -2,6 +2,7 @@
 
 Results are typed and suppressed (`suppress.py`); nothing row-level comes back.
 """
+import datetime
 import os
 
 from uccc_genomics_mcp.server import DEID_DB, get_db
@@ -29,6 +30,11 @@ def vocabulary() -> Vocabulary:
         _vocab["v"] = Vocabulary(entries=entries, years=tuple(years) if years and years[0] is not None else None)
         _vocab["mtime"] = mtime
     return _vocab["v"]
+
+
+def data_date() -> datetime.date:
+    """The local date the daily rebuild last wrote the de-id file (its mtime): a snapshot's data date."""
+    return datetime.date.fromtimestamp(os.path.getmtime(DEID_DB))
 
 
 def _funnel(rows: list[tuple]) -> list[int]:
