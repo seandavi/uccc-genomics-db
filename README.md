@@ -134,7 +134,9 @@ term is mapped; unmapped terms keep the vendor string as `disease_text` with
 `mart.report` is one row per `unified.report` row with the population dimensions: `year`,
 `year_complete`, `sex`, `age`/`age_band` (Caris tissue only, else `unknown`), `oncotree`, `organ`,
 `disease`, `assay_class`, `assay_name`, `purity`, `site_type`/`site` (Caris, first tumor
-specimen), `has_wts` (Caris RNA/cfTNA gene TPM file or `wtsExpression` records).
+specimen), `has_wts` (Caris RNA/cfTNA gene TPM file or `wtsExpression` records), `collected_on`
+(the per-patient shifted collection date; it only orders two reports of one patient for the
+`sequence` criterion and is never output).
 `mart.fact` is one row per finding (`research_id`, `vendor`, `report_id`, `kind`, `key`, `sub`,
 `val`, `num`, `unit`, `tier`), and the columns mean this per `kind`:
 
@@ -150,8 +152,9 @@ specimen), `has_wts` (Caris RNA/cfTNA gene TPM file or `wtsExpression` records).
 
 `unit` is NULL whenever `num` is. Mutation rows carry **every** tier, benign included, so a
 consumer filters `tier` (the default is `pathogenic` + `likely_pathogenic`) on `sub = 'mutation'`
-rows; amplification, loss and fusion rows have no tier. Viral findings, CNA copy number, VAF and
-the `data`/`sequence` criteria are not in the mart.
+rows; amplification, loss and fusion rows have no tier. Viral findings, CNA copy number and VAF
+are not in the mart. `data` and `sequence` criteria read `mart.report` (`has_wts`, `assay_class`,
+`vendor`, `collected_on`).
 
 ```sql
 -- patients with a KRAS G12C call from either vendor, and whether they also had TMB-High
@@ -312,7 +315,8 @@ Without `TEST_DATABASE_URL` the Postgres tests skip with a message. The app neve
 The cohort builder (COHORT_DISCOVERY.md §3.3), a React + TypeScript app built with Vite and bun.
 It sends only cohort definitions and edit operations to `/api/*` (never SQL), shows every
 suppressed count as "<5", keeps versions in the browser's local storage and shares a cohort as a
-link holding its definition. No third-party requests; the build sets a same-origin CSP.
+link holding its definition. Compare (2-4 local versions side by side) and the Feasibility statement
+are in the top bar. No third-party requests; the build sets a same-origin CSP.
 
     (cd web && bun install && bun run build)
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 --static web/dist
