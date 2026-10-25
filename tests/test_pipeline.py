@@ -33,6 +33,8 @@ CARIS_TIERS = [
     ("ARID1A", "Mutated, Unclassified", None, "p.A600T", "unclassified"),
     ("APC", "Risk Allele", None, "p.I1307K", "unclassified"),
     ("MSH2", "New Caris Term", None, "p.A800T", "unclassified"),
+    ("BRIP1", "Mutated, Variant of Uncertain Significance", None, "p.A910T", "vus"),
+    ("KMT2D", None, None, "p.A920T", "unclassified"),
 ]
 
 
@@ -141,15 +143,31 @@ FMI = f"""<?xml version="1.0"?>
 </ResultsReport>
 """
 
+# FoundationOne Monitor files have no FinalReport (no PMI, no VariantProperties), so is_vus is NULL.
+FMI_MONITOR = """<?xml version="1.0"?>
+<ResultsReport>
+ <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external"
+     disease="Breast" disease-ontology="Breast carcinoma (NOS)" gender="female" test-type="FoundationOne Monitor">
+  <short-variants>
+   <short-variant gene="KRAS" cds-effect="35G>A" protein-effect="G12D" status="known" functional-effect="missense"/>
+   <short-variant gene="NRAS" cds-effect="181C>A" protein-effect="Q61K" status="likely" functional-effect="missense"/>
+   <short-variant gene="TP53" cds-effect="818G>A" protein-effect="R273H" status="unknown" functional-effect="missense"/>
+   <short-variant gene="EGFR" cds-effect="2369C>T" protein-effect="T790M" status="new-fmi-status" functional-effect="missense"/>
+  </short-variants>
+ </variant-report>
+</ResultsReport>
+"""
+
 
 def genomics(data_dir, *args):
     subprocess.run(["uv", "run", "genomics", *args], check=True, cwd=ROOT, capture_output=True, text=True,
                    env={**os.environ, "DATA": data_dir})
 
 
-@pytest.fixture(scope="module")
-def db(tmp_path_factory):
-    data = str(tmp_path_factory.mktemp("data"))
+def pipeline(data, fmi_files):
+    """Write CARIS (+ its TPM CSV) and `fmi_files` ({file name: XML text}) under raw/ in `data`,
+    run load for both vendors and deid, and return a connection with the de-id file attached
+    as `db` and the PHI file as `phi`, both read-only."""
     case = f"{data}/raw/caris/TN26-123456"
     os.makedirs(case)
     os.makedirs(f"{data}/raw/fmi")
@@ -158,9 +176,8 @@ def db(tmp_path_factory):
         w = csv.writer(f)
         w.writerow(["Gene", "TPM", "NumReads"])
         w.writerows([["TP53", "12.5", "800"], ["ERBB2", "300.1", "9000"]])
-    open(f"{data}/raw/fmi/ORD-0001234-01.xml", "w").write(FMI)
-    # A file that must fail to parse and land in fmi.load_error rather than abort the load.
-    open(f"{data}/raw/fmi/broken.xml", "w").write("<ResultsReport><nothing/></ResultsReport>")
+    for name, text in fmi_files.items():
+        open(f"{data}/raw/fmi/{name}", "w").write(text)
 
     genomics(data, "load", "--vendor", "caris")
     genomics(data, "load", "--vendor", "fmi")
@@ -170,6 +187,18 @@ def db(tmp_path_factory):
     for alias, name, key in (("db", "genomics.duckdb", ".db_key"), ("phi", "genomics_phi.duckdb", ".db_key_phi")):
         con.execute(f"ATTACH '{data}/{name}' AS {alias} (ENCRYPTION_KEY '{open(f'{data}/{key}').read().strip()}', READ_ONLY)")
     return con
+
+
+@pytest.fixture(scope="module")
+def db(tmp_path_factory):
+    # broken.xml must fail to parse and land in fmi.load_error rather than abort the load.
+    return pipeline(str(tmp_path_factory.mktemp("data")),
+                    {"ORD-0001234-01.xml": FMI, "broken.xml": "<ResultsReport><nothing/></ResultsReport>"})
+
+
+@pytest.fixture(scope="module")
+def monitor_db(tmp_path_factory):
+    return pipeline(str(tmp_path_factory.mktemp("monitor")), {"ORD-0005678-01.xml": FMI_MONITOR})
 
 
 def one(con, sql):
@@ -234,6 +263,17 @@ def test_variant_tier_maps_every_vendor_value(db):
     assert got == want
     tiers = {r[0] for r in db.execute("SELECT DISTINCT tier FROM db.unified.variant").fetchall()}
     assert tiers <= {"pathogenic", "likely_pathogenic", "vus", "likely_benign_or_benign", "unclassified"}
+    # Caris tier and is_vus agree; no fixture row has a pathogenic term together with unknownSignificance.
+    assert one(db, "SELECT count(*) FROM db.unified.variant "
+                   "WHERE vendor = 'caris' AND coalesce(is_vus, false) <> (tier = 'vus')") == (0,)
+
+
+def test_variant_tier_fmi_without_final_report(monitor_db):
+    """Monitor files have no VUS list (is_vus NULL); tier still follows status, and an unlisted status is unclassified."""
+    got = {r[0]: (r[1], r[2]) for r in monitor_db.execute(
+        "SELECT gene, is_vus, tier FROM db.unified.variant WHERE vendor = 'fmi'").fetchall()}
+    assert got == {"KRAS": (None, "pathogenic"), "NRAS": (None, "likely_pathogenic"),
+                   "TP53": (None, "unclassified"), "EGFR": (None, "unclassified")}
 
 
 def test_consequence_is_lower_case(db):

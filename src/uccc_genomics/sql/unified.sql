@@ -84,8 +84,7 @@ SELECT 'caris' AS vendor, v.case_id AS report_id, r.research_id, v.gene, v.hgvs_
        lower(v.consequence) AS consequence, (v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%') AS is_vus, NULL::BOOLEAN AS is_subclonal, v.genome_build, v.result AS vendor_call,
        CASE WHEN lower(v.result) IN ('pathogenic variant', 'mutated, pathogenic') THEN 'pathogenic'
             WHEN lower(v.result) IN ('likely pathogenic variant', 'mutated, presumed pathogenic') THEN 'likely_pathogenic'
-            WHEN lower(v.result) IN ('variant of uncertain significance', 'mutated, variant of unknown significance')
-                 OR v.vus THEN 'vus'
+            WHEN v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%' THEN 'vus'
             WHEN lower(v.result) IN ('likely benign variant', 'benign variant', 'mutated, presumed benign') THEN 'likely_benign_or_benign'
             ELSE 'unclassified' END AS tier
 FROM caris.variant v JOIN caris.report r USING (case_id)
