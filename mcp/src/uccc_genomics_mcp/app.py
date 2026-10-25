@@ -183,9 +183,10 @@ def run_apply(d: Definition, op: Operation) -> ApplyResult:
     return ApplyResult(definition=new, cohort_id=cohort.cohort_id(new))
 
 
-def run_options(q: str, limit: int = 20) -> Options:
+def run_options(q: str, limit: int = 20, field: str | None = None, parent: str | None = None) -> Options:
     v = cohort.vocabulary()
-    return Options(entries=[Option(field=e.field, parent=e.parent, value=e.value) for e in v.search(q, limit)],
+    return Options(entries=[Option(field=e.field, parent=e.parent, value=e.value)
+                            for e in v.search(q, limit, field, parent)],
                    years=v.years, cut_points=v.cut_points, min_cell=v.min_cell)
 
 
@@ -223,11 +224,14 @@ mcp_app = MCPServer(name="uccc-genomics-app", title="UCCC genomics cohort tools"
 
 
 @mcp_app.tool()
-def search_vocabulary(q: str, ctx: Context, limit: int = 20) -> Options:
+def search_vocabulary(q: str, ctx: Context, limit: int = 20, field: str | None = None,
+                      parent: str | None = None) -> Options:
     """Find the vocabulary values (genes, protein changes, oncotree codes, markers, ...) that match
-    free text, to put into a cohort definition. Returns values only, no counts."""
+    free text, to put into a cohort definition. Returns values only, no counts. Give `field` (e.g.
+    `alteration.aa`) and optionally `parent` (e.g. `KRAS`) to list one field's values; `q` may then
+    be empty."""
     _mcp_user(ctx)
-    return run_options(q, limit)
+    return run_options(q, limit, field, parent)
 
 
 @mcp_app.tool()
@@ -418,8 +422,9 @@ def app(static_dir: str | None = None) -> FastAPI:
         return run_apply(body.definition, body.op)
 
     @application.get("/api/options")
-    def get_options(q: str = "", limit: int = 20, email: str = Depends(user)) -> Options:
-        return run_options(q, limit)
+    def get_options(q: str = "", limit: int = 20, field: str | None = None, parent: str | None = None,
+                    email: str = Depends(user)) -> Options:
+        return run_options(q, limit, field, parent)
 
     @application.get("/api/schema")
     def get_schema(email: str = Depends(user)) -> SchemaInfo:

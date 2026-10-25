@@ -719,6 +719,18 @@ def test_search(cohort_db):
     assert len(v.search("a", limit=0)) == 1
 
 
+def test_search_field_and_parent(cohort_db):
+    v = vocabulary()
+    sexes = v.search("", field="population.sex")
+    assert sexes and {e.field for e in sexes} == {"population.sex"}
+    assert {e.value for e in sexes} == {e.value for e in v.entries if e.field == "population.sex"}
+    aa = v.search("", field="alteration.aa", parent="KRAS")
+    assert "G12C" in [e.value for e in aa] and {(e.field, e.parent) for e in aa} == {("alteration.aa", "KRAS")}
+    assert [e.patients for e in aa] == sorted((e.patients for e in aa), reverse=True)
+    assert [e.value for e in v.search("g12", field="alteration.aa", parent="KRAS")] == [e.value for e in aa if "G12" in e.value]
+    assert v.search("", field="no.such") == [] and v.search("") == [] and v.search("", parent="KRAS") == []
+
+
 # --- compile ----------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("criterion, fragments, values", [

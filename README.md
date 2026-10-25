@@ -83,12 +83,14 @@ mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/READ
                 app.py: genomics-app, FastAPI REST (/api/*) + MCP (/mcp) over cohort/, behind authen
                 cohort/: cohort definition, operations, cohort_id, compiler and suppression over mart.*
 dashboard/      Observable Framework site over aggregates of the de-id file (below)
+web/            Discover: React + TypeScript (Vite, bun) cohort builder over genomics-app's REST API (below)
 tests/          pytest: synthetic load -> deid -> unified, MCP query guard, cohort API, dashboard loader governance
 ```
 
 ```bash
 uv run pytest          # ~30 s; the loader tests skip when $DATA/genomics.duckdb is absent
 cd dashboard && npm test   # cohort page helpers
+cd web && bun install && bun run typecheck && bun test   # Discover app
 ```
 
 ## Schemas
@@ -272,7 +274,7 @@ suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`, `count`
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 [--static <dir>]
     # http://<tailnet-addr>:8092/api/docs, MCP clients at http://<tailnet-addr>:8092/mcp
 
-`--static` serves a built front end at `/` (the React app, later). Development only: no systemd
+`--static` serves a built front end at `/` (Discover, below). Development only: no systemd
 unit or deploy yet.
 
 **Saved cohorts** (`saved.py`, #36). A logged-in user can save a cohort definition, edit it with
@@ -302,6 +304,21 @@ docker rm -f genomics-test-pg
 ```
 
 Without `TEST_DATABASE_URL` the Postgres tests skip with a message. The app never migrates on start.
+
+### Discover (web/)
+
+The cohort builder (COHORT_DISCOVERY.md §3.3), a React + TypeScript app built with Vite and bun.
+It sends only cohort definitions and edit operations to `/api/*` (never SQL), shows every
+suppressed count as "<5", keeps versions in the browser's local storage and shares a cohort as a
+link holding its definition. No third-party requests; the build sets a same-origin CSP.
+
+    cd web && bun install && bun run build
+    uv run genomics-app --auth password --host <tailnet-addr> --port 8092 --static web/dist
+    # http://<tailnet-addr>:8092/
+
+`bun run dev` serves the app with hot reload and proxies `/api` to a genomics-app on
+127.0.0.1:8092. After changing a model in `cohort/` or `app.py`, run `bun run gen` (rewrites
+`web/openapi.json` and `web/src/api.gen.ts`); pytest and `bun run typecheck` fail until you do.
 
 ## Cleanup
 

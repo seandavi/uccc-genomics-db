@@ -98,9 +98,12 @@ class Vocabulary(BaseModel):
                     case "actionability":
                         need(f"{p}.evidence", "actionability.evidence", m.evidence)
 
-    def search(self, q: str, limit: int = 20) -> list[VocabEntry]:
+    def search(self, q: str, limit: int = 20, field: str | None = None,
+               parent: str | None = None) -> list[VocabEntry]:
+        """Entries whose value contains q (case-insensitive), optionally only of one field and one
+        parent. An empty q returns nothing unless field is given (then: that field's values)."""
         q = q.strip().lower()
-        if not q or len(q) > 100:
+        if len(q) > 100 or (not q and field is None):
             return []
         limit = max(1, min(limit, 50))
 
@@ -108,5 +111,6 @@ class Vocabulary(BaseModel):
             v = e.value.lower()
             return (v != q, not v.startswith(q), -e.patients, e.value)
 
-        return sorted((e for e in self.entries if q in e.value.lower()), key=rank)[:limit]
-
+        hits = (e for e in self.entries if q in e.value.lower()
+                and (field is None or e.field == field) and (parent is None or e.parent == parent))
+        return sorted(hits, key=rank)[:limit]
