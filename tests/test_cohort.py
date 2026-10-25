@@ -395,7 +395,8 @@ def test_line_rule():
     assert _line([12, 8], None) == [12, None]      # the total is the one hidden value
 
 
-def test_floor():
+def test_floor(monkeypatch):
+    monkeypatch.setattr(suppress, "ROUND", 1)
     assert [floor(n) for n in (None, 0, 1, 4, 5, 6)] == [None, 0, None, None, 5, 6]
 
 
@@ -482,6 +483,8 @@ def test_compile_validates_names_it_puts_in_the_sql():
         compile_pivot(d.model_copy(update={"pivot": bad}))
     with pytest.raises(DefinitionError, match="names no criterion"):
         compile_pivot(d.model_copy(update={"pivot": Pivot.model_construct(rows="c9.key", cols="year")}))
+    with pytest.raises(DefinitionError, match="not a pivot axis"):
+        compile_pivot(d.model_copy(update={"pivot": Pivot.model_construct(rows="c1.key\n", cols="year")}))
     with pytest.raises(DefinitionError, match="not a breakdown dimension"):
         compile(d.model_copy(update={"breakdown": ["sex; DROP TABLE x"]}))
 
@@ -604,9 +607,11 @@ def test_static_validation_definition_level():
     for data, fragment in [
         ({"criteria": [a, {**b, "id": "c1"}]}, "duplicate criterion id"),
         ({"criteria": [{**a, "id": None}]}, "needs an id"),
+        ({"criteria": [{**a, "id": "c1\n"}]}, "needs an id"),
         ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "oncotree"}}, "must differ"),
         ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "c9.key"}}, "unknown criterion 'c9'"),
         ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "nonsense"}}, "not a dimension"),
+        ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "c1.key\n"}}, "not a dimension"),
         ({"criteria": [{"id": "c1", "kind": "specimen", "site": ["liver"]}], "pivot": {"rows": "c1.val", "cols": "year"}},
          "specimen criterion cannot be a pivot axis"),
         ({"criteria": [{"id": "c1", "kind": "any_of", "of": [{"kind": "specimen", "site": ["liver"]}, {"kind": "ihc", "marker": "ER"}]}],
