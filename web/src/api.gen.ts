@@ -92,6 +92,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/saved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Saved List */
+        get: operations["get_saved_list_api_saved_get"];
+        put?: never;
+        /** Post Saved */
+        post: operations["post_saved_api_saved_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/saved/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Saved */
+        get: operations["get_saved_api_saved__id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Saved */
+        delete: operations["delete_saved_api_saved__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/saved/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Saved Apply */
+        post: operations["post_saved_apply_api_saved__id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/saved/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Saved History */
+        get: operations["get_saved_history_api_saved__id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/saved/{id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Saved Revert */
+        post: operations["post_saved_revert_api_saved__id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/saved/{id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Saved Snapshot */
+        post: operations["post_saved_snapshot_api_saved__id__snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/schema": {
         parameters: {
             query?: never;
@@ -101,6 +205,40 @@ export interface paths {
         };
         /** Get Schema */
         get: operations["get_schema_api_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Snapshots */
+        get: operations["get_snapshots_api_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/versions/{cohort_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Version */
+        get: operations["get_version_api_versions__cohort_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -244,6 +382,12 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** CohortVersion */
+        CohortVersion: {
+            /** Cohort Id */
+            cohort_id: string;
+            definition: components["schemas"]["Definition"];
+        };
         /** CountResult */
         CountResult: {
             /** Breakdowns */
@@ -314,6 +458,14 @@ export interface components {
              */
             version: 1;
         };
+        /** Deleted */
+        Deleted: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
         /** Expression */
         Expression: {
             /** Gene */
@@ -345,6 +497,11 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** History */
+        History: {
+            /** Revisions */
+            revisions: components["schemas"]["Revision"][];
         };
         /** Ihc */
         Ihc: {
@@ -512,6 +669,57 @@ export interface components {
              */
             op: "rename";
         };
+        /** RevertRequest */
+        RevertRequest: {
+            /** To */
+            to: number;
+        };
+        /** Revision */
+        Revision: {
+            /** Cohort Id */
+            cohort_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["Definition"];
+            /** Op */
+            op: {
+                [key: string]: unknown;
+            } | null;
+            /** Seq */
+            seq: number;
+        };
+        /** SavedApplyRequest */
+        SavedApplyRequest: {
+            /** Op */
+            op: components["schemas"]["AddCriterion"] | components["schemas"]["RemoveCriterion"] | components["schemas"]["UpdateCriterion"] | components["schemas"]["SetPopulation"] | components["schemas"]["SetBreakdown"] | components["schemas"]["SetPivot"] | components["schemas"]["Rename"];
+        };
+        /** SavedCohort */
+        SavedCohort: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            head: components["schemas"]["Revision"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SavedList */
+        SavedList: {
+            /** Cohorts */
+            cohorts: components["schemas"]["SavedCohort"][];
+        };
         /** SchemaInfo */
         SchemaInfo: {
             /** Cut Points */
@@ -558,6 +766,33 @@ export interface components {
              */
             op: "set_population";
             population: components["schemas"]["Population"];
+        };
+        /** Snapshot */
+        Snapshot: {
+            /** Cohort Id */
+            cohort_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Data Date
+             * Format: date
+             */
+            data_date: string;
+            definition: components["schemas"]["Definition"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            result: components["schemas"]["CountResult"];
+        };
+        /** Snapshots */
+        Snapshots: {
+            /** Snapshots */
+            snapshots: components["schemas"]["Snapshot"][];
         };
         /** Specimen */
         Specimen: {
@@ -783,6 +1018,253 @@ export interface operations {
             };
         };
     };
+    get_saved_list_api_saved_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedList"];
+                };
+            };
+        };
+    };
+    post_saved_api_saved_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Definition"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedCohort"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_saved_api_saved__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedCohort"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_saved_api_saved__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_saved_apply_api_saved__id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavedApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedCohort"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_saved_history_api_saved__id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["History"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_saved_revert_api_saved__id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedCohort"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_saved_snapshot_api_saved__id__snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_schema_api_schema_get: {
         parameters: {
             query?: never;
@@ -799,6 +1281,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchemaInfo"];
+                };
+            };
+        };
+    };
+    get_snapshots_api_snapshots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshots"];
+                };
+            };
+        };
+    };
+    get_version_api_versions__cohort_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cohort_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortVersion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

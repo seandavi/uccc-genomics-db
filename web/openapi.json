@@ -422,6 +422,23 @@
         "title": "BreakdownCell",
         "type": "object"
       },
+      "CohortVersion": {
+        "properties": {
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          }
+        },
+        "required": [
+          "cohort_id",
+          "definition"
+        ],
+        "title": "CohortVersion",
+        "type": "object"
+      },
       "CountResult": {
         "properties": {
           "breakdowns": {
@@ -627,6 +644,20 @@
         "title": "Definition",
         "type": "object"
       },
+      "Deleted": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "Deleted",
+        "type": "object"
+      },
       "Expression": {
         "additionalProperties": false,
         "properties": {
@@ -723,6 +754,22 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "History": {
+        "properties": {
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/Revision"
+            },
+            "title": "Revisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revisions"
+        ],
+        "title": "History",
         "type": "object"
       },
       "Ihc": {
@@ -1179,6 +1226,154 @@
         "title": "Rename",
         "type": "object"
       },
+      "RevertRequest": {
+        "properties": {
+          "to": {
+            "minimum": 1.0,
+            "title": "To",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "to"
+        ],
+        "title": "RevertRequest",
+        "type": "object"
+      },
+      "Revision": {
+        "properties": {
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          },
+          "op": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Op"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "cohort_id",
+          "definition",
+          "op",
+          "created_at"
+        ],
+        "title": "Revision",
+        "type": "object"
+      },
+      "SavedApplyRequest": {
+        "properties": {
+          "op": {
+            "discriminator": {
+              "mapping": {
+                "add_criterion": "#/components/schemas/AddCriterion",
+                "remove_criterion": "#/components/schemas/RemoveCriterion",
+                "rename": "#/components/schemas/Rename",
+                "set_breakdown": "#/components/schemas/SetBreakdown",
+                "set_pivot": "#/components/schemas/SetPivot",
+                "set_population": "#/components/schemas/SetPopulation",
+                "update_criterion": "#/components/schemas/UpdateCriterion"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AddCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/RemoveCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/SetPopulation"
+              },
+              {
+                "$ref": "#/components/schemas/SetBreakdown"
+              },
+              {
+                "$ref": "#/components/schemas/SetPivot"
+              },
+              {
+                "$ref": "#/components/schemas/Rename"
+              }
+            ],
+            "title": "Op"
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "title": "SavedApplyRequest",
+        "type": "object"
+      },
+      "SavedCohort": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "head": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "head",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedCohort",
+        "type": "object"
+      },
+      "SavedList": {
+        "properties": {
+          "cohorts": {
+            "items": {
+              "$ref": "#/components/schemas/SavedCohort"
+            },
+            "title": "Cohorts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cohorts"
+        ],
+        "title": "SavedList",
+        "type": "object"
+      },
       "SchemaInfo": {
         "properties": {
           "cut_points": {
@@ -1296,6 +1491,61 @@
           "population"
         ],
         "title": "SetPopulation",
+        "type": "object"
+      },
+      "Snapshot": {
+        "properties": {
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "data_date": {
+            "format": "date",
+            "title": "Data Date",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/CountResult"
+          }
+        },
+        "required": [
+          "id",
+          "cohort_id",
+          "definition",
+          "data_date",
+          "result",
+          "created_at"
+        ],
+        "title": "Snapshot",
+        "type": "object"
+      },
+      "Snapshots": {
+        "properties": {
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/Snapshot"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshots"
+        ],
+        "title": "Snapshots",
         "type": "object"
       },
       "Specimen": {
@@ -1709,6 +1959,318 @@
         "summary": "Post Pivot"
       }
     },
+    "/api/saved": {
+      "get": {
+        "operationId": "get_saved_list_api_saved_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Saved List"
+      },
+      "post": {
+        "operationId": "post_saved_api_saved_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Definition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCohort"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Saved"
+      }
+    },
+    "/api/saved/{id}": {
+      "delete": {
+        "operationId": "delete_saved_api_saved__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Saved"
+      },
+      "get": {
+        "operationId": "get_saved_api_saved__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCohort"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Saved"
+      }
+    },
+    "/api/saved/{id}/apply": {
+      "post": {
+        "operationId": "post_saved_apply_api_saved__id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCohort"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Saved Apply"
+      }
+    },
+    "/api/saved/{id}/history": {
+      "get": {
+        "operationId": "get_saved_history_api_saved__id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Saved History"
+      }
+    },
+    "/api/saved/{id}/revert": {
+      "post": {
+        "operationId": "post_saved_revert_api_saved__id__revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedCohort"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Saved Revert"
+      }
+    },
+    "/api/saved/{id}/snapshot": {
+      "post": {
+        "operationId": "post_saved_snapshot_api_saved__id__snapshot_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Saved Snapshot"
+      }
+    },
     "/api/schema": {
       "get": {
         "operationId": "get_schema_api_schema_get",
@@ -1725,6 +2287,63 @@
           }
         },
         "summary": "Get Schema"
+      }
+    },
+    "/api/snapshots": {
+      "get": {
+        "operationId": "get_snapshots_api_snapshots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshots"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Snapshots"
+      }
+    },
+    "/api/versions/{cohort_id}": {
+      "get": {
+        "operationId": "get_version_api_versions__cohort_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cohort_id",
+            "required": true,
+            "schema": {
+              "title": "Cohort Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortVersion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version"
       }
     }
   }
