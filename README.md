@@ -263,14 +263,16 @@ instead (nginx over `dist/`, IP allowlist).
 ### Cohort app (genomics-app)
 
 `mcp/src/uccc_genomics_mcp/app.py`: the campus cohort site's backend (docs/ARCHITECTURE.md). One
-process serves REST at `/api/*` (OpenAPI schema at `/api/openapi.json`; no Swagger UI) and MCP (Streamable HTTP, stateless) at
-`/mcp` (POST only; `GET /mcp` is 405, no SSE stream), both thin layers over `cohort/`. Every request but `/api/health` needs a login through
-`authen` (`--auth access|password|none`; `none`: no login,
-local dev only). `count` and `pivot` are limited to 60 a minute per user
-across both surfaces (a count or pivot the cohort module rejects, such as an unknown value or a pivot
-with no rows/cols, still uses the limit; a body that fails schema validation does not) and logged to stdout as one JSON line each (user, cohort_id, definition,
-suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`, `count`, `pivot` and
-`describe_definition`, plus the saved-cohort tools below; there is no SQL tool.
+process serves REST at `/api/*` (OpenAPI schema at `/api/openapi.json`; no Swagger UI) and MCP
+(Streamable HTTP, stateless) at `/mcp` (POST only; `GET /mcp` is 405, no SSE stream), both thin
+layers over `cohort/`. Every request but `/api/health` needs a login through `authen`
+(`--auth access|password|none`; `none`: no login, local dev only). `count` and `pivot` are limited
+to 60 a minute per user across both surfaces (a count or pivot the cohort module rejects, such as
+an unknown vocabulary value or a pivot of a definition that has no pivot, still uses the limit; a
+body that fails schema validation does not) and logged to stdout as one JSON line each (user,
+cohort_id, definition, suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`,
+`count`, `pivot` and `describe_definition`, plus the saved-cohort tools below; there is no SQL
+tool.
 
     uv run python -m uccc_genomics_mcp.authen    # once: put APP_USER and the printed APP_PASSWORD_HASH in .env
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 [--static <dir>]
