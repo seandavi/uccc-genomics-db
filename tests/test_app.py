@@ -5,6 +5,7 @@ de-id file. Every parity case goes through both surfaces and must give identical
 """
 import asyncio
 import json
+from pathlib import Path
 from urllib.parse import urlencode
 
 import duckdb
@@ -16,6 +17,7 @@ from starlette.testclient import TestClient
 from test_cohort import build_mart, use_mart, write_mart
 from uccc_genomics_mcp import app, authen, server
 
+ROOT = Path(__file__).resolve().parent.parent
 AUTH = ("sean", "s3cret")
 MCP_HEADERS = {"accept": "application/json, text/event-stream"}
 
@@ -126,6 +128,8 @@ CASES = [
     apply_case({"op": "set_pivot", "pivot": None}, {"pivot": {"rows": "oncotree", "cols": "year"}}),
     apply_case({"op": "rename", "name": "my cohort"}),
     options("kras"), options("her2"), options(""), options("r", limit=2),
+    options("", field="population.sex"), options("", field="alteration.aa", parent="KRAS", limit=50),
+    options("", field="biomarker.call", parent="MSI"),
     ("GET", "/api/schema", None, "describe_definition", {}),
 ]
 IDS = [f"{c[3]}-{i}" for i, c in enumerate(CASES)]
@@ -308,3 +312,8 @@ def test_mcp_tool_needs_the_middleware(ids):
         return
     assert getattr(result, "is_error", True) or getattr(result, "isError", True)
     assert "patients" not in str(result)
+
+
+def test_openapi_snapshot():
+    committed = json.loads((ROOT / "web" / "openapi.json").read_text())
+    assert committed == app.app().openapi(), "web/openapi.json is stale: run `cd web && bun run gen`"
