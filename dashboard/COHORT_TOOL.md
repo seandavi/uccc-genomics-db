@@ -37,6 +37,10 @@ moving the dashboard's DNS record, and the uptime check probes the API hostname
 directly, so no Access bypass is needed. The API hostname is open to the internet,
 exactly as the origin IP would be under d2, so the JWT check is what guards it.
 
+`COHORT_DISCOVERY.md` (2026-10-01) builds on this design: twenty researcher questions
+answered against the data, a cohort-definition API over a `mart` schema, and a builder
+page with an assistant.
+
 ## a. What users need
 
 A trialist or disease-group lead wants to know, before writing a protocol,

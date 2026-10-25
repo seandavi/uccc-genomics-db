@@ -1,8 +1,10 @@
 # AGENTS.md
 
 Conventions for anyone (human or agent) changing this repo. [README.md](README.md) is the operating
-doc and design record; [PLAN.md](PLAN.md) has the reasoning and vendor column mapping;
-[dashboard/COHORT_TOOL.md](dashboard/COHORT_TOOL.md) is the cohort API/page design. Read the parts
+doc and design record. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is the architecture of the
+campus cohort site and [dashboard/COHORT_DISCOVERY.md](dashboard/COHORT_DISCOVERY.md) its product
+design; [PLAN.md](PLAN.md) has the reasoning and vendor column mapping;
+[dashboard/COHORT_TOOL.md](dashboard/COHORT_TOOL.md) is the phase 1 cohort API/page design. Read the parts
 that touch your change first.
 
 ## What this is
@@ -110,7 +112,8 @@ PHI file.
   say `Closes #<n>`. One change per PR; say what you checked.
 - Small, well-described commits with a `Co-Authored-By` trailer when an agent wrote them. Never
   `git stash` (parallel worktrees share it). Never force-push `main`.
-- Anything waiting on a person carries the `needs:human` label. A person always merges.
+- Anything waiting on a person carries the `needs:human` label. A PR merges once CI is green, by
+  Sean or the orchestrating session (never by a crucible stage or other subagent).
 
 ## pi-crucible
 
