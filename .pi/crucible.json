@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/seandavi/pi-crucible/main/schema/crucible.schema.json",
+  "worktreeRoot": "../uccc-genomics-db-worktrees",
+  "design": "The design record is README.md (operating doc), PLAN.md (reasoning, vendor column mapping) and dashboard/COHORT_TOOL.md (cohort API and page). AGENTS.md holds the rules. A change that contradicts any of them must say so in its spec and update the doc in the same PR. This repo is public and the data is patient data: specs, commits and PR text use synthetic examples and column names, never real counts, values or identifiers.",
+  "seamNote": "deid.py (PHI column lists, id hashing, date shift, leak assert), config.connect(), db.bulk_insert, sql/unified.sql, the cohort API's suppression and allow-lists, the MCP query guard",
+  "spec": {
+    "design": "files to add/change under src/uccc_genomics/, mcp/, dashboard/ or systemd/; functions and their signatures; schema.table and column names for any data change, with the vendor source field each comes from (PLAN.md mapping); for anything that leaves the de-id file (dashboard loader, cohort API, MCP tool), the small-cell rule it applies and how; whether research_id or report_id stability is affected (it must not be). The test plan uses synthetic Caris JSON / FMI XML / DuckDB built in the test under a temp DATA dir, never $DATA/raw or the PHI file"
+  },
+  "implement": "Run `uv sync --all-packages` first in a fresh worktree (plain `uv sync` misses the mcp/ member). Tests build synthetic inputs in temp dirs (see tests/test_pipeline.py); never read $DATA/raw/ or genomics_phi.duckdb, and never write to the real $DATA. Never run `genomics sync|load|deid|all` against the real $DATA, `npm run deploy`, `wrangler deploy`, or systemctl on the services; never touch the key files. Stop any dev server you start. Report the dashboard check as n/a when the change cannot affect dashboard/.",
+  "checks": [
+    {
+      "name": "test",
+      "command": "uv sync --all-packages && uv run --all-packages pytest -q"
+    },
+    {
+      "name": "dashboard",
+      "command": "cd dashboard && npm ci && npm test"
+    }
+  ],
+  "lenses": {
+    "code": "CODE review. Correctness against the issue spec and its acceptance criteria; tests that would actually catch a regression (synthetic fixtures in temp dirs, no network, never $DATA/raw or the PHI file); loads stay full drop-and-rebuild from the raw mirror; vendor quirks in README/PLAN.md are preserved (Caris newest-JSON-wins, FMI Monitor files, FMI missing MRN, fmi.load_error so nothing drops silently); new disease terms go in disease_crosswalk.csv, not SQL special cases; unified.* stays UNION ALL BY NAME with a vendor column; bulk loads go through db.bulk_insert; dependency choices against AGENTS.md (uv, stdlib, polars not pandas, no new deps without reason); dead code. The spec and the code must agree: a stale spec is \"major\", because later issues copy it.",
+    "security": "PRIVACY + SECURITY review. No PHI reaches the de-id file, logs, fixtures, commits, specs or PR text: check deid.py's drop lists and leak assert against any new column, not just the tests. research_id/report_id stay keyed hashes, stable for the same key; dates stay shifted per patient; ages capped at 89. Every path out of the de-id file (dashboard loader, cohort API, MCP tool) floors counts under 5, emits no row-level ids, and the cohort API keeps secondary suppression, the whole-cohort rule, allow-listed parameters and bound SQL only. The MCP connection keeps enable_external_access=false, lock_configuration=true and the row cap. The cohort API refuses requests without a valid Access JWT (only /api/health open); wrangler.toml keeps workers_dev and previews off. No keys, .env values, bucket or host names in code or docs.",
+    "ux": "UX review for clinicians and researchers on the dashboard and agents using the MCP server. Dashboard: labels and legends say what is counted (patients vs reports, which vendors), suppressed cells are shown as suppressed not zero, filters and shareable query-string links work, readable on mobile and in light/dark mode, accessibility (contrast, headings, keyboard focus). MCP tools and cohort API: names and descriptions say what they answer, errors name the bad parameter, results are small. README and AGENTS.md stay accurate for a first-time user."
+  }
+}
