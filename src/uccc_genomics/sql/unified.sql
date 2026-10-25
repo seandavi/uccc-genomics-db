@@ -164,7 +164,9 @@ FROM caris.loh l JOIN caris.report r USING (case_id)
 UNION ALL BY NAME
 SELECT 'caris' AS vendor, i.case_id AS report_id, r.research_id, 'PD-L1' AS name, i.result AS call,
        coalesce(i.tps, i.cps, i.stain_pct) AS value,
-       CASE WHEN i.tps IS NOT NULL THEN 'TPS' WHEN i.cps IS NOT NULL THEN 'CPS' ELSE '% stained' END AS unit
+       CASE WHEN i.tps IS NOT NULL THEN 'TPS' WHEN i.cps IS NOT NULL THEN 'CPS' ELSE '% stained' END AS unit,
+       -- the clone is only in the vendor name, `PD-L1 (22c3)`; regexp_extract returns '' on no match
+       lower(nullif(regexp_extract(i.biomarker_name, '\(([^)]+)\)', 1), '')) AS clone
 FROM caris.ihc i JOIN caris.report r USING (case_id) WHERE i.biomarker_name ILIKE 'PD-L1%'
 UNION ALL BY NAME
 -- Every other Caris IHC marker (HER2, ER, PR, AR, MMR proteins, ALK, CLDN18, FOLR1 ...) under its own name.
