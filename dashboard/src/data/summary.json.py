@@ -24,8 +24,8 @@ def rows(sql: str) -> list[dict]:
 # One alteration row per (report, gene, type). VUS kept separate so it can be toggled.
 ALT = """
 WITH alt AS (
-  SELECT vendor, report_id, gene, CASE WHEN coalesce(is_vus, false) THEN 'VUS' ELSE 'pathogenic/likely' END AS alt_type
-  FROM unified.variant WHERE gene IS NOT NULL
+  SELECT vendor, report_id, gene, CASE WHEN tier = 'vus' THEN 'VUS' ELSE 'pathogenic/likely' END AS alt_type
+  FROM unified.variant WHERE gene IS NOT NULL AND tier IN ('pathogenic', 'likely_pathogenic', 'vus')
   UNION ALL SELECT vendor, report_id, gene, cn_type FROM unified.cna WHERE cn_type IN ('amplification', 'loss')
   UNION ALL SELECT vendor, report_id, gene1, 'fusion' FROM unified.fusion WHERE gene1 IS NOT NULL
   UNION ALL SELECT vendor, report_id, gene2, 'fusion' FROM unified.fusion WHERE gene2 IS NOT NULL AND gene2 <> gene1
@@ -75,7 +75,7 @@ summary = {
         gv AS (
           SELECT v.vendor, r.disease, v.gene, regexp_replace(v.hgvs_p, '^p\\.', '') AS aa, count(DISTINCT v.report_id) AS n
           FROM unified.variant v JOIN rep r USING (vendor, report_id)
-          WHERE NOT coalesce(v.is_vus, false) AND v.hgvs_p IS NOT NULL AND v.gene IN (SELECT gene FROM top)
+          WHERE v.tier IN ('pathogenic', 'likely_pathogenic') AND v.hgvs_p IS NOT NULL AND v.gene IN (SELECT gene FROM top)
           GROUP BY GROUPING SETS ((v.vendor, r.disease, v.gene, aa), (v.vendor, v.gene, aa)))
         SELECT vendor, disease, gene, CASE WHEN n >= {MIN_CELL} THEN aa ELSE 'other (each < {MIN_CELL})' END AS aa, sum(n)::BIGINT AS n
         FROM gv GROUP BY ALL"""),
@@ -105,7 +105,7 @@ summary = {
     "vaf_hist": rows("""
         SELECT v.vendor, r.assay_class, floor(v.vaf * 20) / 20 AS bin, count(*) AS n
         FROM unified.variant v JOIN unified.report r USING (vendor, report_id)
-        WHERE v.vaf BETWEEN 0 AND 1 AND NOT coalesce(v.is_vus, false)
+        WHERE v.vaf BETWEEN 0 AND 1 AND v.tier IN ('pathogenic', 'likely_pathogenic')
         GROUP BY ALL ORDER BY ALL"""),
     "purity_hist": rows("""
         SELECT vendor, least(floor(tumor_purity_pct / 10) * 10, 90) AS bin, count(*) AS n

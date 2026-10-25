@@ -8,7 +8,7 @@ const options = {
   organ: ["Blood/Bone Marrow", "Bowel", "Lung", "Pancreas"], disease: ["Melanoma"], gene: ["KRAS", "TP53"],
   aa: {TP53: ["R175H"]}, sex: ["female", "male"], age: ["<50", "50-64", "65-74", "75+", "unknown"],
   vendor: ["caris", "fmi"], assay_class: ["tissue", "liquid", "heme"],
-  alt_class: ["pathogenic", "vus", "amplification", "loss", "fusion"], year_min: 2010, year_max: 2026, min_cell: 5,
+  alt_class: ["pathogenic", "vus", "unclassified", "amplification", "loss", "fusion"], year_min: 2010, year_max: 2026, min_cell: 5,
 };
 const all = readQuery("", options);
 
@@ -38,6 +38,11 @@ test("partial groups, VUS and year window are sent; aa only with one gene", () =
   const f = {...all, sex: ["female"], gene: ["TP53", "KRAS"], aa: ["R175H"], alt_class: ["pathogenic", "vus"], years: [2026, 2020]};
   assert.equal(cohortQuery(f, options),
     "sex=female&gene=TP53&gene=KRAS&alt_class=pathogenic&alt_class=vus&year_from=2020");
+});
+
+test("VUS and unclassified are opt-in", () => {
+  assert.deepEqual(readQuery("", options).alt_class, ["pathogenic", "amplification", "loss", "fusion"]);
+  assert.equal(cohortQuery({...all, gene: ["TP53"]}, options), "gene=TP53");
 });
 
 test("an empty checkbox group matches nothing, so there is no query", () => {
