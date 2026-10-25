@@ -16,6 +16,10 @@
     {
       "name": "dashboard",
       "command": "cd dashboard && npm ci && npm test"
+    },
+    {
+      "name": "web",
+      "command": "cd web && bun install --frozen-lockfile && bun run typecheck && bun test"
     }
   ],
   "lenses": {

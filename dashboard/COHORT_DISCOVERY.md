@@ -264,6 +264,13 @@ Observable Framework: the definition lives in a `Mutable`, and both the
 builder and the assistant write to it. Three columns on a wide screen; the
 assistant collapses into a drawer below 1,200 px.
 
+**Phase 1 (#37).** The page is the React app in `web/` (ARCHITECTURE decision 6), not
+`dashboard/src/discover.md` on Observable Framework. Versions are kept in the browser's local
+storage, and the share link carries the definition in the URL fragment (short links by `cohort_id`
+come with saved cohorts). The include / exclude toggle, the "same report" lock, drag-to-reorder,
+Compare, Feasibility statement and Request data are not built (phase 2, or no operation yet), and
+the assistant column is empty.
+
 ```
 ┌ KRAS G12C NSCLC, no STK11/KEAP1, PD-L1 high, 2023+  v4 ▾  [Compare] [Share link] [Feasibility statement] [Request data] ┐
 ├──────────────────────────────┬────────────────────────────────────────────────────┬─────────────────────────────┤
@@ -398,7 +405,9 @@ from the table: `POST /api/pivot` takes the definition alone, because the pivot'
 `cols` are `pivot` inside the definition (#34); the response of `GET /api/options` is
 `{entries, years, cut_points, min_cell}` with no counts; and `/api/apply` and `/api/schema`
 were added for the operations and the JSON Schemas. `/api/health` is open and returns only
-`{"status": "Healthy"}`, without the report total of the phase 1 contract.
+`{"status": "Healthy"}`, without the report total of the phase 1 contract. `GET /api/options` also
+takes `field` and `parent` to list one field's values (an empty `q` is then allowed), still without
+counts.
 
 | Endpoint | Change |
 |---|---|

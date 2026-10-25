@@ -64,3 +64,6 @@ and the decisions behind it. Tracking issue: #23.
 The app runs on the pipeline host, bound to its tailnet address, with `--auth password`, so
 progress is visible at `http://<host>:<port>` from the tailnet. No `tailscale serve`, no
 deploys. The service is `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35). Production hosting (Docker Compose behind Traefik, Zitadel) comes after the app works.
+
+The app (Discover) is built from `web/` and served by `genomics-app --static web/dist` (#37), so it
+shares the origin and the login of `/api/*`.
