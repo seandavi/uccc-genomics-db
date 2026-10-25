@@ -281,7 +281,17 @@ def test_attack_report_scope_against_patient_scope(db):
     assert steps(count(on_report)) == [40, 35, None] and count(on_report).patients is None
     assert [n.definition.scope for n in neighbours(on_report)][-1] == "patient"
     assert steps(count(on_patient)) == [40, 35, 26]
-    assert neighbours(defn(criteria[:1], population=pop("UVM"), scope="report")) == []   # one criterion: same count
+    assert neighbours(defn(criteria[:1], population=pop("UVM"), scope="report")) == []   # one include: same count
+
+
+def test_attack_single_exclusion_report_vs_patient_scope(db):
+    """One exclusion differs by scope: report scope keeps patients with STK11 on one report and a
+    report without it; patient scope drops them."""
+    c = [exclude(alt("c1", ["STK11"]))]
+    on_report, on_patient = (defn(c, population=pop("UVM"), scope=s) for s in ("report", "patient"))
+    assert raw_funnel(on_report) == [40, 34] and raw_funnel(on_patient) == [40, 31]   # 34 - 31 = 3
+    assert count(on_report).patients is None
+    assert [n.definition.scope for n in neighbours(on_report)][-1] == "patient"
 
 
 def test_attack_union_population(db):

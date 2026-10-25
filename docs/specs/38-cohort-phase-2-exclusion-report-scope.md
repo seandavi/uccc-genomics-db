@@ -21,9 +21,11 @@ the synthetic test mart.
      criterion made a plain `exclude`;
    - the **union rule**: the same check against the cohort with one value taken out of a population
      field that lists two or more values, or with one end year taken off a year range;
-   - the **scope rule**: for a report-scope definition with two or more criteria, the same check
-     against the cohort at patient scope. The two differ by the patients whose criteria match only
-     on different reports, a group no include query can express.
+   - the **scope rule**: for a report-scope definition with two or more criteria, or with any
+     negated criterion, the same check against the cohort at patient scope. The two differ by the
+     patients whose criteria match only on different reports (or, for one exclusion, who have B on
+     one report and a report without it), a group no include query can express. One include
+     criterion counts the same at both scopes and gets no scope neighbour.
 
    Both are one mechanism, the *neighbour check* (below). The funnel delta rule and two-way pivot
    suppression already exist (#34). They stay, and they get attack tests in phase 2 shapes.
@@ -75,7 +77,7 @@ defeats it.
    break stored cohorts. On a synthetic mart of ~700k facts one count statement takes ~20 ms, so 33
    statements stay under a second.
 6. **Loosen suggestions are only offered for definitions with no neighbours** (include-only, with
-   no multi-value population field, no year range and not report scope with two or more criteria). A suggestion is itself a count, and for a
+   no multi-value population field, no year range and not report scope with two or more criteria or a negated criterion). A suggestion is itself a count, and for a
    definition with neighbours it would need its own neighbour checks. `CountResult` gains
    `loosen_offered: bool` so the page can say why there are none.
 7. **Question 17 needs a per-criterion `vendor`** (`"caris"`, `"fmi"` or null). A vendor × vendor
@@ -277,7 +279,7 @@ def neighbours(d: Definition) -> list[Neighbour]:
     non-empty subset of its negated criteria; d with one tested_negative criterion made a plain
     exclusion (the difference is the patients with no result for the gene); d with one value taken out of a population field that
     lists two or more; d with one end year taken off a year range (from < to); a report-scope d with
-    two or more criteria at patient scope (the difference is the patients whose criteria match only on
+    two or more criteria, or any negated criterion, at patient scope (the difference is the patients whose criteria match only on
     different reports). Raises DefinitionError if there are more than MAX_NEIGHBOURS."""
 ```
 
@@ -296,7 +298,7 @@ def neighbours(d: Definition) -> list[Neighbour]:
   value in it (sorted order), drop that value. `step[k] = k`.
 - Years: if `years` is set and `years[0] < years[1]`, add `[from + 1, to]` and then
   `[from, to - 1]`. `step[k] = k`.
-- Scope: if `d.scope == "report"` and `len(d.criteria) >= 2`, add `d` with `scope` set to `"patient"`.
+- Scope: if `d.scope == "report"` and (`len(d.criteria) >= 2` or any criterion is negated), add `d` with `scope` set to `"patient"`.
   `step[k] = k`. A patient-scope count is at least as large as the report-scope count for include
   criteria, and the two differ for exclusions in either direction, so without this neighbour the
   two counts of one definition (one click apart in the Builder, side by side in Compare) could
@@ -750,7 +752,10 @@ Attack tests. Each asserts the raw numbers that make the attack (from `queries._
   `c1` KRAS, `c2` exclude STK11. Raw funnel `[40, 35, 29]` at report scope against `[40, 35, 26]` at
   patient scope; 29 − 26 = 3. The report-scope result is `[40, 35, None]` and `patients is None`,
   its last neighbour has `scope == "patient"`, the patient-scope result shows 26, and a
-  report-scope definition with one criterion has no neighbours.
+  report-scope definition with one include criterion has no neighbours.
+- `test_attack_single_exclusion_report_vs_patient_scope`: UVM, `c1` exclude STK11. Raw `[40, 34]` at
+  report scope against `[40, 31]` at patient scope; the report-scope `patients` is None and its last
+  neighbour has `scope == "patient"`.
 - `test_attack_union_population`: population `[NSCLC, PAAD]`, `c1` KRAS. Raw 29 against neighbour
   `[NSCLC]` 27, so 2 would be revealed. `patients is None`. `count` of `[NSCLC]` alone shows 27.
   The population alone (`[NSCLC, PAAD]`, no criteria) shows 42.

@@ -386,7 +386,9 @@ def _year_range(d: Definition) -> bool:
 
 
 def _scope_swap(d: Definition) -> bool:
-    return d.scope == "report" and len(d.criteria) >= 2
+    # One include criterion counts the same at both scopes; one negated criterion does not
+    # (report scope: some report lacks B; patient scope: no report has B).
+    return d.scope == "report" and (len(d.criteria) >= 2 or any(c.mode in NEGATED for c in d.criteria))
 
 
 def _neighbour_count(d: Definition) -> int:
@@ -400,7 +402,7 @@ def neighbours(d: Definition) -> list[Neighbour]:
     non-empty subset of its negated criteria; d with one tested_negative criterion made a plain exclusion
     (the difference is the patients with no result for the gene); d with one value taken out of a population field that
     lists two or more; d with one end year taken off a year range (from < to); a report-scope d with
-    two or more criteria at patient scope (the difference is the patients whose criteria match only on
+    two or more criteria, or any negated criterion, at patient scope (the difference is the patients whose criteria match only on
     different reports). Raises DefinitionError if there are more than MAX_NEIGHBOURS. The order (subsets,
     mode swaps, population, years, scope) is part of the contract."""
     n = _neighbour_count(d)
