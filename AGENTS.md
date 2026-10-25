@@ -74,7 +74,7 @@ systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
   dir with synthetic inputs, as `tests/test_pipeline.py` does.
 - **Don't weaken Cloudflare Access.** Keep `workers_dev = false` and preview URLs off in
   `dashboard/wrangler.toml`. The cohort API must keep refusing requests without a valid Access
-  JWT (only `/api/health` is open). `--insecure-no-auth` is for local dev only.
+  JWT (only `/api/health` is open). `--auth none` is for local dev only; `--auth password` (one local account, `authen.py`) stands in until Zitadel.
 - **Encrypted files:** plain `duckdb genomics.duckdb` fails by design. Use `uv run genomics shell`
   or `uccc_genomics.config.connect()`. Reading the real de-id file read-only is fine for checking
   a change on this host.
@@ -92,7 +92,7 @@ uv sync --all-packages              # root + mcp/ workspace member
 uv run --all-packages pytest -q     # ~10-30 s; real-DB tests skip when $DATA/genomics.duckdb is absent
 (cd dashboard && npm ci && npm test)   # cohort page helpers
 uvx ruff check src mcp tests        # advisory
-uv run genomics-cohort-api --insecure-no-auth --static dashboard/dist --port 8091   # local cohort API + site
+uv run genomics-cohort-api --auth none --static dashboard/dist --port 8091   # local cohort API + site
 ```
 
 Plain `uv sync && uv run pytest` fails on a fresh checkout (missing `jwt`/`uccc_genomics_mcp`;

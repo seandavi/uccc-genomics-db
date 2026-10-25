@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from starlette.testclient import TestClient
 
 from uccc_genomics.config import DEID_DB
-from uccc_genomics_mcp import cohort_api, server
+from uccc_genomics_mcp import authen, cohort_api, server
 
 
 def build(path):
@@ -163,9 +163,10 @@ def test_access_jwt(client, monkeypatch, capsys):
         def get_signing_key_from_jwt(self, token):
             return type("K", (), {"key": key.public_key()})
 
-    monkeypatch.setitem(cohort_api.AUTH, "team", "team")
-    monkeypatch.setitem(cohort_api.AUTH, "aud", "aud-tag")
-    monkeypatch.setitem(cohort_api.AUTH, "jwks", Jwks())
+    monkeypatch.setitem(authen.AUTH, "mode", "access")
+    monkeypatch.setitem(authen.AUTH, "team", "team")
+    monkeypatch.setitem(authen.AUTH, "aud", "aud-tag")
+    monkeypatch.setitem(authen.AUTH, "jwks", Jwks())
 
     def token(**claims):
         return jwt.encode({"email": "a@b.edu", "aud": "aud-tag", "iss": "https://team.cloudflareaccess.com"} | claims,
@@ -183,6 +184,30 @@ def test_access_jwt(client, monkeypatch, capsys):
     assert r.status_code == 200
     log = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert log["email"] == "a@b.edu" and log["params"]["gene"] == ["BRAF"] and log["patients"] == 6
+
+
+def test_password(client, monkeypatch, capsys):
+    monkeypatch.setenv("APP_USER", "sean")
+    monkeypatch.setenv("APP_PASSWORD_HASH", authen.hash_password("s3cret"))
+    monkeypatch.setattr(authen, "AUTH", dict(authen.AUTH))
+    authen.configure("password")
+
+    r = client.get("/api/options")
+    assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
+    assert client.get("/api/options", auth=("sean", "wrong")).status_code == 401
+    assert client.get("/api/options", auth=("other", "s3cret")).status_code == 401
+    assert client.get("/api/options", headers={"authorization": "Basic !!!"}).status_code == 401
+    assert client.get("/api/health").status_code == 200
+    capsys.readouterr()
+    assert client.get("/api/cohort?gene=BRAF", auth=("sean", "s3cret")).status_code == 200
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["email"] == "sean"
+
+
+def test_password_needs_env(monkeypatch):
+    monkeypatch.delenv("APP_PASSWORD_HASH", raising=False)
+    monkeypatch.setattr(authen, "AUTH", dict(authen.AUTH))
+    with pytest.raises(SystemExit, match="APP_PASSWORD_HASH"):
+        authen.configure("password")
 
 
 @pytest.mark.skipif(not os.path.exists(DEID_DB), reason=f"no {DEID_DB} on this host")

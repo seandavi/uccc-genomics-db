@@ -7,10 +7,8 @@ and values enter the one query below only as named parameters. Every count leave
 import argparse
 import json
 import os
-import sys
 import time
 
-import jwt
 import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -18,6 +16,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (ACCESS_TEAM, ACCESS_AUD, COHORT_ROUND)
+from uccc_genomics_mcp import authen
 from uccc_genomics_mcp.server import DEID_DB, get_db
 
 MIN_CELL = 5
@@ -214,24 +213,12 @@ def suppress(out: dict) -> dict:
 
 # --- HTTP -------------------------------------------------------------------------------------
 
-AUTH = {"team": None, "aud": None, "jwks": None}  # set by main(); None team = --insecure-no-auth
-
-
-def user(request: Request) -> str:
-    """Email from a valid Cloudflare Access JWT. A request straight to the origin IP has none."""
-    if AUTH["team"] is None:
-        return "dev@localhost"
-    # Access sends the same JWT as a header and as the CF_Authorization cookie; the Worker forwards both.
-    token = request.headers.get("cf-access-jwt-assertion") or request.cookies.get("CF_Authorization")
-    if not token:
-        raise PermissionError("missing Access token")
+def authed(request: Request):
+    """The caller's email, or a 401 response to return instead."""
     try:
-        key = AUTH["jwks"].get_signing_key_from_jwt(token).key
-        claims = jwt.decode(token, key, algorithms=["RS256"], audience=AUTH["aud"],
-                            issuer=f"https://{AUTH['team']}.cloudflareaccess.com")
-    except jwt.PyJWTError as e:
-        raise PermissionError(str(e))
-    return claims.get("email", "unknown")
+        return authen.user(request), None
+    except PermissionError as e:
+        return None, JSONResponse({"error": str(e)}, status_code=401, headers=authen.challenge())
 
 
 def audit(email, params, patients):
@@ -240,10 +227,9 @@ def audit(email, params, patients):
 
 
 def cohort(request: Request):
-    try:
-        email = user(request)
-    except PermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=401)
+    email, denied = authed(request)
+    if denied:
+        return denied
     try:
         p = parse(request.query_params, vocab())
     except BadRequest as e:
@@ -254,10 +240,9 @@ def cohort(request: Request):
 
 
 def options(request: Request):
-    try:
-        user(request)
-    except PermissionError as e:
-        return JSONResponse({"error": str(e)}, status_code=401)
+    _, denied = authed(request)
+    if denied:
+        return denied
     v = vocab()
     return JSONResponse({k: v[k] for k in v} | {"min_cell": MIN_CELL})
 
@@ -287,14 +272,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="UCCC cohort feasibility API")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8090)
-    ap.add_argument("--insecure-no-auth", action="store_true", help="skip the Access JWT check (local dev only)")
+    ap.add_argument("--auth", choices=authen.MODES, default="access",
+                    help="access: Cloudflare Access JWT (production); password: one local account; none: local dev only")
     ap.add_argument("--static", help="also serve this built dashboard directory at / (local dev only)")
     args = ap.parse_args(argv)
-    if not args.insecure_no_auth:
-        team, aud = os.environ.get("ACCESS_TEAM"), os.environ.get("ACCESS_AUD")
-        if not (team and aud):
-            sys.exit("ACCESS_TEAM and ACCESS_AUD must be set (in .env), or pass --insecure-no-auth for local dev")
-        AUTH.update(team=team, aud=aud, jwks=jwt.PyJWKClient(f"https://{team}.cloudflareaccess.com/cdn-cgi/access/certs"))
+    authen.configure(args.auth)
     uvicorn.run(app(args.static), host=args.host, port=args.port, access_log=False)
 
 

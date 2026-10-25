@@ -201,7 +201,7 @@ connection, one per request, so the daily rebuild needs no restart.
 real DB against hand-written SQL.
 
 ```bash
-uv run genomics-cohort-api --insecure-no-auth --static dashboard/dist --port 8091
+uv run genomics-cohort-api --auth none --static dashboard/dist --port 8091
 # local dev: API + built site same-origin at http://localhost:8091/cohort.html
 journalctl --user -u genomics-cohort-api   # audit log, one JSON line per query
 ```
