@@ -18,8 +18,10 @@ build-backend = "hatchling.build"
 packages = ["src/uccc_genomics"]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "uccc-genomics-mcp"]
 
 [tool.uv.workspace]
 members = ["mcp"]
 
+[tool.uv.sources]
+uccc-genomics-mcp = { workspace = true }
