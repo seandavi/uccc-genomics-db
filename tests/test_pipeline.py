@@ -4,6 +4,7 @@ One patient (same MRN) tested by both vendors, one alteration of each kind, one 
 pertinent-negative gene, so every unified view has something to assert on. No real data,
 no network: `sync` is not exercised.
 """
+import copy
 import csv
 import json
 import os
@@ -33,6 +34,8 @@ CARIS_TIERS = [
     ("ARID1A", "Mutated, Unclassified", None, "p.A600T", "unclassified"),
     ("APC", "Risk Allele", None, "p.I1307K", "unclassified"),
     ("MSH2", "New Caris Term", None, "p.A800T", "unclassified"),
+    ("BRIP1", "Mutated, Variant of Uncertain Significance", None, "p.A910T", "vus"),
+    ("KMT2D", None, None, "p.A920T", "unclassified"),
 ]
 
 
@@ -86,6 +89,8 @@ CARIS = {
                                              "expressionType": "IHC", "tpScore": "55"}},
                    {"expressionAlteration": {"biomarkerName": "PD-L1 (22c3)", "result": "Positive",
                                              "expressionType": "IHC", "cpScore": "12"}},
+                   # no score: value NULL while unified.biomarker.unit is '% stained', so mart.fact must null the unit
+                   {"expressionAlteration": {"biomarkerName": "PD-L1 (SP142)", "result": "Positive", "expressionType": "IHC"}},
                    {"wtsExpression": {"gene": "TACSTD2", "tpm": "40.2", "tpmPercentile": "81"}},
                ] + [caris_variant(g, res, unk, hp) for g, res, unk, hp, _ in CARIS_TIERS[1:]]
                  + [her2_ihc(r) for r in ("Low", "HER2-Positive", "Positive", "HER2-Negative", "Negative", "HER2-Null",
@@ -107,7 +112,7 @@ FMI = f"""<?xml version="1.0"?>
        <OrderingMD>Dr Orderer</OrderingMD><OrderingMDId>999</OrderingMDId><MedFacilName>UCH</MedFacilName><SpecSite>Breast</SpecSite></PMI>
   <PertinentNegatives><PertinentNegative><Gene>KRAS</Gene></PertinentNegative></PertinentNegatives>
   <Genes><Gene><Name>TP53</Name><Alterations><Alteration><Name>R175H</Name><Include>true</Include>
-    <Interpretation>TP53 R175H ... ORD-0001234-01 was reviewed.</Interpretation>
+    <Interpretation>TP53 R175H was reviewed.</Interpretation>
     <Therapies><Therapy><Name>None</Name><GenericName>none</GenericName><FDAApproved>false</FDAApproved><Effect>none</Effect><Include>true</Include></Therapy></Therapies>
   </Alteration></Alterations></Gene>
   <Gene><Name>ERBB2</Name><Alterations><Alteration><Name>amplification</Name><Include>true</Include>
@@ -141,26 +146,66 @@ FMI = f"""<?xml version="1.0"?>
 </ResultsReport>
 """
 
+# FoundationOne Monitor files have no FinalReport (no PMI, no VariantProperties), so is_vus is NULL.
+FMI_MONITOR = """<?xml version="1.0"?>
+<ResultsReport>
+ <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external"
+     disease="Breast" disease-ontology="Breast carcinoma (NOS)" gender="female" test-type="FoundationOne Monitor">
+  <short-variants>
+   <short-variant gene="KRAS" cds-effect="35G>A" protein-effect="G12D" status="known" functional-effect="missense"/>
+   <short-variant gene="NRAS" cds-effect="181C>A" protein-effect="Q61K" status="likely" functional-effect="missense"/>
+   <short-variant gene="TP53" cds-effect="818G>A" protein-effect="R273H" status="unknown" functional-effect="missense"/>
+   <short-variant gene="EGFR" cds-effect="2369C>T" protein-effect="T790M" status="new-fmi-status" functional-effect="missense"/>
+  </short-variants>
+ </variant-report>
+</ResultsReport>
+"""
+
+
+# (case id, specimenSite, gene TPM file assays, has a wtsExpression record, has_wts): one Caris case per
+# has_wts source, so dropping either arm of mart.sql's `wts` CTE, or its assay filter, fails a case.
+WTS_CASES = [
+    ("TN26-200001", "Liver", ["RNA"], False, True),
+    ("TN26-200002", "Lung", ["cfTNA"], False, True),
+    ("TN26-200003", "Colon", [], True, True),
+    ("TN26-200004", "Brain", ["gDNA"], False, False),
+]
+
+
+def caris_case(case_id, site, wts_expression):
+    """CARIS as another patient's case `case_id` at `site`, keeping or dropping its wtsExpression record."""
+    c = copy.deepcopy(CARIS)
+    c["testDetails"]["labReportID"] = case_id
+    c["patientInformation"]["mrn"] = "000" + case_id[-6:]
+    spec = c["specimenInformation"]["tumorSpecimenInformation"]
+    spec["specimenID"], spec["specimenSite"] = f"{case_id}-A", site
+    if not wts_expression:
+        c["tests"][0]["testResults"] = [r for r in c["tests"][0]["testResults"] if "wtsExpression" not in r]
+    return c
+
 
 def genomics(data_dir, *args):
     subprocess.run(["uv", "run", "genomics", *args], check=True, cwd=ROOT, capture_output=True, text=True,
                    env={**os.environ, "DATA": data_dir})
 
 
-@pytest.fixture(scope="module")
-def db(tmp_path_factory):
-    data = str(tmp_path_factory.mktemp("data"))
-    case = f"{data}/raw/caris/TN26-123456"
-    os.makedirs(case)
+def pipeline(data, fmi_files, caris_cases=None):
+    """Write `caris_cases` ({case id: (report JSON, gene TPM file assays)}, default CARIS with an RNA
+    TPM file) and `fmi_files` ({file name: XML text}) under raw/ in `data`, run load for both vendors
+    and deid, and return a connection with the de-id file attached as `db` and the PHI file as `phi`,
+    both read-only."""
     os.makedirs(f"{data}/raw/fmi")
-    json.dump(CARIS, open(f"{case}/TN26-123456.json", "w"))
-    with open(f"{case}/RNA_TN26-123456_geneTPM_nodup.csv", "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["Gene", "TPM", "NumReads"])
-        w.writerows([["TP53", "12.5", "800"], ["ERBB2", "300.1", "9000"]])
-    open(f"{data}/raw/fmi/ORD-0001234-01.xml", "w").write(FMI)
-    # A file that must fail to parse and land in fmi.load_error rather than abort the load.
-    open(f"{data}/raw/fmi/broken.xml", "w").write("<ResultsReport><nothing/></ResultsReport>")
+    for case_id, (report, assays) in (caris_cases or {"TN26-123456": (CARIS, ["RNA"])}).items():
+        case = f"{data}/raw/caris/{case_id}"
+        os.makedirs(case)
+        json.dump(report, open(f"{case}/{case_id}.json", "w"))
+        for assay in assays:
+            with open(f"{case}/{assay}_{case_id}_geneTPM_nodup.csv", "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["Gene", "TPM", "NumReads"])
+                w.writerows([["TP53", "12.5", "800"], ["ERBB2", "300.1", "9000"]])
+    for name, text in fmi_files.items():
+        open(f"{data}/raw/fmi/{name}", "w").write(text)
 
     genomics(data, "load", "--vendor", "caris")
     genomics(data, "load", "--vendor", "fmi")
@@ -172,8 +217,71 @@ def db(tmp_path_factory):
     return con
 
 
+@pytest.fixture(scope="module")
+def db(tmp_path_factory):
+    # broken.xml must fail to parse and land in fmi.load_error rather than abort the load.
+    return pipeline(str(tmp_path_factory.mktemp("data")),
+                    {"ORD-0001234-01.xml": FMI, "broken.xml": "<ResultsReport><nothing/></ResultsReport>"})
+
+
+@pytest.fixture(scope="module")
+def monitor_db(tmp_path_factory):
+    return pipeline(str(tmp_path_factory.mktemp("monitor")), {"ORD-0005678-01.xml": FMI_MONITOR})
+
+
+@pytest.fixture(scope="module")
+def wts_db(tmp_path_factory):
+    return pipeline(str(tmp_path_factory.mktemp("wts")), {"ORD-0005678-01.xml": FMI_MONITOR},
+                    {c: (caris_case(c, site, wts), assays) for c, site, assays, wts, _ in WTS_CASES})
+
+
 def one(con, sql):
     return con.execute(sql).fetchone()
+
+
+def test_find_leaks_matches_embedded_and_lower_case_ids():
+    from uccc_genomics.deid import find_leaks
+    con = duckdb.connect()
+    con.execute("CREATE SCHEMA mart")
+    con.execute("CREATE TABLE mart.fact AS SELECT * FROM (VALUES ('trastuzumab', 'see tn26-123456 notes'), "
+                "('olaparib', NULL), ('x', 'ORD-0001234-01')) t(val, note)")
+    assert find_leaks(con, ["mart"]) == ["mart.fact.note: 2"]
+    assert find_leaks(con, ["caris"]) == []
+
+
+def test_deid_replaces_file_only_after_leak_check(tmp_path):
+    data = str(tmp_path)
+    con = pipeline(data, {"ORD-0001234-01.xml": FMI})
+    ids = con.execute("SELECT vendor, research_id FROM db.unified.report ORDER BY ALL").fetchall()
+    con.close()
+    path, tmp = f"{data}/genomics.duckdb", f"{data}/genomics.duckdb.tmp"
+    first = os.stat(path)
+
+    # A leftover temp file and WAL from an interrupted run are cleared, not attached
+    for f in (tmp, f"{tmp}.wal"):
+        open(f, "wb").write(b"not a duckdb file")
+    genomics(data, "deid")
+    good = os.stat(path)
+    assert good.st_ino != first.st_ino  # renamed into place, not rewritten
+    assert not os.path.exists(tmp) and not os.path.exists(f"{tmp}.wal")
+
+    # An id embedded in FMI free text fails the leak check: the previous file stays
+    open(f"{data}/raw/fmi/ORD-0001234-01.xml", "w").write(
+        FMI.replace("TP53 R175H was reviewed.", "TP53 R175H ORD-0001234-01 was reviewed."))
+    genomics(data, "load", "--vendor", "fmi")
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        genomics(data, "deid")
+    assert "identifier-like tokens survived de-identification" in e.value.stderr
+    after = os.stat(path)
+    assert (after.st_ino, after.st_mtime_ns, after.st_size) == (good.st_ino, good.st_mtime_ns, good.st_size)
+    assert not os.path.exists(tmp) and not os.path.exists(f"{tmp}.wal")
+
+    from uccc_genomics.deid import find_leaks
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{path}' AS db (ENCRYPTION_KEY '{open(f'{data}/.db_key').read().strip()}', READ_ONLY)")
+    con.execute("USE db")
+    assert find_leaks(con, ["caris", "fmi", "mart"]) == []
+    assert con.execute("SELECT vendor, research_id FROM unified.report ORDER BY ALL").fetchall() == ids
 
 
 def test_same_mrn_is_one_patient_across_vendors(db):
@@ -187,7 +295,6 @@ def test_phi_columns_are_gone_and_ids_are_hashed(db):
     assert not cols & {"mrn", "dob", "first_name", "last_name", "patient", "physician", "ordering_md", "source_file", "pathologist_comment"}
     assert one(db, "SELECT case_id FROM db.caris.report")[0] != "TN26-123456"
     assert one(db, "SELECT report_id FROM db.fmi.report")[0] != "ORD-0001234-01"
-    assert "ORD-" not in one(db, "SELECT interpretation FROM db.fmi.alteration")[0] or True  # leak assert in deid already ran
     assert one(db, "SELECT count(*) FROM information_schema.tables WHERE table_catalog='db' AND table_name='load_error'") == (0,)
     assert one(db, "SELECT count(*) FROM phi.fmi.load_error") == (1,)
 
@@ -234,6 +341,17 @@ def test_variant_tier_maps_every_vendor_value(db):
     assert got == want
     tiers = {r[0] for r in db.execute("SELECT DISTINCT tier FROM db.unified.variant").fetchall()}
     assert tiers <= {"pathogenic", "likely_pathogenic", "vus", "likely_benign_or_benign", "unclassified"}
+    # Caris tier and is_vus agree; no fixture row has a pathogenic term together with unknownSignificance.
+    assert one(db, "SELECT count(*) FROM db.unified.variant "
+                   "WHERE vendor = 'caris' AND coalesce(is_vus, false) <> (tier = 'vus')") == (0,)
+
+
+def test_variant_tier_fmi_without_final_report(monitor_db):
+    """Monitor files have no VUS list (is_vus NULL); tier still follows status, and an unlisted status is unclassified."""
+    got = {r[0]: (r[1], r[2]) for r in monitor_db.execute(
+        "SELECT gene, is_vus, tier FROM db.unified.variant WHERE vendor = 'fmi'").fetchall()}
+    assert got == {"KRAS": (None, "pathogenic"), "NRAS": (None, "likely_pathogenic"),
+                   "TP53": (None, "unclassified"), "EGFR": (None, "unclassified")}
 
 
 def test_consequence_is_lower_case(db):
@@ -310,6 +428,12 @@ def test_mart_report_rows(db):
         "female", None, "unknown", "BRCA", "tissue", None, None, False, 50.0)
 
 
+def test_mart_report_has_wts_per_source(wts_db):
+    """RNA and cfTNA TPM files and wtsExpression records each make has_wts true on their own; a gDNA TPM file doesn't."""
+    got = dict(wts_db.execute("SELECT site, has_wts FROM db.mart.report WHERE vendor = 'caris'").fetchall())
+    assert got == {site.lower(): want for _, site, _, _, want in WTS_CASES}
+
+
 def test_mart_fact_keys_and_kinds(db):
     assert one(db, "SELECT count(*) FROM (SELECT vendor, report_id, research_id FROM db.mart.fact "
                    "EXCEPT SELECT vendor, report_id, research_id FROM db.mart.report)") == (0,)
@@ -341,10 +465,11 @@ def test_mart_fact_biomarker(db):
 def test_mart_fact_ihc(db):
     got = facts(db, "caris", "ihc")
     assert got >= {("PD-L1", "22c3", "positive", 55.0, "TPS"), ("PD-L1", "22c3", "positive", 12.0, "CPS"),
+                   ("PD-L1", "sp142", "positive", None, None),
                    ("ERBB2 (Her2/Neu)", None, "her2-low", 15.0, "% stained"),
                    ("Mismatch Repair Status", None, "proficient", None, None)}
     assert facts(db, "fmi", "ihc") == set()
-    assert {r[0] for r in db.execute("SELECT clone FROM db.unified.biomarker WHERE name = 'PD-L1'").fetchall()} == {"22c3"}
+    assert {r[0] for r in db.execute("SELECT clone FROM db.unified.biomarker WHERE name = 'PD-L1'").fetchall()} == {"22c3", "sp142"}
     assert one(db, "SELECT count(*) FROM db.unified.biomarker WHERE name <> 'PD-L1' AND clone IS NOT NULL") == (0,)
 
 

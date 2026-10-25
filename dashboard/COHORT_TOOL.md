@@ -402,7 +402,7 @@ vocabularies read from the DB at startup:
 | `age` | <50, 50-64, 65-74, 75+, unknown (Caris tissue only until deid derives FMI age) |
 | `vendor` | caris, fmi |
 | `assay_class` | tissue, liquid, heme |
-| `gene` | genes with at least one non-VUS alteration |
+| `gene` | genes with any non-benign alteration (at least `MIN_CELL` patients) |
 | `alt_class` | pathogenic (pathogenic or likely pathogenic tier), vus, unclassified, amplification, loss, fusion (default: everything except vus and unclassified) |
 | `aa` | protein change with `p.` stripped, only with exactly one `gene` |
 | `year_from`, `year_to` | integers in the data's range |

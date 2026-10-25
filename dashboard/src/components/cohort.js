@@ -22,8 +22,10 @@ export function organPreset(name, organs) {
 /** null (a suppressed count) as "<5"; everything else with thousands separators. */
 export const fmtCount = (n, minCell = 5) => (n == null ? `<${minCell}` : n.toLocaleString("en-US"));
 
-// Checkbox groups start fully checked; all checked means no filter, so it is left out of the query.
+// alt_class values the API leaves out unless asked for.
 export const OPT_IN_CLASSES = ["vus", "unclassified"];
+
+// Checkbox groups start fully checked; all checked means no filter, so it is left out of the query.
 const GROUPS = ["sex", "age", "vendor", "assay_class"];
 
 /**

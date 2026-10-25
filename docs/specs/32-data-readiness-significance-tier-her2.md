@@ -58,8 +58,7 @@ Caris branch, added column (replace `v.consequence` with `lower(v.consequence) A
 ```sql
 CASE WHEN lower(v.result) IN ('pathogenic variant', 'mutated, pathogenic') THEN 'pathogenic'
      WHEN lower(v.result) IN ('likely pathogenic variant', 'mutated, presumed pathogenic') THEN 'likely_pathogenic'
-     WHEN lower(v.result) IN ('variant of uncertain significance', 'mutated, variant of unknown significance')
-          OR v.vus THEN 'vus'
+     WHEN v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%' THEN 'vus'
      WHEN lower(v.result) IN ('likely benign variant', 'benign variant', 'mutated, presumed benign') THEN 'likely_benign_or_benign'
      ELSE 'unclassified' END AS tier
 ```
@@ -83,7 +82,7 @@ Mapping table (every row is pinned by a test):
 |---|---|---|
 | caris | `Pathogenic Variant`, `Mutated, Pathogenic` | pathogenic |
 | caris | `Likely Pathogenic Variant`, `Mutated, Presumed Pathogenic` | likely_pathogenic |
-| caris | `Variant of Uncertain Significance`, `Mutated, Variant of Unknown Significance`, or `unknownSignificance = true` with an unlisted result | vus |
+| caris | `Variant of Uncertain Significance`, `Mutated, Variant of Unknown Significance`, any other result containing 'uncertain significance' or 'unknown significance', or `unknownSignificance = true`, unless the result is a pathogenic/likely-pathogenic term (#43) | vus |
 | caris | `Likely Benign Variant`, `Benign Variant`, `Mutated, Presumed Benign` | likely_benign_or_benign |
 | caris | `Mutated, Unclassified` (**decided** in the issue), `Risk Allele`, any other or NULL result | unclassified |
 | fmi | `is_vus = true` (any status) | vus |
@@ -311,6 +310,7 @@ New tests:
 
 `tests/test_dashboard_loaders.py` (sections non-empty, no small cells, no ids) and the cohort
 API real-DB test run as today.
+Real-DB tests skip (`tests/conftest.py:deid_lacks_tier`) until the real de-id file is rebuilt with `tier`.
 
 ## Risks
 

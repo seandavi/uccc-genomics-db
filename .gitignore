@@ -13,6 +13,7 @@ wheels/
 *.duckdb
 *.duckdb.wal
 *.duckdb.tmp
+*.duckdb.tmp.wal
 .db_key*
 .deid_key*
 .duckdb_init_*
