@@ -14,6 +14,11 @@ from .suppress import MIN_CELL
 _F = ("(SELECT * FROM mart.fact WHERE NOT (kind = 'alteration' AND sub = 'mutation' "
       "AND tier IS NOT DISTINCT FROM 'likely_benign_or_benign'))")
 
+# Every VocabEntry.field VOCAB_SQL can produce; `search(field=...)` accepts only these.
+FIELDS = tuple(f"population.{d}" for d in POP_DIMS) + (
+    "alteration.gene", "alteration.aa", "biomarker.call", "ihc.marker", "ihc.clone", "ihc.call",
+    "expression.gene", "specimen.site_type", "specimen.site", "actionability.evidence")
+
 VOCAB_SQL = f"""
 SELECT field, parent, value, patients FROM (
   SELECT field, parent, value, count(DISTINCT research_id) AS patients FROM (
@@ -101,7 +106,10 @@ class Vocabulary(BaseModel):
     def search(self, q: str, limit: int = 20, field: str | None = None,
                parent: str | None = None) -> list[VocabEntry]:
         """Entries whose value contains q (case-insensitive), optionally only of one field and one
-        parent. An empty q returns nothing unless field is given (then: that field's values)."""
+        parent. An empty q returns nothing unless field is given (then: that field's values).
+        Raises DefinitionError for a field outside FIELDS."""
+        if field is not None and field not in FIELDS:
+            raise DefinitionError(f"field: {field!r} is not a vocabulary field; use one of {', '.join(FIELDS)}")
         q = q.strip().lower()
         if len(q) > 100 or (not q and field is None):
             return []

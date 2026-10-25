@@ -16,6 +16,7 @@ from starlette.testclient import TestClient
 
 from test_cohort import build_mart, use_mart, write_mart
 from uccc_genomics_mcp import app, authen, server
+from uccc_genomics_mcp.cohort.vocabulary import FIELDS
 
 ROOT = Path(__file__).resolve().parent.parent
 AUTH = ("sean", "s3cret")
@@ -180,6 +181,8 @@ ERRORS = [
      {"definition": START, "op": {"op": "remove_criterion", "id": "c9"}}, "c9"),
     ("POST", "/api/apply", {"definition": START, "op": {"op": "explode"}}, "apply_op",
      {"definition": START, "op": {"op": "explode"}}, "op"),
+    ("GET", "/api/options?" + urlencode({"q": "", "field": "alteration.genes"}), None, "search_vocabulary",
+     {"q": "", "field": "alteration.genes"}, "field"),
 ]
 
 
@@ -191,6 +194,12 @@ def test_errors_agree(client, method, path, payload, tool, args, word):
     assert word in json.dumps(r.json()["detail"])
     assert m["isError"]
     assert word in m["content"][0]["text"]
+
+
+def test_options_field_described(client):
+    paths = client.get("/api/openapi.json", auth=AUTH).json()["paths"]
+    field = next(p for p in paths["/api/options"]["get"]["parameters"] if p["name"] == "field")
+    assert all(f in field["description"] for f in FIELDS)
 
 
 def test_tools_list(client):
