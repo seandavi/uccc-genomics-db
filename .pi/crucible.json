@@ -7,11 +7,11 @@
   "spec": {
     "design": "files to add/change under src/uccc_genomics/, mcp/, dashboard/ or systemd/; functions and their signatures; schema.table and column names for any data change, with the vendor source field each comes from (PLAN.md mapping); for anything that leaves the de-id file (dashboard loader, cohort API, MCP tool), the small-cell rule it applies and how; whether research_id or report_id stability is affected (it must not be). The test plan uses synthetic Caris JSON / FMI XML / DuckDB built in the test under a temp DATA dir, never $DATA/raw or the PHI file"
   },
-  "implement": "Run `uv sync --all-packages` first in a fresh worktree (plain `uv sync` misses the mcp/ member). Tests build synthetic inputs in temp dirs (see tests/test_pipeline.py); never read $DATA/raw/ or genomics_phi.duckdb, and never write to the real $DATA. Never run `genomics sync|load|deid|all` against the real $DATA, `npm run deploy`, `wrangler deploy`, or systemctl on the services; never touch the key files. Stop any dev server you start. Report the dashboard check as n/a when the change cannot affect dashboard/.",
+  "implement": "Run `uv sync` first in a fresh worktree. Tests build synthetic inputs in temp dirs (see tests/test_pipeline.py); never read $DATA/raw/ or genomics_phi.duckdb, and never write to the real $DATA. Never run `genomics sync|load|deid|all` against the real $DATA, `npm run deploy`, `wrangler deploy`, or systemctl on the services; never touch the key files. Stop any dev server you start. Report the dashboard check as n/a when the change cannot affect dashboard/.",
   "checks": [
     {
       "name": "test",
-      "command": "uv sync --all-packages && uv run --all-packages pytest -q"
+      "command": "uv sync && uv run pytest -q"
     },
     {
       "name": "dashboard",

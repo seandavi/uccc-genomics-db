@@ -729,13 +729,17 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "uccc-genomics-mcp" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "duckdb", specifier = ">=1.5.5" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8" }]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "uccc-genomics-mcp", editable = "mcp" },
+]
 
 [[package]]
 name = "uccc-genomics-mcp"
