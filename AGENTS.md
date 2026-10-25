@@ -90,16 +90,17 @@ systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
 ## Commands
 
 ```bash
-uv sync --all-packages              # root + mcp/ workspace member
-uv run --all-packages pytest -q     # ~10-30 s; real-DB tests skip when $DATA/genomics.duckdb is absent
+uv sync                             # root + mcp/ workspace member (via the root dev group)
+uv run pytest -q                    # ~10-30 s; real-DB tests skip when $DATA/genomics.duckdb is absent
 (cd dashboard && npm ci && npm test)   # cohort page helpers
 uvx ruff check src mcp tests        # advisory
 uv run genomics-cohort-api --auth none --static dashboard/dist --port 8091   # local cohort API + site
 ```
 
-Plain `uv sync && uv run pytest` fails on a fresh checkout (missing `jwt`/`uccc_genomics_mcp`;
-issue #29); use the `--all-packages` forms. `npm run build` in `dashboard/` needs the real de-id
-file (the loader queries it), so it only works on the pipeline host.
+`npm run build` in `dashboard/` needs the real de-id file (the loader queries it), so it only
+works on the pipeline host. CI (`.github/workflows/ci.yml`) runs `uv sync --locked`,
+`uv run pytest -q` and the dashboard `npm ci && npm test` on every PR and push to `main`; it has no
+`$DATA`, so real-DB tests skip there.
 
 Tests build synthetic Caris JSON / FMI XML / DuckDB in temp dirs and need no network or
 credentials. On the pipeline host, `test_dashboard_loaders.py` and the cohort API's real-DB test
@@ -138,7 +139,7 @@ config changes take effect only once merged.
   `deid.py`, `config.connect()`, `db.bulk_insert`, `sql/unified.sql`, the cohort API's
   suppression, and the MCP query guard. Any issue touching what can leave the host
   (dashboard loader, cohort API, MCP tools) should carry `review:security`.
-- **Checks a run should use:** `uv run --all-packages pytest -q` and
+- **Checks a run should use:** `uv run pytest -q` and
   `cd dashboard && npm ci && npm test`. Report the dashboard check as n/a for Python-only changes.
   Ruff is advisory, not a gating check.
 - **Specs** go to `docs/specs/<issue>-<slug>.md`. They are public, so describe data with synthetic
