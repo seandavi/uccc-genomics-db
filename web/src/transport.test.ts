@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EMPTY } from "./cohort.ts";
-import { TransportError, errorMessage, fetchTransport, type FetchLike } from "./transport.ts";
+import { TransportError, describeError, errorMessage, fetchTransport, type FetchLike } from "./transport.ts";
 
 interface Call { url: string; init: RequestInit }
 
@@ -72,5 +72,15 @@ describe("errors", () => {
   test("an unrecognised body", () => {
     expect(errorMessage(500, null)).toBe("request failed (500)");
     expect(errorMessage(500, {detail: {x: 1}})).toBe("request failed (500)");
+  });
+});
+
+describe("describeError", () => {
+  test("401 and 429 keep their messages", () => {
+    expect(describeError(new TransportError("x", 401))).toBe("Your login has expired; reload the page.");
+    expect(describeError(new TransportError("x", 429, 7))).toBe("Too many queries; try again in 7 s.");
+    expect(describeError(new TransportError("x", 429))).toBe("Too many queries; try again in a few s.");
+    expect(describeError(new TransportError("bad field", 400))).toBe("bad field");
+    expect(describeError(new Error("boom"))).toBe("boom");
   });
 });

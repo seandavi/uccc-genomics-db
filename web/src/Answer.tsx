@@ -22,6 +22,7 @@ function stepLabel(d: Definition, i: number, criterion: string | null): string {
 }
 
 function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options | null}) {
+  const pop = populationLabel(d.population);
   const window = d.population.years ?? options?.years ?? null;
   const perYear = accrualPerYear(r.patients, window);
   const share = pct(r.patients, r.denominator);
@@ -41,7 +42,7 @@ function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options
       <div className="card">
         <h3>Share of population</h3>
         <p className="big">{share ?? "–"}</p>
-        <p className="sub">of {fmtCount(r.denominator, r.min_cell)} patients in {populationLabel(d.population)}</p>
+        <p className="sub">of <Count n={r.denominator} minCell={r.min_cell} /> patients {pop === "All patients" ? "(all patients)" : `in ${pop}`}</p>
       </div>
     </div>
   );
@@ -58,9 +59,11 @@ function Funnel({r, d}: {r: CountResult; d: Definition}) {
             <span className="label">{stepLabel(d, i, s.criterion)}</span>
             <span className="num"><Count n={s.patients} minCell={r.min_cell} /></span>
             <span className="track" aria-hidden="true">
-              {s.patients == null || !top
+              {s.patients == null
                 ? <span className="bar hatched" style={{width: "8%"}} />
-                : <span className="bar" style={{width: `${Math.max(1, (s.patients / top) * 100)}%`}} />}
+                : !top
+                  ? <span className="bar" style={{width: "0%"}} />
+                  : <span className="bar" style={{width: `${Math.max(1, (s.patients / top) * 100)}%`}} />}
             </span>
           </li>
         ))}
@@ -70,7 +73,7 @@ function Funnel({r, d}: {r: CountResult; d: Definition}) {
   );
 }
 
-function Loosen({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: Operation) => void}) {
+function Loosen({r, d, stale, onOp}: {r: CountResult; d: Definition; stale: boolean; onOp: (op: Operation) => void}) {
   if (r.patients != null && r.loosen.length === 0) return null;
   return (
     <div className="loosen">
@@ -82,7 +85,7 @@ function Loosen({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: Operati
             return (
               <li key={l.drop}>
                 Drop {c ? criterionLabel(c) : l.drop} → {fmtCount(l.patients, r.min_cell)} patients{" "}
-                <button type="button" onClick={() => onOp({op: "remove_criterion", id: l.drop})}>Drop</button>
+                <button type="button" disabled={stale} onClick={() => onOp({op: "remove_criterion", id: l.drop})}>Drop</button>
               </li>
             );
           })}</ul>}
@@ -95,7 +98,7 @@ function AccrualTab({r}: {r: CountResult}) {
   return (
     <div>
       <figure className="accrual">
-        <div className="bars" tabIndex={0}>
+        <div className="bars" tabIndex={0} role="group" aria-label="Patients by year of first qualifying report">
           {r.by_year.map((y) => (
             <div key={y.year} className={`col${y.complete ? "" : " partial"}`}>
               <div className="barbox" aria-hidden="true">
@@ -103,7 +106,7 @@ function AccrualTab({r}: {r: CountResult}) {
                   ? <div className="vbar hatched" style={{height: "12%"}} />
                   : <div className="vbar" style={{height: `${Math.max(2, (y.patients / max) * 100)}%`}} />}
               </div>
-              <div className="barlabel">
+              <div className="barlabel" aria-hidden="true">
                 <span><Count n={y.patients} minCell={r.min_cell} /></span>
                 <span>{y.year}</span>
                 {!y.complete && <span>partial year</span>}
@@ -124,7 +127,7 @@ function AccrualTab({r}: {r: CountResult}) {
   );
 }
 
-function BreakdownTab({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: Operation) => void}) {
+function BreakdownTab({r, counted, d, onOp}: {r: CountResult; counted: Definition; d: Definition; onOp: (op: Operation) => void}) {
   const chosen = d.breakdown;
   const toggle = (dim: BreakdownDim) =>
     onOp({op: "set_breakdown", breakdown: chosen.includes(dim) ? chosen.filter((x) => x !== dim) : [...chosen, dim]});
@@ -139,10 +142,9 @@ function BreakdownTab({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: O
           </label>
         ))}
       </fieldset>
-      {chosen.map((dim) => (
-        <GridTable key={dim}>
-          <caption>{BREAKDOWN_DIMS.find((b) => b.value === dim)?.label ?? dim}</caption>
-          <thead><tr><th scope="col">Value</th><th scope="col">Patients</th><th scope="col">Of</th><th scope="col">Share</th></tr></thead>
+      {counted.breakdown.map((dim) => (
+        <GridTable key={dim} label={BREAKDOWN_DIMS.find((b) => b.value === dim)?.label ?? dim}>
+          <thead><tr><th scope="col">Value</th><th scope="col">Patients</th><th scope="col">Of patients in population</th><th scope="col">Share</th></tr></thead>
           <tbody>{(r.breakdowns[dim] ?? []).map((c) => (
             <tr key={c.value}>
               <th scope="row">{c.value}</th>
@@ -158,12 +160,17 @@ function BreakdownTab({r, d, onOp}: {r: CountResult; d: Definition; onOp: (op: O
 }
 
 // Every count table goes through here so a wide one scrolls inside the answer column, not the page.
-function GridTable({children}: {children: ReactNode}) {
-  return <div className="table-scroll" tabIndex={0}><table className="grid">{children}</table></div>;
+function GridTable({label, children}: {label: string; children: ReactNode}) {
+  return (
+    <div className="table-scroll" tabIndex={0} role="region" aria-label={label}>
+      <table className="grid"><caption>{label}</caption>{children}</table>
+    </div>
+  );
 }
 
-function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult | null; minCell: number; onOp: (op: Operation) => void}) {
+function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: Definition; pivot: PivotResult | null; minCell: number; onOp: (op: Operation) => void}) {
   const axes = pivotAxes(d);
+  const label = (v: string) => pivotAxes(counted).find((a) => a.value === v)?.label ?? v;
   const [rows, setRows] = useState(d.pivot?.rows ?? "");
   const [cols, setCols] = useState(d.pivot?.cols ?? "");
   const choose = (nextRows: string, nextCols: string) => {
@@ -172,8 +179,8 @@ function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult 
     if (nextRows && nextCols && nextRows !== nextCols) onOp({op: "set_pivot", pivot: {rows: nextRows, cols: nextCols}});
     else if (d.pivot && (!nextRows || !nextCols)) onOp({op: "set_pivot", pivot: null});
   };
-  const select = (label: string, value: string, set: (v: string) => void) => (
-    <label>{label}{" "}
+  const select = (name: string, value: string, set: (v: string) => void) => (
+    <label>{name}{" "}
       <select value={value} onChange={(e) => set(e.target.value)}>
         <option value="">none</option>
         {axes.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
@@ -190,10 +197,10 @@ function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult 
       {!d.pivot || !pivot
         ? <p>Choose rows and columns.</p>
         : (
-          <GridTable>
-            <caption>{rows} × {cols}</caption>
+          <>
+          <GridTable label={`${label(pivot.rows)} × ${label(pivot.cols)}`}>
             <thead><tr>
-              <th scope="col">{pivot.rows}</th>
+              <th scope="col">{label(pivot.rows)}</th>
               {pivot.col_totals.map((c) => <th key={c.value} scope="col">{c.value}</th>)}
               <th scope="col">Total</th>
             </tr></thead>
@@ -205,7 +212,7 @@ function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult 
                     const k = `${r.value}\u0000${c.value}`;
                     return cell.has(k)
                       ? <td key={c.value} className={cell.get(k) == null ? "hatched" : ""}><Count n={cell.get(k)} minCell={minCell} /></td>
-                      : <td key={c.value}>–</td>;
+                      : <td key={c.value}>0</td>;
                   })}
                   <td className={r.patients == null ? "hatched" : ""}><Count n={r.patients} minCell={minCell} /></td>
                 </tr>
@@ -217,24 +224,30 @@ function PivotTab({d, pivot, minCell, onOp}: {d: Definition; pivot: PivotResult 
               </tr>
             </tbody>
           </GridTable>
+          <p className="legend">Blank combinations are 0 patients.</p>
+          </>
         )}
     </div>
   );
 }
 
+/** The last good answer and the definition it was counted for (it can trail the one being edited). */
+export interface Counted { d: Definition; r: CountResult; p: PivotResult | null }
+
 export interface AnswerProps {
-  definition: Definition;
-  result: CountResult | null;
-  pivot: PivotResult | null;
+  definition: Definition;           // current version: breakdown checkboxes and pivot selects edit it
+  answer: Counted | null;
   options: Options | null;
   tab: Tab;
   onTab: (t: Tab) => void;
   onOp: (op: Operation) => void;
+  onRetry?: () => void;
   busy?: boolean;
-  error?: string | null;
+  error?: string | null;            // count/pivot failure: shown with a Retry button
+  editError?: string | null;        // an edit made from this column failed
 }
 
-export function Answer({definition: d, result: r, pivot, options, tab, onTab, onOp, busy = false, error = null}: AnswerProps) {
+export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, busy = false, error = null, editError = null}: AnswerProps) {
   const onKey = (e: KeyboardEvent) => {
     const i = TABS.indexOf(tab);
     const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : -1;
@@ -243,33 +256,38 @@ export function Answer({definition: d, result: r, pivot, options, tab, onTab, on
     onTab(TABS[next]);
     document.getElementById(`tab-${next}`)?.focus();
   };
+  const stale = !!answer && answer.d !== definition;
   return (
     <main aria-labelledby="answer-h" aria-busy={busy}>
       <h2 id="answer-h">Answer</h2>
-      {error && <p role="alert" className="error">{error}</p>}
-      {!r ? <p>{busy ? "Counting…" : "No result yet."}</p> : (
-        <>
-          <p aria-live="polite" className="sr-only">
-            {r.patients == null ? `fewer than ${r.min_cell} patients` : `${fmtCount(r.patients)} patients`}
-          </p>
-          <Cards r={r} d={d} options={options} />
-          <Loosen r={r} d={d} onOp={onOp} />
-          <Funnel r={r} d={d} />
-          <div role="tablist" aria-label="Views" className="tabs" onKeyDown={onKey}>
-            {TABS.map((t, i) => (
-              <button key={t} type="button" role="tab" id={`tab-${i}`} aria-selected={t === tab} aria-controls="tabpanel"
-                tabIndex={t === tab ? 0 : -1} onClick={() => onTab(t)}>{t}</button>
-            ))}
+      {editError && <p role="alert" className="error">{editError}</p>}
+      {error && <p role="alert" className="error">{error}{onRetry && <> <button type="button" onClick={onRetry}>Retry</button></>}</p>}
+      {!answer ? <p>{busy ? "Counting…" : "No result yet."}</p> : (() => {
+        const {d: counted, r, p: pivot} = answer;
+        return (
+          <div className={busy || stale ? "answer-body dim" : "answer-body"}>
+            <p aria-live="polite" className="sr-only">
+              {r.patients == null ? `fewer than ${r.min_cell} patients` : `${fmtCount(r.patients)} patients`}
+            </p>
+            <Cards r={r} d={counted} options={options} />
+            <Loosen r={r} d={counted} stale={stale} onOp={onOp} />
+            <Funnel r={r} d={counted} />
+            <div role="tablist" aria-label="Views" className="tabs" onKeyDown={onKey}>
+              {TABS.map((t, i) => (
+                <button key={t} type="button" role="tab" id={`tab-${i}`} aria-selected={t === tab} aria-controls="tabpanel"
+                  tabIndex={t === tab ? 0 : -1} onClick={() => onTab(t)}>{t}</button>
+              ))}
+            </div>
+            <div role="tabpanel" id="tabpanel" aria-labelledby={`tab-${TABS.indexOf(tab)}`}>
+              <h3 className="sr-only">{tab}</h3>
+              {tab === "Accrual" && <AccrualTab r={r} />}
+              {tab === "Breakdown" && <BreakdownTab r={r} counted={counted} d={definition} onOp={onOp} />}
+              {tab === "Pivot" && <PivotTab key={JSON.stringify(definition.pivot)} d={definition} counted={counted} pivot={pivot} minCell={r.min_cell} onOp={onOp} />}
+              {tab === "Data notes" && <ul>{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+            </div>
           </div>
-          <div role="tabpanel" id="tabpanel" aria-labelledby={`tab-${TABS.indexOf(tab)}`}>
-            <h3 className="sr-only">{tab}</h3>
-            {tab === "Accrual" && <AccrualTab r={r} />}
-            {tab === "Breakdown" && <BreakdownTab r={r} d={d} onOp={onOp} />}
-            {tab === "Pivot" && <PivotTab key={JSON.stringify(d.pivot)} d={d} pivot={pivot} minCell={r.min_cell} onOp={onOp} />}
-            {tab === "Data notes" && <ul>{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
-          </div>
-        </>
-      )}
+        );
+      })()}
     </main>
   );
 }

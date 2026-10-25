@@ -28,6 +28,7 @@ from uccc_genomics_mcp.cohort import (CUT_POINTS, MIN_CELL, Definition, Definiti
 from uccc_genomics_mcp.cohort import queries, suppress
 from uccc_genomics_mcp.cohort.compile import compile, compile_pivot
 from uccc_genomics_mcp.cohort.definition import Pivot
+from uccc_genomics_mcp.cohort.vocabulary import FIELDS, VOCAB_SQL, Vocabulary
 from uccc_genomics_mcp.cohort.suppress import _funnel, _line, floor
 
 
@@ -733,7 +734,12 @@ def test_search_field_and_parent(cohort_db):
     assert "G12C" in [e.value for e in aa] and {(e.field, e.parent) for e in aa} == {("alteration.aa", "KRAS")}
     assert [e.patients for e in aa] == sorted((e.patients for e in aa), reverse=True)
     assert [e.value for e in v.search("g12", field="alteration.aa", parent="KRAS")] == [e.value for e in aa if "G12" in e.value]
-    assert v.search("", field="no.such") == [] and v.search("") == [] and v.search("", parent="KRAS") == []
+    with pytest.raises(DefinitionError, match="field"):
+        v.search("", field="no.such")
+    assert v.search("") == [] and v.search("", parent="KRAS") == []
+    assert {e.field for e in v.entries} <= set(FIELDS)
+    assert all(f"'{f}'" in VOCAB_SQL for f in FIELDS if not f.startswith("population."))
+    assert Vocabulary(entries=[], years=None).search("", field="population.sex") == []
 
 
 # --- compile ----------------------------------------------------------------------------------------

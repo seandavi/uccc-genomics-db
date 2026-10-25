@@ -27,6 +27,16 @@ export function errorMessage(status: number, body: unknown): string {
   return `request failed (${status})`;
 }
 
+/** The text a person sees for a failed request. */
+export function describeError(e: unknown): string {
+  if (e instanceof TransportError) {
+    if (e.status === 401) return "Your login has expired; reload the page.";
+    if (e.status === 429) return `Too many queries; try again in ${e.retryAfter ?? "a few"} s.`;
+    return e.message;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export function fetchTransport(fetchImpl: FetchLike = fetch): Transport {

@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.mcpserver import Context, MCPServer
@@ -30,6 +30,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PASSWORD_HASH, ACCESS_*)
 from uccc_genomics_mcp import authen, cohort, saved
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
+from uccc_genomics_mcp.cohort.vocabulary import FIELDS
 from uccc_genomics_mcp.saved import (CohortVersion, Deleted, History, SavedCohort, SavedList, Snapshot,
                                      Snapshots)
 from uccc_genomics_mcp.server import get_db
@@ -113,6 +114,10 @@ class Option(BaseModel):
     field: str            # VocabEntry.field, e.g. "alteration.gene"
     parent: str | None
     value: str
+
+
+FIELD_HELP = ("Only this vocabulary field's values (q may then be empty); one of "
+              + ", ".join(FIELDS) + ". Any other value is a 400.")
 
 
 class Options(BaseModel):
@@ -232,11 +237,18 @@ def search_vocabulary(q: str, ctx: Context, limit: int = 20, field: str | None =
     free text, to put into a cohort definition. Returns values only, no counts. `q` is a
     case-insensitive substring of the value, at most 100 characters; an empty `q` returns nothing
     unless `field` is given (then that field's values). At most 50 results (`limit` is clamped to
-    1-50). Each entry's `field` names the definition field the value goes in (e.g. `alteration.gene`,
-    `alteration.aa`) and `parent` the gene, biomarker or IHC marker it belongs under (e.g. `KRAS` for
-    an `alteration.aa` value); pass `field` and `parent` back to list one field's values."""
+    1-50). Each entry's `field` names the definition field the value goes in and `parent` the gene,
+    biomarker or IHC marker it belongs under (e.g. `KRAS` for an `alteration.aa` value); pass
+    `field` and `parent` back to list one field's values. `field` must be one of
+    population.oncotree, population.organ, population.sex, population.age_band, population.vendor,
+    population.assay_class, alteration.gene, alteration.aa, biomarker.call, ihc.marker, ihc.clone,
+    ihc.call, expression.gene, specimen.site_type, specimen.site, actionability.evidence; any other
+    field is an error."""
     _mcp_user(ctx)
-    return run_options(q, limit, field, parent)
+    try:
+        return run_options(q, limit, field, parent)
+    except DefinitionError as e:
+        raise ToolError(str(e)) from None
 
 
 @mcp_app.tool()
@@ -429,7 +441,11 @@ def app(static_dir: str | None = None) -> FastAPI:
         return run_apply(body.definition, body.op)
 
     @application.get("/api/options")
-    def get_options(q: str = "", limit: int = 20, field: str | None = None, parent: str | None = None,
+    def get_options(q: str = "", limit: int = 20,
+                    field: Annotated[str | None, Query(description=FIELD_HELP)] = None,
+                    parent: Annotated[str | None, Query(description=(
+                        "With field: only values under this parent (alteration.aa: gene; "
+                        "biomarker.call: TMB/MSI/LOH; ihc.clone, ihc.call: marker)"))] = None,
                     email: str = Depends(user)) -> Options:
         return run_options(q, limit, field, parent)
 

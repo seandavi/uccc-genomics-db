@@ -89,8 +89,8 @@ tests/          pytest: synthetic load -> deid -> unified, MCP query guard, coho
 
 ```bash
 uv run pytest          # ~30 s; the loader tests skip when $DATA/genomics.duckdb is absent
-cd dashboard && npm test   # cohort page helpers
-cd web && bun install && bun run typecheck && bun test   # Discover app
+(cd dashboard && npm test)   # cohort page helpers
+(cd web && bun install && bun run typecheck && bun test)   # Discover app
 ```
 
 ## Schemas
@@ -314,7 +314,7 @@ It sends only cohort definitions and edit operations to `/api/*` (never SQL), sh
 suppressed count as "<5", keeps versions in the browser's local storage and shares a cohort as a
 link holding its definition. No third-party requests; the build sets a same-origin CSP.
 
-    cd web && bun install && bun run build
+    (cd web && bun install && bun run build)
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 --static web/dist
     # http://<tailnet-addr>:8092/
 
