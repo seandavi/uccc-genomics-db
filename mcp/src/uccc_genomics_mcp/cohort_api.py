@@ -24,7 +24,8 @@ ROUND = int(os.environ.get("COHORT_ROUND", "1"))  # 5 rounds every cleared count
 COUNT_KEYS = ("patients", "reports", "tested")
 LIST_PARAMS = ("disease", "organ", "sex", "age", "vendor", "assay_class", "gene", "alt_class", "aa")
 AGE_BANDS = ["<50", "50-64", "65-74", "75+", "unknown"]
-ALT_CLASSES = ["pathogenic", "vus", "amplification", "loss", "fusion"]
+ALT_CLASSES = ["pathogenic", "vus", "unclassified", "amplification", "loss", "fusion"]
+OPT_IN_CLASSES = ("vus", "unclassified")
 AGE_COVERS = "Age is known for Caris tissue reports only; everything else is 'unknown'."
 
 # One row per report, with the filterable attributes. Age comes from the Caris tumor specimen and
@@ -42,12 +43,16 @@ rep AS (
 )"""
 
 # One row per (report, gene, class, protein change): dashboard/src/data/cohort.json.py's ALT union
-# with VUS as its own class and `p.` stripped so Caris and FMI spellings meet.
+# with VUS and unclassified as their own classes (pathogenic merges the pathogenic and likely
+# pathogenic tiers; benign never enters) and `p.` stripped so Caris and FMI spellings meet.
 ALT = """
 alt AS (
-  SELECT vendor, report_id, gene, CASE WHEN coalesce(is_vus, false) THEN 'vus' ELSE 'pathogenic' END AS alt_class,
+  SELECT vendor, report_id, gene,
+         CASE WHEN tier IN ('pathogenic', 'likely_pathogenic') THEN 'pathogenic' ELSE tier END AS alt_class,
          regexp_replace(hgvs_p, '^p\\.', '') AS aa
-  FROM unified.variant WHERE gene IS NOT NULL AND gene NOT IN ('N/A', '')
+  FROM unified.variant
+  WHERE tier IN ('pathogenic', 'likely_pathogenic', 'vus', 'unclassified')
+    AND gene IS NOT NULL AND gene NOT IN ('N/A', '')
   UNION ALL SELECT vendor, report_id, gene, cn_type, NULL FROM unified.cna
     WHERE cn_type IN ('amplification', 'loss') AND gene IS NOT NULL AND gene NOT IN ('N/A', '')
   UNION ALL SELECT vendor, report_id, gene1, 'fusion', NULL FROM unified.fusion WHERE gene1 IS NOT NULL AND gene1 NOT IN ('N/A', '')
@@ -153,7 +158,7 @@ def parse(query_params, v) -> dict:
                 raise BadRequest(f"{name}: {x!r} is not in the vocabulary")
         p[name] = sorted(set(vals)) or None
     if p["gene"] and not p["alt_class"]:
-        p["alt_class"] = [c for c in ALT_CLASSES if c != "vus"]
+        p["alt_class"] = [c for c in ALT_CLASSES if c not in OPT_IN_CLASSES]
     for name in ("year_from", "year_to"):
         x = query_params.get(name)
         if x is not None and not (x.isdigit() and v["year_min"] <= int(x) <= v["year_max"]):

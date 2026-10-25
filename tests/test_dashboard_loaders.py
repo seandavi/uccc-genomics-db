@@ -8,10 +8,14 @@ import os
 import subprocess
 
 import pytest
+from conftest import deid_lacks_tier
 
 from uccc_genomics.config import DEID_DB
 
-pytestmark = pytest.mark.skipif(not os.path.exists(DEID_DB), reason=f"no {DEID_DB} on this host")
+pytestmark = [
+    pytest.mark.skipif(not os.path.exists(DEID_DB), reason=f"no {DEID_DB} on this host"),
+    pytest.mark.skipif(deid_lacks_tier(), reason="real de-id file predates unified.variant.tier; rebuild pending"),
+]
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

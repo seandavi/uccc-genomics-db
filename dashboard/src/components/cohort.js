@@ -23,6 +23,7 @@ export function organPreset(name, organs) {
 export const fmtCount = (n, minCell = 5) => (n == null ? `<${minCell}` : n.toLocaleString("en-US"));
 
 // Checkbox groups start fully checked; all checked means no filter, so it is left out of the query.
+export const OPT_IN_CLASSES = ["vus", "unclassified"];
 const GROUPS = ["sex", "age", "vendor", "assay_class"];
 
 /**
@@ -43,8 +44,8 @@ export function cohortQuery(f, options) {
   add("gene", genes);
   if (genes.length) {
     if (!f.alt_class?.length) return null;
-    // The API's default is every class except VUS; only send a different choice.
-    const dflt = options.alt_class.filter((c) => c !== "vus");
+    // The API's default is every class except VUS and unclassified; only send a different choice.
+    const dflt = options.alt_class.filter((c) => !OPT_IN_CLASSES.includes(c));
     if (f.alt_class.join() !== dflt.join()) add("alt_class", f.alt_class);
   }
   if (genes.length === 1) add("aa", f.aa ?? []);
@@ -61,7 +62,7 @@ export function readQuery(search, options) {
   for (const k of ["organ", "disease", "gene", "aa", ...GROUPS]) f[k] = q.getAll(k);
   for (const g of GROUPS) if (!f[g].length) f[g] = options[g];
   f.alt_class = q.getAll("alt_class");
-  if (!f.alt_class.length) f.alt_class = options.alt_class.filter((c) => c !== "vus");
+  if (!f.alt_class.length) f.alt_class = options.alt_class.filter((c) => !OPT_IN_CLASSES.includes(c));
   f.years = [+(q.get("year_from") ?? options.year_min), +(q.get("year_to") ?? options.year_max)];
   return f;
 }

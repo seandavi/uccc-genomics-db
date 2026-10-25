@@ -403,7 +403,7 @@ vocabularies read from the DB at startup:
 | `vendor` | caris, fmi |
 | `assay_class` | tissue, liquid, heme |
 | `gene` | genes with at least one non-VUS alteration |
-| `alt_class` | pathogenic, vus, amplification, loss, fusion (default: everything except vus) |
+| `alt_class` | pathogenic (pathogenic or likely pathogenic tier), vus, unclassified, amplification, loss, fusion (default: everything except vus and unclassified) |
 | `aa` | protein change with `p.` stripped, only with exactly one `gene` |
 | `year_from`, `year_to` | integers in the data's range |
 

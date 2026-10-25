@@ -52,11 +52,14 @@ All tables share `research_id` (patient) and `report_id` (test accession).
      * `raw_disease_detail`: Exact vendor detail (Caris sub_lineage / FMI disease_ontology)
      * `raw_primary_site`: Exact vendor primary site / tissue of origin
      * `raw_icd_code`: Caris ICD-10 code (when available)
-   - Other columns: vendor, report_id, research_id, assay_name, assay_class (tissue/liquid/heme), genome_build, ordered_on, collected_on, received_on, reported_on, gender, tumor_purity_pct, report_status
+   - Other columns: vendor, report_id, research_id, assay_name, assay_class (tissue/liquid/heme), genome_build, ordered_on, collected_on, received_on, reported_on, gender, tumor_purity_pct, report_status, collected_year_complete
+   - `collected_year_complete`: false while the (date-shifted) collection year can still gain reports; use it to flag a partial trailing year.
 
 3. `unified.variant`:
    - Short variants (SNVs, indels, non-wildtype calls).
-   - Columns: vendor, report_id, research_id, gene, hgvs_c, hgvs_p, chrom, pos, ref, alt, transcript, vaf (0..1), depth, consequence, is_vus, is_subclonal, genome_build, vendor_call
+   - Columns: vendor, report_id, research_id, gene, hgvs_c, hgvs_p, chrom, pos, ref, alt, transcript, vaf (0..1), depth, consequence, is_vus, is_subclonal, genome_build, vendor_call, tier
+   - `tier` is the significance to filter on: pathogenic, likely_pathogenic, vus, likely_benign_or_benign, unclassified (derived per vendor; `vendor_call` keeps the vendor's own term). Benign tiers are not alterations.
+   - `consequence` is lower case.
 
 4. `unified.cna`:
    - Copy number alterations.
@@ -69,6 +72,7 @@ All tables share `research_id` (patient) and `report_id` (test accession).
 6. `unified.biomarker`:
    - Key molecular biomarkers in long format: TMB, MSI, LOH, PD-L1.
    - Columns: vendor, report_id, research_id, name, call, value, unit, call_norm (e.g. HIGH / LOW / STABLE)
+   - HER2 IHC (`name = 'ERBB2 (Her2/Neu)'`) `call_norm`: positive, negative, equivocal, her2-low, her2-ultralow, her2-null (spelling variants folded; `call` is raw). The composite `ER/PR/Her2/Neu` marker keeps its own lower-cased calls.
 
 7. `unified.gene_tested`:
    - Tracks which genes were verified tested (Caris wild-type records + FMI pertinent negatives).
@@ -116,7 +120,7 @@ LIMIT 20;
 SELECT v.gene, count(DISTINCT v.report_id) AS n_reports, count(DISTINCT v.research_id) AS n_patients
 FROM unified.variant v
 JOIN unified.report r USING (vendor, report_id)
-WHERE r.organ_system = 'Bowel' AND NOT coalesce(v.is_vus, false)
+WHERE r.organ_system = 'Bowel' AND v.tier IN ('pathogenic', 'likely_pathogenic')
 GROUP BY v.gene
 ORDER BY n_reports DESC
 LIMIT 15;

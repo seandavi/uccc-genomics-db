@@ -223,7 +223,8 @@ pivot      →  GROUP BY two dimensions of mart.report, or by a criterion's key
 ```
 
 The phase 0 normalisation (significance tier, HER2 calls, `consequence`
-case) happens once in `mart.sql`. Every count then agrees with every other.
+case, partial-year flag) happens once in `unified.sql` (#32), and `mart.sql`
+reads it. Every count then agrees with every other.
 
 ### 3.3 The page: Discover
 
@@ -392,9 +393,10 @@ definition it proposes must match a hand-written one.
 
 ## 5. Open questions for Sean
 
-1. **Significance tiers.** Which tiers count as "pathogenic" by default:
-   Caris "Mutated, Unclassified", and FMI status `unknown` with
-   `is_vus = false`? This changes counts on every alteration question.
+1. **Significance tiers.** Decided in #32: Caris "Mutated, Unclassified" and
+   FMI status `unknown` with `is_vus = false` are `unclassified`, outside the
+   default pathogenic filter and opt-in. This changes counts on every
+   alteration question.
 2. **Assistant and the DUAs.** May floored aggregate counts and researchers'
    prompts go to an external model provider? If not, the assistant needs a
    model hosted on campus, or it waits.

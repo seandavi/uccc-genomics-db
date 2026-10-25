@@ -3,8 +3,11 @@
 The synthetic DB has only the columns the API reads. Known answers:
   - 12 colorectal patients (Caris tissue, female, 60, 2023) with TP53 p.R175H; patient c0 has a
     second R175H report in 2024, so TP53 R175H colorectal is 12 patients, 13 reports.
-  - 8 pancreatic patients (FMI, 2024), 3 with TP53 R175H: a small cell everywhere it appears.
-  - 20 melanoma patients (FMI, male, 2022), 6 with BRAF V600E, 6 with a KRAS G12C VUS.
+  - 8 pancreatic patients (FMI, 2024), 3 with TP53 R175H (likely pathogenic tier, merged with the
+    pathogenic tier): a small cell everywhere it appears.
+  - 20 melanoma patients (FMI, male, 2022), 6 with BRAF V600E, 6 with a KRAS G12C VUS, 6 with an
+    unclassified NRAS Q61K.
+  - 6 of the colorectal patients also carry a benign APC I1307K, which is never an alteration.
   - 2 thymic patients: below the floor, so not in the disease vocabulary.
 """
 import json
@@ -18,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from starlette.testclient import TestClient
 
 from uccc_genomics.config import DEID_DB
+from conftest import deid_lacks_tier
 from uccc_genomics_mcp import authen, cohort_api, server
 
 
@@ -27,28 +31,32 @@ def build(path):
         CREATE SCHEMA unified; CREATE SCHEMA caris;
         CREATE TABLE unified.report (vendor VARCHAR, report_id VARCHAR, research_id VARCHAR, disease_text VARCHAR,
                                      organ_system VARCHAR, gender VARCHAR, assay_class VARCHAR, collected_on DATE);
-        CREATE TABLE unified.variant (vendor VARCHAR, report_id VARCHAR, gene VARCHAR, hgvs_p VARCHAR, is_vus BOOLEAN);
+        CREATE TABLE unified.variant (vendor VARCHAR, report_id VARCHAR, gene VARCHAR, hgvs_p VARCHAR, tier VARCHAR);
         CREATE TABLE unified.cna (vendor VARCHAR, report_id VARCHAR, gene VARCHAR, cn_type VARCHAR);
         CREATE TABLE unified.fusion (vendor VARCHAR, report_id VARCHAR, gene1 VARCHAR, gene2 VARCHAR);
         CREATE TABLE caris.specimen (case_id VARCHAR, specimen_kind VARCHAR, age_at_collection INT);""")
     rep, var = [], []
     for i in range(12):
         rep.append(("caris", f"c{i}", f"c{i}", "Colorectal Adenocarcinoma", "Bowel", "Female", "tissue", "2023-06-01"))
-        var.append(("caris", f"c{i}", "TP53", "p.R175H", None))
+        var.append(("caris", f"c{i}", "TP53", "p.R175H", "pathogenic"))
+        if i < 6:
+            var.append(("caris", f"c{i}", "APC", "p.I1307K", "likely_benign_or_benign"))
         con.execute("INSERT INTO caris.specimen VALUES (?, 'tumor', 60)", [f"c{i}"])
     rep.append(("caris", "c0b", "c0", "Colorectal Adenocarcinoma", "Bowel", "Female", "tissue", "2024-06-01"))
-    var.append(("caris", "c0b", "TP53", "R175H", None))
+    var.append(("caris", "c0b", "TP53", "R175H", "pathogenic"))
     con.execute("INSERT INTO caris.specimen VALUES ('c0b', 'tumor', 61)")
     for i in range(8):
         rep.append(("fmi", f"p{i}", f"p{i}", "Pancreatic Adenocarcinoma", "Pancreas", "female", "tissue", "2024-06-01"))
         if i < 3:
-            var.append(("fmi", f"p{i}", "TP53", "R175H", False))
+            var.append(("fmi", f"p{i}", "TP53", "R175H", "likely_pathogenic"))
     for i in range(20):
         rep.append(("fmi", f"m{i}", f"m{i}", "Melanoma", "Skin", "Male", "tissue", "2022-06-01"))
         if i < 6:
-            var.append(("fmi", f"m{i}", "BRAF", "V600E", False))
+            var.append(("fmi", f"m{i}", "BRAF", "V600E", "pathogenic"))
         elif i < 12:
-            var.append(("fmi", f"m{i}", "KRAS", "G12C", True))
+            var.append(("fmi", f"m{i}", "KRAS", "G12C", "vus"))
+        elif i < 18:
+            var.append(("fmi", f"m{i}", "NRAS", "Q61K", "unclassified"))
     for i in range(2):
         rep.append(("fmi", f"t{i}", f"t{i}", "Thymic Tumor", "Thymus", "male", "tissue", "2022-06-01"))
     con.executemany("INSERT INTO unified.report VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rep)
@@ -82,7 +90,8 @@ def walk(x):
 
 
 QUERIES = [{}, {"gene": "TP53"}, {"gene": "TP53", "aa": "R175H"}, {"disease": "Pancreatic Adenocarcinoma"},
-           {"gene": "KRAS", "alt_class": "vus"}, {"gene": ["TP53", "BRAF"]}, {"sex": "male"}, {"year_from": 2024}]
+           {"gene": "KRAS", "alt_class": "vus"}, {"gene": "NRAS", "alt_class": "unclassified"},
+           {"gene": ["TP53", "BRAF"]}, {"sex": "male"}, {"year_from": 2024}]
 
 
 @pytest.mark.parametrize("params", QUERIES)
@@ -129,10 +138,21 @@ def test_vus_is_excluded_unless_asked(client):
     assert get(client, gene="KRAS", alt_class="vus").json()["patients"] == 6
 
 
+def test_unclassified_is_opt_in(client):
+    assert get(client, gene="NRAS").json()["patients"] == 0
+    assert get(client, gene="NRAS", alt_class="unclassified").json()["patients"] == 6
+
+
+def test_benign_is_never_an_alteration(client):
+    r = get(client, gene="APC")
+    assert r.status_code == 400 and "gene" in r.json()["error"]
+
+
 def test_vocabularies_are_floored(client):
     opts = client.get("/api/options").json()
     assert "Thymic Tumor" not in opts["disease"] and "Melanoma" in opts["disease"]
-    assert opts["aa"] == {"TP53": ["R175H"], "BRAF": ["V600E"], "KRAS": ["G12C"]}
+    assert opts["aa"] == {"TP53": ["R175H"], "BRAF": ["V600E"], "KRAS": ["G12C"], "NRAS": ["Q61K"]}
+    assert opts["alt_class"] == ["pathogenic", "vus", "unclassified", "amplification", "loss", "fusion"]
     assert (opts["year_min"], opts["year_max"]) == (2022, 2024)
 
 
@@ -211,6 +231,7 @@ def test_password_needs_env(monkeypatch):
 
 
 @pytest.mark.skipif(not os.path.exists(DEID_DB), reason=f"no {DEID_DB} on this host")
+@pytest.mark.skipif(deid_lacks_tier(), reason="real de-id file predates unified.variant.tier; rebuild pending")
 def test_real_db_matches_hand_written_sql():
     """TP53 R175H in GI solid tumors, the question that prompted the tool, against SQL written independently."""
     gi = ["Bowel", "Pancreas", "Esophagus/Stomach", "Biliary Tract", "Liver"]
@@ -220,7 +241,7 @@ def test_real_db_matches_hand_written_sql():
     want = con.execute("""
         WITH r AS (SELECT * FROM unified.report WHERE list_contains(?, organ_system)),
         hit AS (SELECT DISTINCT research_id FROM unified.variant
-                WHERE gene = 'TP53' AND regexp_replace(hgvs_p, '^p\\.', '') = 'R175H' AND NOT coalesce(is_vus, false))
+                WHERE gene = 'TP53' AND regexp_replace(hgvs_p, '^p\\.', '') = 'R175H' AND tier IN ('pathogenic', 'likely_pathogenic'))
         SELECT count(DISTINCT research_id) FILTER (research_id IN (SELECT * FROM hit)), count(DISTINCT research_id) FROM r""",
                        [gi]).fetchone()
     con.close()

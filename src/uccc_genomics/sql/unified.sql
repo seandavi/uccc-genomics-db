@@ -3,6 +3,11 @@
 CREATE SCHEMA IF NOT EXISTS unified;
 
 CREATE OR REPLACE VIEW unified.report AS
+SELECT *,
+       -- deid.py shifts every date by up to ±182 days per patient (shift_days), so shifted year Y can
+       -- still gain reports until real collections through Dec 31 of Y + 182 days have happened.
+       make_date(year(collected_on), 12, 31) + 182 < current_date AS collected_year_complete
+FROM (
 SELECT 'caris' AS vendor, r.case_id AS report_id, r.research_id,
        'Caris ' || r.test_code AS assay_name,
        CASE WHEN s.specimen_kind = 'liquidBiopsy' THEN 'liquid' ELSE 'tissue' END AS assay_class,
@@ -61,7 +66,8 @@ FROM fmi.report r
 LEFT JOIN (SELECT * FROM reference.disease_crosswalk WHERE vendor = 'fmi' AND vendor_field = 'disease_ontology') co
        ON lower(trim(r.disease_ontology)) = lower(trim(co.vendor_term))
 LEFT JOIN (SELECT * FROM reference.disease_crosswalk WHERE vendor = 'fmi' AND vendor_field = 'disease') cd
-       ON lower(trim(r.disease)) = lower(trim(cd.vendor_term));
+       ON lower(trim(r.disease)) = lower(trim(cd.vendor_term))
+);
 
 CREATE OR REPLACE VIEW unified.patient AS
 SELECT research_id, min(gender) AS gender, count(*) AS n_reports,
@@ -69,19 +75,31 @@ SELECT research_id, min(gender) AS gender, count(*) AS n_reports,
        min(collected_on) AS first_collected_on, max(collected_on) AS last_collected_on
 FROM unified.report GROUP BY research_id;
 
+-- `tier` is what every filter uses; `is_vus` and `vendor_call` are kept as the vendor's own flags.
+-- Vendor value -> tier mapping: docs/specs/32-data-readiness-significance-tier-her2.md.
 CREATE OR REPLACE VIEW unified.variant AS
 SELECT 'caris' AS vendor, v.case_id AS report_id, r.research_id, v.gene, v.hgvs_c, v.hgvs_p,
        v.chrom, v.start_pos AS pos, v.ref, v.alt, v.transcript_id AS transcript,
        coalesce(v.vaf_pct, v.plasma_vaf_pct) / 100 AS vaf, v.read_depth AS depth,
-       v.consequence, (v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%') AS is_vus, NULL::BOOLEAN AS is_subclonal, v.genome_build, v.result AS vendor_call
+       lower(v.consequence) AS consequence, (v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%') AS is_vus, NULL::BOOLEAN AS is_subclonal, v.genome_build, v.result AS vendor_call,
+       CASE WHEN lower(v.result) IN ('pathogenic variant', 'mutated, pathogenic') THEN 'pathogenic'
+            WHEN lower(v.result) IN ('likely pathogenic variant', 'mutated, presumed pathogenic') THEN 'likely_pathogenic'
+            WHEN lower(v.result) IN ('variant of uncertain significance', 'mutated, variant of unknown significance')
+                 OR v.vus THEN 'vus'
+            WHEN lower(v.result) IN ('likely benign variant', 'benign variant', 'mutated, presumed benign') THEN 'likely_benign_or_benign'
+            ELSE 'unclassified' END AS tier
 FROM caris.variant v JOIN caris.report r USING (case_id)
 WHERE NOT v.wildtype AND (v.hgvs_c IS NOT NULL OR v.hgvs_p IS NOT NULL)
 UNION ALL BY NAME
 SELECT 'fmi' AS vendor, v.report_id, r.research_id, v.gene, v.cds_effect AS hgvs_c, v.protein_effect AS hgvs_p,
        split_part(v.position, ':', 1) AS chrom, try_cast(split_part(v.position, ':', 2) AS BIGINT) AS pos,
        NULL::VARCHAR AS ref, NULL::VARCHAR AS alt, v.transcript,
-       v.allele_fraction AS vaf, v.depth, v.functional_effect AS consequence,
-       v.is_vus, v.subclonal AS is_subclonal, 'GRCh37/hg19' AS genome_build, v.status AS vendor_call
+       v.allele_fraction AS vaf, v.depth, lower(v.functional_effect) AS consequence,
+       v.is_vus, v.subclonal AS is_subclonal, 'GRCh37/hg19' AS genome_build, v.status AS vendor_call,
+       CASE WHEN v.is_vus THEN 'vus'
+            WHEN lower(v.status) = 'known' THEN 'pathogenic'
+            WHEN lower(v.status) = 'likely' THEN 'likely_pathogenic'
+            ELSE 'unclassified' END AS tier
 FROM fmi.short_variant v JOIN fmi.report r USING (report_id);
 
 CREATE OR REPLACE VIEW unified.cna AS
@@ -120,11 +138,19 @@ SELECT *,
               CASE WHEN lower(call) IN ('high', 'tmb-h') THEN 'high'
                    WHEN lower(call) = 'intermediate' THEN 'intermediate'
                    WHEN lower(call) IN ('low', 'tmb-l') THEN 'low' ELSE 'indeterminate' END
-            -- Caris spells the same MMR call two ways; other IHC calls are kept as reported (HER2's
-            -- breast scale, low/null/ultralow, is not the same thing as positive/negative elsewhere)
+            -- Caris spells the same MMR and HER2 calls two ways; other IHC calls are kept as reported.
+            -- HER2's breast scale (low/ultralow/null) is not folded into positive/negative; only
+            -- spellings of the same result merge. The composite ER/PR/Her2/Neu marker is a different name.
             WHEN name = 'Mismatch Repair Status' THEN
               CASE WHEN lower(call) LIKE 'proficient%' THEN 'proficient'
                    WHEN lower(call) LIKE 'deficient%' THEN 'deficient' ELSE 'indeterminate' END
+            WHEN name = 'ERBB2 (Her2/Neu)' THEN
+              CASE WHEN lower(call) IN ('her2-positive', 'positive') THEN 'positive'
+                   WHEN lower(call) IN ('her2-negative', 'negative') THEN 'negative'
+                   WHEN lower(call) IN ('her2-low', 'low') THEN 'her2-low'
+                   WHEN lower(call) = 'her2-ultralow' THEN 'her2-ultralow'
+                   WHEN lower(call) = 'her2-null' THEN 'her2-null'
+                   ELSE lower(call) END
             ELSE lower(call) END AS call_norm
 FROM (
 SELECT 'caris' AS vendor, t.case_id AS report_id, r.research_id, 'TMB' AS name, t.call, t.score_per_mb AS value, 'mut/Mb' AS unit
