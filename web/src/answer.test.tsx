@@ -1,0 +1,127 @@
+import { describe, expect, test } from "bun:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Answer, type AnswerProps, type Tab } from "./Answer.tsx";
+import { EMPTY } from "./cohort.ts";
+import type { CountResult, Criterion, Definition, PivotResult } from "./types.ts";
+
+const kras = {kind: "alteration", id: "c1", mode: "include", gene: ["KRAS"], aa: ["G12C"], class: ["mutation"], tier: ["likely_pathogenic", "pathogenic"]} as Criterion;
+const alk = {kind: "alteration", id: "c2", mode: "include", gene: ["ALK"], aa: [], class: ["fusion"], tier: ["likely_pathogenic", "pathogenic"]} as Criterion;
+const def: Definition = {
+  ...EMPTY, criteria: [kras, alk], breakdown: ["sex"],
+  population: {...EMPTY.population, oncotree: ["NSCLC"]},
+};
+
+const result = (over: Partial<CountResult> = {}): CountResult => ({
+  cohort_id: "abc", patients: 8, reports: 9, denominator: 120, min_cell: 5,
+  funnel: [{criterion: null, patients: 120}, {criterion: "c1", patients: 8}, {criterion: "c2", patients: null}],
+  loosen: [], by_year: [{year: 2023, patients: 6, complete: true}, {year: 2024, patients: null, complete: true}, {year: 2025, patients: 3, complete: false}],
+  breakdowns: {sex: [{value: "female", patients: 6, denominator: 70}, {value: "male", patients: null, denominator: null}]},
+  notes: ["Stage and treatment are not in the data."],
+  ...over,
+});
+
+const render = (r: CountResult | null, tab: Tab = "Accrual", extra: Partial<AnswerProps> = {}, d: Definition = def) =>
+  renderToStaticMarkup(<Answer definition={d} result={r} pivot={null} options={{entries: [], years: [2023, 2026], cut_points: {}, min_cell: 5}}
+    tab={tab} onTab={() => {}} onOp={() => {}} {...extra} />);
+
+describe("suppressed counts", () => {
+  test("null patients renders <5, never 0", () => {
+    const html = render(result({patients: null, reports: null, denominator: null}));
+    expect(html).toContain('<span class="suppressed"');
+    expect(html).toContain("&lt;5");
+    expect(html).not.toContain(">0<");
+    expect(html).toContain("fewer than 5 patients");
+  });
+  test("zero renders 0 and a shown count is formatted", () => {
+    const html = render(result({patients: 0, reports: 1234}));
+    expect(html).toContain(">0<");
+    expect(html).toContain("1,234");
+  });
+  test("min_cell comes from the result", () => {
+    expect(render(result({patients: null, min_cell: 10}))).toContain("&lt;10");
+  });
+  test("a null funnel step is a hatched bar", () => {
+    const html = render(result());
+    expect(html).toMatch(/class="bar hatched"/);
+    expect(html).toContain("∧ ALK fusion");
+  });
+});
+
+describe("cards", () => {
+  test("share names its denominator; accrual uses the window", () => {
+    const html = render(result());
+    expect(html).toContain("7%");
+    expect(html).toContain("of 120 patients in NSCLC");
+    expect(html).toContain("2.0");   // 8 patients over the 4-year options window
+    expect(html).toContain("Low / pilot");
+  });
+  test("suppressed share and accrual are dashes", () => {
+    const html = render(result({patients: null, denominator: null}));
+    expect(html).toContain(">–<");
+  });
+});
+
+describe("loosen", () => {
+  test("suggestions show with a Drop button", () => {
+    const html = render(result({patients: null, loosen: [{drop: "c2", patients: 6}]}));
+    expect(html).toContain("Too few patients to show.");
+    expect(html).toContain("Drop ALK fusion → 6 patients");
+    expect(html).toContain(">Drop</button>");
+  });
+  test("nothing to loosen says so", () => {
+    expect(render(result({patients: null}))).toContain("No single criterion, dropped, brings this cohort to 5 or more.");
+  });
+  test("no box for a shown cohort without suggestions", () => {
+    expect(render(result())).not.toContain('class="loosen"');
+  });
+});
+
+describe("tabs", () => {
+  test("accrual: hatched <5 year, partial year label, hidden table", () => {
+    const html = render(result(), "Accrual");
+    expect(html).toContain("vbar hatched");
+    expect(html).toContain("partial year");
+    expect(html).toContain("Patients by year of first qualifying report");
+    expect(html).toContain('class="sr-only"');
+  });
+  test("breakdown: null denominator shows <5 and a dash share", () => {
+    const html = render(result(), "Breakdown");
+    expect(html).toContain("<th scope=\"row\">male</th><td class=\"hatched\"><span class=\"suppressed\"");
+    expect(html).toContain("9%");   // 6 of 70
+    expect(html).toContain("<td>–</td>");
+  });
+  test("pivot: a null cell renders <5 in its td; missing cells are dashes", () => {
+    const d: Definition = {...def, pivot: {rows: "oncotree", cols: "year"}};
+    const pivot: PivotResult = {
+      cohort_id: "abc", rows: "oncotree", cols: "year", patients: 8, min_cell: 5, notes: [],
+      cells: [{row: "NSCLC", col: "2023", patients: 6}, {row: "NSCLC", col: "2024", patients: null}],
+      row_totals: [{value: "NSCLC", patients: 8}, {value: "LUAD", patients: 12}],
+      col_totals: [{value: "2023", patients: 6}, {value: "2024", patients: null}],
+    };
+    const html = renderToStaticMarkup(<Answer definition={d} result={result()} pivot={pivot} options={null} tab="Pivot" onTab={() => {}} onOp={() => {}} />);
+    expect(html).toContain('<td class="hatched"><span class="suppressed"');
+    expect(html).toContain("<td>–</td>");
+    expect(html).toContain('<th scope="col">2023</th>');
+  });
+  test("pivot before choosing", () => {
+    expect(render(result(), "Pivot")).toContain("Choose rows and columns.");
+  });
+  test("data notes verbatim", () => {
+    expect(render(result(), "Data notes")).toContain("<li>Stage and treatment are not in the data.</li>");
+  });
+});
+
+describe("states", () => {
+  test("errors show in an alert and the page keeps the result", () => {
+    const html = render(result(), "Accrual", {error: "Too many queries; try again in 7 s."});
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Too many queries");
+    expect(html).toContain("Patients");
+  });
+  test("tablist roles", () => {
+    const html = render(result());
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('role="tabpanel"');
+  });
+});

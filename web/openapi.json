@@ -1,0 +1,1731 @@
+{
+  "components": {
+    "schemas": {
+      "Actionability": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "enum": [
+                "caris_level1",
+                "fmi_fda_any_indication",
+                "fmi_trial"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "actionability",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "evidence"
+        ],
+        "title": "Actionability",
+        "type": "object"
+      },
+      "AddCriterion": {
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "discriminator": {
+              "mapping": {
+                "actionability": "#/components/schemas/Actionability",
+                "alteration": "#/components/schemas/Alteration",
+                "any_of": "#/components/schemas/AnyOf",
+                "biomarker": "#/components/schemas/Biomarker",
+                "expression": "#/components/schemas/Expression",
+                "ihc": "#/components/schemas/Ihc",
+                "specimen": "#/components/schemas/Specimen"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Alteration"
+              },
+              {
+                "$ref": "#/components/schemas/Biomarker"
+              },
+              {
+                "$ref": "#/components/schemas/Ihc"
+              },
+              {
+                "$ref": "#/components/schemas/Expression"
+              },
+              {
+                "$ref": "#/components/schemas/Specimen"
+              },
+              {
+                "$ref": "#/components/schemas/Actionability"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOf"
+              }
+            ],
+            "title": "Criterion"
+          },
+          "op": {
+            "const": "add_criterion",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "criterion"
+        ],
+        "title": "AddCriterion",
+        "type": "object"
+      },
+      "Alteration": {
+        "additionalProperties": false,
+        "properties": {
+          "aa": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Aa",
+            "type": "array"
+          },
+          "class": {
+            "default": [],
+            "items": {
+              "enum": [
+                "mutation",
+                "amplification",
+                "loss",
+                "fusion"
+              ],
+              "type": "string"
+            },
+            "title": "Class",
+            "type": "array"
+          },
+          "gene": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Gene",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "alteration",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          },
+          "tier": {
+            "default": [
+              "likely_pathogenic",
+              "pathogenic"
+            ],
+            "items": {
+              "enum": [
+                "pathogenic",
+                "likely_pathogenic",
+                "vus",
+                "unclassified"
+              ],
+              "type": "string"
+            },
+            "title": "Tier",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "gene"
+        ],
+        "title": "Alteration",
+        "type": "object"
+      },
+      "AnyOf": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "any_of",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          },
+          "of": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "actionability": "#/components/schemas/Actionability",
+                  "alteration": "#/components/schemas/Alteration",
+                  "biomarker": "#/components/schemas/Biomarker",
+                  "expression": "#/components/schemas/Expression",
+                  "ihc": "#/components/schemas/Ihc",
+                  "specimen": "#/components/schemas/Specimen"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Alteration"
+                },
+                {
+                  "$ref": "#/components/schemas/Biomarker"
+                },
+                {
+                  "$ref": "#/components/schemas/Ihc"
+                },
+                {
+                  "$ref": "#/components/schemas/Expression"
+                },
+                {
+                  "$ref": "#/components/schemas/Specimen"
+                },
+                {
+                  "$ref": "#/components/schemas/Actionability"
+                }
+              ]
+            },
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Of",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "of"
+        ],
+        "title": "AnyOf",
+        "type": "object"
+      },
+      "ApplyRequest": {
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          },
+          "op": {
+            "discriminator": {
+              "mapping": {
+                "add_criterion": "#/components/schemas/AddCriterion",
+                "remove_criterion": "#/components/schemas/RemoveCriterion",
+                "rename": "#/components/schemas/Rename",
+                "set_breakdown": "#/components/schemas/SetBreakdown",
+                "set_pivot": "#/components/schemas/SetPivot",
+                "set_population": "#/components/schemas/SetPopulation",
+                "update_criterion": "#/components/schemas/UpdateCriterion"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AddCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/RemoveCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateCriterion"
+              },
+              {
+                "$ref": "#/components/schemas/SetPopulation"
+              },
+              {
+                "$ref": "#/components/schemas/SetBreakdown"
+              },
+              {
+                "$ref": "#/components/schemas/SetPivot"
+              },
+              {
+                "$ref": "#/components/schemas/Rename"
+              }
+            ],
+            "title": "Op"
+          }
+        },
+        "required": [
+          "definition",
+          "op"
+        ],
+        "title": "ApplyRequest",
+        "type": "object"
+      },
+      "ApplyResult": {
+        "properties": {
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          }
+        },
+        "required": [
+          "definition",
+          "cohort_id"
+        ],
+        "title": "ApplyResult",
+        "type": "object"
+      },
+      "Biomarker": {
+        "additionalProperties": false,
+        "properties": {
+          "at_least": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Least"
+          },
+          "call": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Call",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "biomarker",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "TMB",
+              "MSI",
+              "LOH"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "Biomarker",
+        "type": "object"
+      },
+      "BreakdownCell": {
+        "properties": {
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "patients",
+          "denominator"
+        ],
+        "title": "BreakdownCell",
+        "type": "object"
+      },
+      "CountResult": {
+        "properties": {
+          "breakdowns": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/BreakdownCell"
+              },
+              "type": "array"
+            },
+            "title": "Breakdowns",
+            "type": "object"
+          },
+          "by_year": {
+            "items": {
+              "$ref": "#/components/schemas/YearCount"
+            },
+            "title": "By Year",
+            "type": "array"
+          },
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator"
+          },
+          "funnel": {
+            "items": {
+              "$ref": "#/components/schemas/FunnelStep"
+            },
+            "title": "Funnel",
+            "type": "array"
+          },
+          "loosen": {
+            "items": {
+              "$ref": "#/components/schemas/Loosen"
+            },
+            "title": "Loosen",
+            "type": "array"
+          },
+          "min_cell": {
+            "default": 5,
+            "title": "Min Cell",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "reports": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reports"
+          }
+        },
+        "required": [
+          "cohort_id",
+          "patients",
+          "reports",
+          "denominator",
+          "funnel",
+          "by_year",
+          "breakdowns",
+          "notes",
+          "loosen"
+        ],
+        "title": "CountResult",
+        "type": "object"
+      },
+      "Definition": {
+        "additionalProperties": false,
+        "properties": {
+          "breakdown": {
+            "default": [],
+            "items": {
+              "enum": [
+                "oncotree",
+                "organ",
+                "sex",
+                "age_band",
+                "vendor",
+                "assay_class",
+                "site_type",
+                "has_wts"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Breakdown",
+            "type": "array"
+          },
+          "criteria": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "actionability": "#/components/schemas/Actionability",
+                  "alteration": "#/components/schemas/Alteration",
+                  "any_of": "#/components/schemas/AnyOf",
+                  "biomarker": "#/components/schemas/Biomarker",
+                  "expression": "#/components/schemas/Expression",
+                  "ihc": "#/components/schemas/Ihc",
+                  "specimen": "#/components/schemas/Specimen"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Alteration"
+                },
+                {
+                  "$ref": "#/components/schemas/Biomarker"
+                },
+                {
+                  "$ref": "#/components/schemas/Ihc"
+                },
+                {
+                  "$ref": "#/components/schemas/Expression"
+                },
+                {
+                  "$ref": "#/components/schemas/Specimen"
+                },
+                {
+                  "$ref": "#/components/schemas/Actionability"
+                },
+                {
+                  "$ref": "#/components/schemas/AnyOf"
+                }
+              ]
+            },
+            "maxItems": 10,
+            "title": "Criteria",
+            "type": "array"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Name",
+            "type": "string"
+          },
+          "pivot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pivot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "population": {
+            "$ref": "#/components/schemas/Population",
+            "default": {
+              "age_band": [],
+              "assay_class": [],
+              "oncotree": [],
+              "organ": [],
+              "sex": [],
+              "vendor": []
+            }
+          },
+          "scope": {
+            "const": "patient",
+            "default": "patient",
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "Definition",
+        "type": "object"
+      },
+      "Expression": {
+        "additionalProperties": false,
+        "properties": {
+          "gene": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Gene",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "expression",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          },
+          "percentile_at_least": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentile At Least"
+          }
+        },
+        "required": [
+          "kind",
+          "gene"
+        ],
+        "title": "Expression",
+        "type": "object"
+      },
+      "FunnelStep": {
+        "properties": {
+          "criterion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criterion"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          }
+        },
+        "required": [
+          "criterion",
+          "patients"
+        ],
+        "title": "FunnelStep",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Ihc": {
+        "additionalProperties": false,
+        "properties": {
+          "at_least": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Least"
+          },
+          "call": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Call",
+            "type": "array"
+          },
+          "clone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clone"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "ihc",
+            "title": "Kind",
+            "type": "string"
+          },
+          "marker": {
+            "minLength": 1,
+            "title": "Marker",
+            "type": "string"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "enum": [
+                  "TPS",
+                  "CPS"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "marker"
+        ],
+        "title": "Ihc",
+        "type": "object"
+      },
+      "Loosen": {
+        "properties": {
+          "drop": {
+            "title": "Drop",
+            "type": "string"
+          },
+          "patients": {
+            "title": "Patients",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "drop",
+          "patients"
+        ],
+        "title": "Loosen",
+        "type": "object"
+      },
+      "Margin": {
+        "properties": {
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "patients"
+        ],
+        "title": "Margin",
+        "type": "object"
+      },
+      "Option": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "parent",
+          "value"
+        ],
+        "title": "Option",
+        "type": "object"
+      },
+      "Options": {
+        "properties": {
+          "cut_points": {
+            "additionalProperties": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Cut Points",
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/Option"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "min_cell": {
+            "title": "Min Cell",
+            "type": "integer"
+          },
+          "years": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Years"
+          }
+        },
+        "required": [
+          "entries",
+          "years",
+          "cut_points",
+          "min_cell"
+        ],
+        "title": "Options",
+        "type": "object"
+      },
+      "Pivot": {
+        "additionalProperties": false,
+        "properties": {
+          "cols": {
+            "title": "Cols",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rows",
+          "cols"
+        ],
+        "title": "Pivot",
+        "type": "object"
+      },
+      "PivotCell": {
+        "properties": {
+          "col": {
+            "title": "Col",
+            "type": "string"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "row": {
+            "title": "Row",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row",
+          "col",
+          "patients"
+        ],
+        "title": "PivotCell",
+        "type": "object"
+      },
+      "PivotResult": {
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/PivotCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "col_totals": {
+            "items": {
+              "$ref": "#/components/schemas/Margin"
+            },
+            "title": "Col Totals",
+            "type": "array"
+          },
+          "cols": {
+            "title": "Cols",
+            "type": "string"
+          },
+          "min_cell": {
+            "default": 5,
+            "title": "Min Cell",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "row_totals": {
+            "items": {
+              "$ref": "#/components/schemas/Margin"
+            },
+            "title": "Row Totals",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cohort_id",
+          "rows",
+          "cols",
+          "patients",
+          "cells",
+          "row_totals",
+          "col_totals",
+          "notes"
+        ],
+        "title": "PivotResult",
+        "type": "object"
+      },
+      "Population": {
+        "additionalProperties": false,
+        "properties": {
+          "age_band": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Age Band",
+            "type": "array"
+          },
+          "assay_class": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Assay Class",
+            "type": "array"
+          },
+          "oncotree": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Oncotree",
+            "type": "array"
+          },
+          "organ": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Organ",
+            "type": "array"
+          },
+          "sex": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Sex",
+            "type": "array"
+          },
+          "vendor": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Vendor",
+            "type": "array"
+          },
+          "years": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Years"
+          }
+        },
+        "title": "Population",
+        "type": "object"
+      },
+      "RemoveCriterion": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "remove_criterion",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id"
+        ],
+        "title": "RemoveCriterion",
+        "type": "object"
+      },
+      "Rename": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "op": {
+            "const": "rename",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "name"
+        ],
+        "title": "Rename",
+        "type": "object"
+      },
+      "SchemaInfo": {
+        "properties": {
+          "cut_points": {
+            "additionalProperties": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "title": "Cut Points",
+            "type": "object"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "title": "Definition",
+            "type": "object"
+          },
+          "min_cell": {
+            "title": "Min Cell",
+            "type": "integer"
+          },
+          "operation": {
+            "additionalProperties": true,
+            "title": "Operation",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "definition",
+          "operation",
+          "cut_points",
+          "min_cell"
+        ],
+        "title": "SchemaInfo",
+        "type": "object"
+      },
+      "SetBreakdown": {
+        "additionalProperties": false,
+        "properties": {
+          "breakdown": {
+            "items": {
+              "enum": [
+                "oncotree",
+                "organ",
+                "sex",
+                "age_band",
+                "vendor",
+                "assay_class",
+                "site_type",
+                "has_wts"
+              ],
+              "type": "string"
+            },
+            "title": "Breakdown",
+            "type": "array"
+          },
+          "op": {
+            "const": "set_breakdown",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "breakdown"
+        ],
+        "title": "SetBreakdown",
+        "type": "object"
+      },
+      "SetPivot": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "set_pivot",
+            "title": "Op",
+            "type": "string"
+          },
+          "pivot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Pivot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "op",
+          "pivot"
+        ],
+        "title": "SetPivot",
+        "type": "object"
+      },
+      "SetPopulation": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "set_population",
+            "title": "Op",
+            "type": "string"
+          },
+          "population": {
+            "$ref": "#/components/schemas/Population"
+          }
+        },
+        "required": [
+          "op",
+          "population"
+        ],
+        "title": "SetPopulation",
+        "type": "object"
+      },
+      "Specimen": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "specimen",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "const": "include",
+            "default": "include",
+            "title": "Mode",
+            "type": "string"
+          },
+          "purity_at_least": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purity At Least"
+          },
+          "site": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Site",
+            "type": "array"
+          },
+          "site_type": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Site Type",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "Specimen",
+        "type": "object"
+      },
+      "UpdateCriterion": {
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "discriminator": {
+              "mapping": {
+                "actionability": "#/components/schemas/Actionability",
+                "alteration": "#/components/schemas/Alteration",
+                "any_of": "#/components/schemas/AnyOf",
+                "biomarker": "#/components/schemas/Biomarker",
+                "expression": "#/components/schemas/Expression",
+                "ihc": "#/components/schemas/Ihc",
+                "specimen": "#/components/schemas/Specimen"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Alteration"
+              },
+              {
+                "$ref": "#/components/schemas/Biomarker"
+              },
+              {
+                "$ref": "#/components/schemas/Ihc"
+              },
+              {
+                "$ref": "#/components/schemas/Expression"
+              },
+              {
+                "$ref": "#/components/schemas/Specimen"
+              },
+              {
+                "$ref": "#/components/schemas/Actionability"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOf"
+              }
+            ],
+            "title": "Criterion"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "const": "update_criterion",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id",
+          "criterion"
+        ],
+        "title": "UpdateCriterion",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "YearCount": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "patients",
+          "complete"
+        ],
+        "title": "YearCount",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "UCCC genomics cohort app",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/apply": {
+      "post": {
+        "operationId": "post_apply_api_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Apply"
+      }
+    },
+    "/api/cohort": {
+      "post": {
+        "operationId": "post_cohort_api_cohort_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Definition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Cohort"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Open: 200 only if the de-id file opens and answers. No counts or error text in the body.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/options": {
+      "get": {
+        "operationId": "get_options_api_options_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Options"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Options"
+      }
+    },
+    "/api/pivot": {
+      "post": {
+        "operationId": "post_pivot_api_pivot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Definition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PivotResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Pivot"
+      }
+    },
+    "/api/schema": {
+      "get": {
+        "operationId": "get_schema_api_schema_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Schema"
+      }
+    }
+  }
+}
