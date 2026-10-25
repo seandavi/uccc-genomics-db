@@ -18,6 +18,7 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
   const cell = (c: CompareColumn, show: (r: CountResult) => ReactNode) =>
     c.result ? show(c.result) : <span className="error">{c.error ?? "no result"}</span>;
   const anySuppressed = columns.some((c) => c.result && [c.result.patients, c.result.denominator, ...c.result.by_year.map((y) => y.patients)].some((n) => n == null));
+  const anyBlank = years.some((y) => columns.some((c) => c.result && !c.result.by_year.some((x) => x.year === y)));
   return (
     <>
     <GridTable label="Compare versions">
@@ -42,6 +43,7 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
       </tbody>
     </GridTable>
     {anySuppressed && <p className="legend">{`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>}
+    {anyBlank && <p className="legend">Blank: no patients that year for that version.</p>}
     </>
   );
 }

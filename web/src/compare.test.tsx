@@ -32,6 +32,11 @@ describe("CompareTable", () => {
     expect(html).toContain('<th scope="row">2023</th><td>20</td><td></td>');
     expect(html).toMatch(/<th scope="row">2025<\/th><td><\/td><td>25<\/td>/);
   });
+  test("a blank year cell comes with a legend, and no blank no legend", () => {
+    expect(html).toContain('<p class="legend">Blank: no patients that year for that version.</p>');
+    const shownOnly = renderToStaticMarkup(<CompareTable minCell={5} columns={[{label: "v1", definition: "All patients", error: null, result: result({})}]} />);
+    expect(shownOnly).not.toContain("Blank:");
+  });
   test("each column's cohort_id is its header's title", () => {
     expect(html).toContain('title="v1-aaaa"');
     expect(html).toContain('title="v1-bbbb"');

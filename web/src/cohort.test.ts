@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DATA_ENTRIES, EMPTY, MAX_VERSIONS, accrualPerYear, addToPopulation, comboKey, criterionLabel, dataEntries, feasibility,
-  fmtCount, modesFor, newCriterion, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
+  DATA_ENTRIES, EMPTY, MAX_VERSIONS, accrualPerYear, addToPopulation, capitalise, comboKey, criterionLabel, dataEntries,
+  feasibility, fmtCount, forScope, modesFor, newCriterion, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
   type History,
 } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, Option, Population } from "./types.ts";
@@ -72,12 +72,12 @@ describe("labels", () => {
     expect(criterionLabel(alt({mode: "tested_negative", gene: ["KRAS"], vendor: "fmi"}))).toBe("KRAS tested negative (FMI)");
     expect(criterionLabel(alt({vendor: "caris", class: ["mutation"]}))).toBe("KRAS mutation (Caris)");
     expect(criterionLabel(bio({name: "TMB", vendor: "fmi", mode: "exclude"}))).toBe("no TMB tested (FMI)");
-    expect(criterionLabel({kind: "data", id: "c1", mode: "include", has: "liquid", vendor: null} as Criterion)).toBe("Has a liquid biopsy");
-    expect(criterionLabel({kind: "data", id: "c1", mode: "exclude", has: "both_vendors", vendor: null} as Criterion)).toBe("no Tested by both Caris and FMI");
+    expect(criterionLabel({kind: "data", id: "c1", mode: "include", has: "liquid", vendor: null} as Criterion)).toBe("liquid biopsy");
+    expect(criterionLabel({kind: "data", id: "c1", mode: "exclude", has: "both_vendors", vendor: null} as Criterion)).toBe("no testing by both Caris and FMI");
     const seq = {kind: "sequence", id: "c1", mode: "include",
       first: [{kind: "data", mode: "include", has: "tissue", vendor: null}],
       then: [{kind: "data", mode: "include", has: "liquid", vendor: "caris"}, alt({id: null, class: ["mutation"]})]} as Criterion;
-    expect(criterionLabel(seq)).toBe("Has tissue testing, then later Has a liquid biopsy (Caris) and KRAS mutation");
+    expect(criterionLabel(seq)).toBe("tissue testing, then later liquid biopsy (Caris) and KRAS mutation");
   });
 });
 
@@ -96,6 +96,15 @@ describe("modes and data entries", () => {
     expect(dataEntries("TRANSCRIPTOME").map((e) => e.value)).toEqual(["wts"]);
     expect(dataEntries("  ")).toEqual([]);
     expect(dataEntries("zzz")).toEqual([]);
+  });
+  test("capitalise", () => {
+    expect(capitalise("liquid biopsy")).toBe("Liquid biopsy");
+    expect(capitalise("")).toBe("");
+  });
+  test("forScope drops per-patient data entries at report scope only", () => {
+    const entries = [...DATA_ENTRIES, opt("alteration.gene", "KRAS")];
+    expect(forScope(entries, "report").map((e) => e.value)).toEqual(["wts", "liquid", "tissue", "KRAS"]);
+    expect(forScope(entries, "patient")).toEqual(entries);
   });
 });
 
