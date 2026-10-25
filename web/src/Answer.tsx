@@ -7,7 +7,7 @@ import type { BreakdownDim, CountResult, Definition, Operation, Options, PivotRe
 export const TABS = ["Accrual", "Breakdown", "Pivot", "Data notes"] as const;
 export type Tab = (typeof TABS)[number];
 
-const SUPPRESSED = "Fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction";
+export const SUPPRESSED = "Fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction";
 
 /** A count as the API returned it: null is "<5", never 0 or blank. */
 export function Count({n, minCell}: {n: number | null | undefined; minCell: number}) {

@@ -334,6 +334,12 @@ const seqMember = (e: Option): SeqMember | null => {
   return nc && nc.kind !== "any_of" && nc.kind !== "sequence" ? (leafOf(nc) as SeqMember) : null;
 };
 
+/** An any_of without member i; the last member left stands in for it, keeping the any_of's mode (its members are always include). */
+export function withoutMember(c: Extract<Criterion, {kind: "any_of"}>, i: number): Criterion {
+  const rest = c.of.filter((_, j) => j !== i);
+  return rest.length === 1 ? {...rest[0], id: c.id, mode: c.mode} : {...c, of: rest};
+}
+
 function CriterionCard({c, transport, options, onOp}: {c: Criterion; transport: Transport; options: Options | null; onOp: (op: Operation) => void}) {
   const [mode, setMode] = useState<"edit" | "or" | "then" | null>(null);
   const id = c.id ?? "";
@@ -348,11 +354,7 @@ function CriterionCard({c, transport, options, onOp}: {c: Criterion; transport: 
     const member = seqMember(e);
     if (member) update({kind: "sequence", id, mode: "include", first: [leafOf(c) as SeqMember], then: [member]});
   };
-  const dropMember = (i: number) => {
-    if (c.kind !== "any_of") return;
-    const rest = c.of.filter((_, j) => j !== i);
-    update(rest.length === 1 ? {...rest[0], id} : {...c, of: rest});
-  };
+  const dropMember = (i: number) => { if (c.kind === "any_of") update(withoutMember(c, i)); };
   const editable = c.kind !== "any_of" && c.kind !== "sequence" && !(c.kind === "data" && !isReportData(c));
   const canOr = c.kind !== "sequence" && c.kind !== "data" && c.mode !== "tested_negative";
   const canThen = c.mode === "include" && c.kind !== "any_of" && c.kind !== "sequence" && (c.kind !== "data" || isReportData(c));

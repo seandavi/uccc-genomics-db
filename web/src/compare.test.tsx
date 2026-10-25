@@ -21,6 +21,11 @@ describe("CompareTable", () => {
     expect(html).toContain("&lt;5");
     expect(html).toContain(">600<");
   });
+  test("a null count comes with the legend that says why, and no null no legend", () => {
+    expect(html).toContain('<p class="legend">&lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction.</p>');
+    const shownOnly = renderToStaticMarkup(<CompareTable minCell={5} columns={[{label: "v1", error: null, result: result({})}]} />);
+    expect(shownOnly).not.toContain("legend");
+  });
   test("one row per year in the union of the years, blank where a result has none", () => {
     for (const y of ["2023", "2024", "2025"]) expect(html).toContain(`<th scope="row">${y}</th>`);
     expect(html).not.toContain('<th scope="row">2022</th>');

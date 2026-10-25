@@ -101,6 +101,16 @@ def build_phase2_mart() -> Mart:
                 m.fact(f"{prefix}{i}r", "ihc", "ER", "sp1", "positive")
             if i in pik:
                 m.mutation(f"{prefix}{i}r", "PIK3CA", "E545K")
+    for i in range(40):   # UVM: u0-u2 have KRAS and STK11 on different reports, u3-u8 on the same one
+        pid = f"u{i}"
+        m.report(pid, f"{pid}a", "UVM", "Eye", "caris", 2024)
+        if i < 3:
+            m.report(pid, f"{pid}b", "UVM", "Eye", "caris", 2024)
+            m.mutation(f"{pid}b", "STK11", "Q37*")
+        if i < 35:
+            m.mutation(f"{pid}a", "KRAS", "G12D")
+        if 3 <= i < 9:
+            m.mutation(f"{pid}a", "STK11", "Q37*")
     for i in range(30):   # HGSOC
         m.report(f"z{i}", f"z{i}r", "HGSOC", "Ovary", "caris", 2024)
         if i < 10:
@@ -181,7 +191,7 @@ def test_question_14(db):
     r = count(defn([{**seq, "then": [{"kind": "alteration", "gene": ["ESR1"]}, {"kind": "data", "has": "liquid"}]}]))
     assert r.patients == 5
     both = [alt("c1", ["ESR1"]), {"id": "c2", "kind": "data", "has": "liquid"}]
-    assert shown(defn(both, population=pop("BRCA"), scope="report")) == [10, 10, 5]
+    assert shown(defn(both, population=pop("BRCA"), scope="report")) == [10, 10, None]   # 5 against patient scope's 9
     assert shown(defn(both, population=pop("BRCA"))) == [10, 10, None]   # the delta rule hides 9
 
 
@@ -260,6 +270,18 @@ def test_attack_exclude_against_tested_negative(db):
     assert count(d).patients == 20 and count(tn).patients is None   # the tested_negative side is the one hidden
     assert [[c.mode for c in n.definition.criteria] for n in neighbours(d)] == [[]]
     assert [[c.mode for c in n.definition.criteria] for n in neighbours(tn)] == [[], ["exclude"]]
+
+
+def test_attack_report_scope_against_patient_scope(db):
+    """The same exclusion at report scope and at patient scope differ by the patients with KRAS on one
+    report and STK11 on another (a group no include query can express)."""
+    criteria = [alt("c1", ["KRAS"]), exclude(alt("c2", ["STK11"]))]
+    on_report, on_patient = (defn(criteria, population=pop("UVM"), scope=s) for s in ("report", "patient"))
+    assert raw_funnel(on_report) == [40, 35, 29] and raw_funnel(on_patient) == [40, 35, 26]   # 29 - 26 = 3
+    assert steps(count(on_report)) == [40, 35, None] and count(on_report).patients is None
+    assert [n.definition.scope for n in neighbours(on_report)][-1] == "patient"
+    assert steps(count(on_patient)) == [40, 35, 26]
+    assert neighbours(defn(criteria[:1], population=pop("UVM"), scope="report")) == []   # one criterion: same count
 
 
 def test_attack_union_population(db):

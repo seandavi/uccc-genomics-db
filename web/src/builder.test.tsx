@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Builder, Checks } from "./Builder.tsx";
+import { Builder, Checks, withoutMember } from "./Builder.tsx";
 import { EMPTY } from "./cohort.ts";
 import type { Transport } from "./transport.ts";
 import type { Criterion, Definition } from "./types.ts";
@@ -65,5 +65,20 @@ describe("criterion cards", () => {
     expect(html).not.toContain(">Edit</button>");
     expect(html).not.toContain(">Or…</button>");
     expect(html).not.toContain("Then…");
+  });
+});
+
+describe("withoutMember", () => {
+  const anyOf = (mode: "include" | "exclude") => ({
+    id: "c1", kind: "any_of", mode,
+    of: [{...alt, id: null, gene: ["STK11"]}, {...alt, id: null, gene: ["KEAP1"]}],
+  }) as Extract<Criterion, {kind: "any_of"}>;
+  test("the last member of an excluded any_of stays an exclusion", () => {
+    expect(withoutMember(anyOf("exclude"), 1)).toMatchObject({id: "c1", kind: "alteration", mode: "exclude", gene: ["STK11"]});
+  });
+  test("an included any_of stays an include, and a longer one stays an any_of", () => {
+    expect(withoutMember(anyOf("include"), 0)).toMatchObject({kind: "alteration", mode: "include", gene: ["KEAP1"]});
+    const three = {...anyOf("exclude"), of: [...anyOf("exclude").of, {...alt, id: null, gene: ["TP53"]}]} as Extract<Criterion, {kind: "any_of"}>;
+    expect(withoutMember(three, 0)).toMatchObject({kind: "any_of", mode: "exclude"});
   });
 });

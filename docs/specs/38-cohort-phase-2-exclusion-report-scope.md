@@ -20,7 +20,10 @@ the synthetic test mart.
    - the **tested-negative rule**: the same check against the cohort with a `tested_negative`
      criterion made a plain `exclude`;
    - the **union rule**: the same check against the cohort with one value taken out of a population
-     field that lists two or more values, or with one end year taken off a year range.
+     field that lists two or more values, or with one end year taken off a year range;
+   - the **scope rule**: for a report-scope definition with two or more criteria, the same check
+     against the cohort at patient scope. The two differ by the patients whose criteria match only
+     on different reports, a group no include query can express.
 
    Both are one mechanism, the *neighbour check* (below). The funnel delta rule and two-way pivot
    suppression already exist (#34). They stay, and they get attack tests in phase 2 shapes.
@@ -65,14 +68,14 @@ defeats it.
 4. **At most 3 negated criteria** (`exclude` or `tested_negative`) per definition. The neighbour
    check tries every non-empty subset of them (at most 7 extra statements), and each
    `tested_negative` criterion made a plain `exclude` (at most 3 more). Question 11 needs 3.
-5. **At most 32 neighbours per count.** That is ≤ 7 exclusion subsets, plus ≤ 3 `tested_negative` swaps, plus 2 for a year range,
+5. **At most 32 neighbours per count.** That is ≤ 7 exclusion subsets, plus ≤ 3 `tested_negative` swaps, plus 2 for a year range, plus 1 for report scope,
    plus one per value in each multi-value population field. A definition that needs more is a 400
    when it is counted, not when it is parsed. Saved cohorts (#36) re-validate their stored
    definitions on read, and phase 1 allowed up to 100 OncoTree codes, so parse-time rejection would
    break stored cohorts. On a synthetic mart of ~700k facts one count statement takes ~20 ms, so 33
    statements stay under a second.
 6. **Loosen suggestions are only offered for definitions with no neighbours** (include-only, with
-   no multi-value population field and no year range). A suggestion is itself a count, and for a
+   no multi-value population field, no year range and not report scope with two or more criteria). A suggestion is itself a count, and for a
    definition with neighbours it would need its own neighbour checks. `CountResult` gains
    `loosen_offered: bool` so the page can say why there are none.
 7. **Question 17 needs a per-criterion `vendor`** (`"caris"`, `"fmi"` or null). A vendor × vendor
@@ -273,8 +276,9 @@ def neighbours(d: Definition) -> list[Neighbour]:
     """The definitions one edit away whose counts a user could subtract from d's: d without each
     non-empty subset of its negated criteria; d with one tested_negative criterion made a plain
     exclusion (the difference is the patients with no result for the gene); d with one value taken out of a population field that
-    lists two or more; d with one end year taken off a year range (from < to). Raises
-    DefinitionError if there are more than MAX_NEIGHBOURS."""
+    lists two or more; d with one end year taken off a year range (from < to); a report-scope d with
+    two or more criteria at patient scope (the difference is the patients whose criteria match only on
+    different reports). Raises DefinitionError if there are more than MAX_NEIGHBOURS."""
 ```
 
 - Build each neighbour from `d.model_dump(mode="json", by_alias=True)`, edit it and run
@@ -292,8 +296,14 @@ def neighbours(d: Definition) -> list[Neighbour]:
   value in it (sorted order), drop that value. `step[k] = k`.
 - Years: if `years` is set and `years[0] < years[1]`, add `[from + 1, to]` and then
   `[from, to - 1]`. `step[k] = k`.
-- More than `MAX_NEIGHBOURS` → `DefinitionError("population: this cohort needs <n> privacy checks (one per combination of exclusions, one per tested-negative criterion, one per value in a field that lists two or more, two for a year range); at most 32 are allowed. Use fewer values or a coarser field such as organ")`.
-- Order is deterministic (subsets, then mode swaps, then population, then years). It is part of the function's
+- Scope: if `d.scope == "report"` and `len(d.criteria) >= 2`, add `d` with `scope` set to `"patient"`.
+  `step[k] = k`. A patient-scope count is at least as large as the report-scope count for include
+  criteria, and the two differ for exclusions in either direction, so without this neighbour the
+  two counts of one definition (one click apart in the Builder, side by side in Compare) could
+  differ by 1 to 4 with both shown. Only the report-scope side gets the neighbour. With one
+  criterion the two scopes count the same, so there is none.
+- More than `MAX_NEIGHBOURS` → `DefinitionError("population: this cohort needs <n> privacy checks (one per combination of exclusions, one per tested-negative criterion, one per value in a field that lists two or more, two for a year range, one for report scope); at most 32 are allowed. Use fewer values or a coarser field such as organ")`.
+- Order is deterministic (subsets, then mode swaps, then population, then years, then scope). It is part of the function's
   contract, so tests can index into it.
 
 #### Data notes
@@ -306,7 +316,7 @@ Add these keys to `NOTES`, after `fda` and before `absent`, in this order:
 | `tested_negative` | any `tested_negative` criterion | `Tested negative also needs every listed gene reported wild-type (Caris) or as a pertinent negative (FMI lists only some genes, so FMI patients are under-counted).` |
 | `sequence` | any `sequence` criterion | `Report order uses collection dates, shifted per patient for de-identification so intervals are kept; reports without a date are never ordered, and same-day reports are not later.` |
 | `both_vendors` | a `data` criterion with `has == "both_vendors"` | `Patients are linked across vendors by MRN, or name and birth date when an FMI report has no MRN; tested by both vendors is a lower bound.` |
-| `neighbours` | `neighbours(d)` is non-empty (computed without the cap) | `A count that differs by 1 to 4 from the same count without an exclusion, with a tested-negative criterion as a plain exclusion, or without one of the listed population values or end years, is hidden so a small group cannot be worked out by subtraction; suggestions to loosen are not offered.` |
+| `neighbours` | `neighbours(d)` is non-empty (computed without the cap) | `A count that differs by 1 to 4 from the same count without an exclusion, with a tested-negative criterion as a plain exclusion, without one of the listed population values or end years, or matched across reports instead of on one report, is hidden so a small group cannot be worked out by subtraction; suggestions to loosen are not offered.` |
 
 `data_notes` keeps walking `any_of` members and now also walks `sequence` members
 (`first + then`) for the existing `ihc`, `expression`, `specimen` and `fda` triggers. For the
@@ -596,6 +606,10 @@ export function Compare({versions, transport, years, onClose}: {
   in the union of the results' `by_year` years, with each column's `patients` for that year (blank
   when that result has no such year). Every count goes through `Count` (null → "<5"). Each column
   header's `title` is the `cohort_id`.
+  Under the table, when any count is null, the same legend line as the Answer funnel
+  (`<5: fewer than 5 patients, or hidden so that a small count cannot be worked out by
+  subtraction.`), because a hover title does not reach a touch screen and two versions one edit
+  apart are exactly where a neighbour-hidden count shows.
 
 #### `App.tsx`
 
@@ -700,7 +714,7 @@ Questions:
 - `test_question_14`: no population, `c1` sequence first `[data tissue]` then `[data liquid]` →
   7. `by_year` is `[(2023, 7)]`. The same-day `s7` and the earlier `s8` do not count.
   `then: [ESR1, data liquid]` → 5. Population BRCA, report scope, `c1` ESR1, `c2` data liquid →
-  `[10, 10, 5]`. Patient scope of the same → `[10, 10, None]` (the funnel delta rule hides 9).
+  `[10, 10, None]`: the raw 5 is 4 below patient scope's 9, so the scope rule hides it. Patient scope of the same → `[10, 10, None]` (the funnel delta rule hides 9).
 - `test_question_17`: population MEL, `c1` data both_vendors, `c2` biomarker TMB vendor caris,
   `c3` biomarker TMB vendor fmi, pivot `c2.val` × `c3.val`. `count` → patients 17. `pivot` cells
   `{("low","low"): 7, ("high","high"): 5, ("high","low"): 5}`, row totals
@@ -731,6 +745,12 @@ Attack tests. Each asserts the raw numbers that make the attack (from `queries._
   The `exclude` count is shown (20) and the `tested_negative` count is None. `neighbours` of the
   first is the criterion dropped; of the second, the criterion dropped and the criterion as
   `exclude`.
+- `test_attack_report_scope_against_patient_scope`: population UVM (40 patients; `u0`–`u2` have two
+  reports with KRAS on `a` and STK11 on `b`, `u3`–`u8` have both on one report, KRAS on `u0`–`u34`),
+  `c1` KRAS, `c2` exclude STK11. Raw funnel `[40, 35, 29]` at report scope against `[40, 35, 26]` at
+  patient scope; 29 − 26 = 3. The report-scope result is `[40, 35, None]` and `patients is None`,
+  its last neighbour has `scope == "patient"`, the patient-scope result shows 26, and a
+  report-scope definition with one criterion has no neighbours.
 - `test_attack_union_population`: population `[NSCLC, PAAD]`, `c1` KRAS. Raw 29 against neighbour
   `[NSCLC]` 27, so 2 would be revealed. `patients is None`. `count` of `[NSCLC]` alone shows 27.
   The population alone (`[NSCLC, PAAD]`, no criteria) shows 42.
@@ -786,8 +806,11 @@ neighbours is a 400 whose detail starts with `population:` on REST, and a tool e
 - `builder.test.tsx`: an alteration card renders three mode options and an `ihc` card two. The
   same-report checkbox is checked for `scope: "report"`. A sequence card renders both member
   lists.
-- `compare.test.tsx` (new): `CompareTable` with two columns renders "<5" for a null count, one row
+- `compare.test.tsx` (new): `CompareTable` with two columns renders "<5" and its legend for a null count, one row
   per year in the union of the years, and each column's `cohort_id` as the header `title`.
+- `builder.test.tsx`: `withoutMember` (the any_of card's remove-member step) keeps the mode of
+  an excluded `any_of` on the member left, so removing a member never turns an exclusion into an
+  include.
 
 ### Commands
 
@@ -806,7 +829,6 @@ Dashboard check: n/a (no change under `dashboard/` other than `COHORT_DISCOVERY.
   - Combinations of three or more queries, for example
     `[(A∧¬B over {X,Y}) − (A∧¬B over {X})]` against the same pair without the exclusion.
   - OR lists inside a criterion (decision 1's scope).
-  - Patient against report scope.
   - The mirror case: A and A ∧ B are both phase 1 queries, so A ∧ ¬B was already computable before
     #38.
 

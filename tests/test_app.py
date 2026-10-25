@@ -163,7 +163,8 @@ def test_parity_cases_are_not_trivial(client):
     assert loosen["loosen"]
     assert rest(client, *CASES[5][:3]).json()["cells"]
     assert rest(client, *CASES[9][:3]).json()["loosen_offered"] is False
-    assert rest(client, *CASES[8][:3]).json()["loosen_offered"] is True
+    assert rest(client, *CASES[8][:3]).json()["loosen_offered"] is False   # report scope has a patient-scope neighbour
+    assert rest(client, *CASES[1][:3]).json()["loosen_offered"] is True
 
 
 @pytest.mark.parametrize("case", CASES, ids=IDS)

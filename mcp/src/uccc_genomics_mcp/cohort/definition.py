@@ -385,24 +385,29 @@ def _year_range(d: Definition) -> bool:
     return d.population.years is not None and d.population.years[0] < d.population.years[1]
 
 
+def _scope_swap(d: Definition) -> bool:
+    return d.scope == "report" and len(d.criteria) >= 2
+
+
 def _neighbour_count(d: Definition) -> int:
     negated = sum(c.mode in NEGATED for c in d.criteria)
     swaps = sum(c.mode == "tested_negative" for c in d.criteria)
-    return 2 ** negated - 1 + swaps + sum(len(v) for _, v in _multi_values(d)) + 2 * _year_range(d)
+    return 2 ** negated - 1 + swaps + sum(len(v) for _, v in _multi_values(d)) + 2 * _year_range(d) + _scope_swap(d)
 
 
 def neighbours(d: Definition) -> list[Neighbour]:
     """The definitions one edit away whose counts a user could subtract from d's: d without each
     non-empty subset of its negated criteria; d with one tested_negative criterion made a plain exclusion
     (the difference is the patients with no result for the gene); d with one value taken out of a population field that
-    lists two or more; d with one end year taken off a year range (from < to). Raises
-    DefinitionError if there are more than MAX_NEIGHBOURS. The order (subsets, mode swaps, population, years)
-    is part of the contract."""
+    lists two or more; d with one end year taken off a year range (from < to); a report-scope d with
+    two or more criteria at patient scope (the difference is the patients whose criteria match only on
+    different reports). Raises DefinitionError if there are more than MAX_NEIGHBOURS. The order (subsets,
+    mode swaps, population, years, scope) is part of the contract."""
     n = _neighbour_count(d)
     if n > MAX_NEIGHBOURS:
         raise DefinitionError(
             f"population: this cohort needs {n} privacy checks (one per combination of exclusions, one per tested-negative criterion, one per value "
-            "in a field that lists two or more, two for a year range); at most 32 are allowed. "
+            "in a field that lists two or more, two for a year range, one for report scope); at most 32 are allowed. "
             "Use fewer values or a coarser field such as organ")
     base = d.model_dump(mode="json", by_alias=True)
     steps_all = list(range(len(d.criteria) + 1))
@@ -429,6 +434,8 @@ def neighbours(d: Definition) -> list[Neighbour]:
         lo, hi = d.population.years
         for years in ([lo + 1, hi], [lo, hi - 1]):
             add(lambda data, years=years: data["population"].update(years=years), steps_all)
+    if _scope_swap(d):
+        add(lambda data: data.update(scope="patient"), steps_all)
     return out
 
 
@@ -474,7 +481,8 @@ NOTES = {
     "both_vendors": "Patients are linked across vendors by MRN, or name and birth date when an FMI report has no "
                     "MRN; tested by both vendors is a lower bound.",
     "neighbours": "A count that differs by 1 to 4 from the same count without an exclusion, with a tested-negative "
-                  "criterion as a plain exclusion, or without one of the listed population values or end years, is hidden so a small group cannot be worked out by "
+                  "criterion as a plain exclusion, without one of the listed population values or end years, or matched "
+                  "across reports instead of on one report, is hidden so a small group cannot be worked out by "
                   "subtraction; suggestions to loosen are not offered.",
     "absent": "Stage, treatment, outcomes, race and ethnicity are not in this data.",
 }

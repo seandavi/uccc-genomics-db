@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Count, GridTable } from "./Answer.tsx";
+import { Count, GridTable, SUPPRESSED } from "./Answer.tsx";
 import { accrualPerYear, pct, type Version } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
 import type { CountResult } from "./types.ts";
@@ -16,7 +16,9 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
   const years = [...new Set(columns.flatMap((c) => c.result?.by_year.map((y) => y.year) ?? []))].sort((a, b) => a - b);
   const cell = (c: CompareColumn, show: (r: CountResult) => ReactNode) =>
     c.result ? show(c.result) : <span className="error">{c.error ?? "no result"}</span>;
+  const anySuppressed = columns.some((c) => c.result && [c.result.patients, c.result.denominator, ...c.result.by_year.map((y) => y.patients)].some((n) => n == null));
   return (
+    <>
     <GridTable label="Compare versions">
       <thead><tr>
         <th scope="col">Measure</th>
@@ -37,6 +39,8 @@ export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minC
         ))}
       </tbody>
     </GridTable>
+    {anySuppressed && <p className="legend">{`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>}
+    </>
   );
 }
 
