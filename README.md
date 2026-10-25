@@ -11,7 +11,7 @@ FMI CIFS share on FMI host ──tar|ssh──▶ $DATA/raw/fmi/*.xml
                  $DATA/genomics_phi.duckdb   schemas caris.*, fmi.*     — identifiers present, never leaves this host
                                    │  genomics deid
                                    ▼
-                 $DATA/genomics.duckdb       schemas caris.*, fmi.*, unified.*   — de-identified, the one you query
+                 $DATA/genomics.duckdb       schemas caris.*, fmi.*, unified.*, mart.*   — de-identified, the one you query
 ```
 
 `DATA` defaults to `/data/davsean/genomics`. `CARIS_BUCKET` (s3://bucket/) and
@@ -76,7 +76,7 @@ src/uccc_genomics/
   caris.py      sync() + load(): report JSON + gene TPM CSV -> caris.*
   fmi.py        sync() + load(): report XML -> fmi.*  (incl. blocks the old parser skipped)
   deid.py       generic: drop PHI columns, keyed-hash ids, per-patient date shift, leak assert
-  sql/caris_views.sql, fmi_views.sql, unified.sql
+  sql/caris_views.sql, fmi_views.sql, unified.sql, mart.sql
   data/disease_crosswalk.csv   vendor disease term -> OncoTree code/name, organ system, NCIt (-> reference.disease_crosswalk)
 mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/README.md);
                 genomics-cohort-api: the cohort page's floored-count endpoint (below)
@@ -106,7 +106,7 @@ FinalReport, so their id is the file name and they carry no patient block),
 failed to parse — nothing is dropped silently). Views `tmb`, `msi`, `loh`.
 
 **`unified.*`** (de-identified file only) — `patient`, `report`, `variant`,
-`cna`, `fusion`, `biomarker` (long: TMB/MSI/LOH/PD-L1), `gene_tested`
+`cna`, `fusion`, `biomarker` (long: TMB/MSI/LOH/PD-L1 and the other Caris IHC markers), `gene_tested`
 (Caris wild-type records + FMI pertinent negatives). Each is a
 `UNION ALL BY NAME` across vendors with a `vendor` column; vendor-specific
 detail stays in `caris.*` / `fmi.*` and joins back on `report_id`.
@@ -116,13 +116,38 @@ detail stays in `caris.*` / `fmi.*` and joins back on `report_id`.
 default "pathogenic" is the first two tiers. `variant.consequence` is lower case
 (vendor terms are otherwise unchanged). `biomarker.call_norm` folds the Caris HER2
 IHC spellings (`HER2-Low`/`Low`, `HER2-Positive`/`Positive`, ...) while `call` keeps
-the raw string. `report.collected_year_complete` is false while the date-shifted
+the raw string. `biomarker.clone` is the PD-L1 antibody clone (`22c3`, `sp142`), NULL on every other row. `report.collected_year_complete` is false while the date-shifted
 collection year can still gain reports (the ±182-day shift), so a trailing partial
 year can be flagged.
 `report.disease_text` / `oncotree_code` / `organ_system` / `ncit_code` come from
 `reference.disease_crosswalk` (hand-curated, in the package) where the vendor's
 term is mapped; unmapped terms keep the vendor string as `disease_text` with
 `oncotree_code = 'OTHER'`, and `raw_disease_text` always has the original.
+
+**`mart.*`** (de-identified file only; tables rebuilt by `genomics deid` from `unified.*`,
+`sql/mart.sql`) — the cohort mart of `dashboard/COHORT_DISCOVERY.md` §3.2. Nothing reads
+it yet.
+`mart.report` is one row per `unified.report` row with the population dimensions: `year`,
+`year_complete`, `sex`, `age`/`age_band` (Caris tissue only, else `unknown`), `oncotree`, `organ`,
+`disease`, `assay_class`, `assay_name`, `purity`, `site_type`/`site` (Caris, first tumor
+specimen), `has_wts` (Caris RNA/cfTNA gene TPM file or `wtsExpression` records).
+`mart.fact` is one row per finding (`research_id`, `vendor`, `report_id`, `kind`, `key`, `sub`,
+`val`, `num`, `unit`, `tier`), and the columns mean this per `kind`:
+
+| kind | key | sub | val | num / unit | tier |
+|---|---|---|---|---|---|
+| `alteration` | gene | `mutation`, `amplification`, `loss` or `fusion` | protein change (mutation), partner gene (fusion) | | mutation rows only |
+| `biomarker` | `TMB`, `MSI`, `LOH` | | `call_norm` | value / `mut/Mb`, `%` | |
+| `ihc` | Caris IHC marker name | PD-L1 clone | `call_norm` | score / `TPS`, `CPS`, `% stained` | |
+| `expression` | gene | | | TPM percentile / `percentile` | |
+| `tested_negative` | gene | `wildtype` or `pertinent_negative` | | | |
+| `actionability` | `caris_level1`, `fmi_fda_any_indication`, `fmi_trial` | biomarker or gene | therapy / NCT id | | |
+| `specimen` | `site_type`, `site`, `purity` | | text | purity % / `%` | |
+
+`unit` is NULL whenever `num` is. Mutation rows carry **every** tier, benign included, so a
+consumer filters `tier` (the default is `pathogenic` + `likely_pathogenic`) on `sub = 'mutation'`
+rows; amplification, loss and fusion rows have no tier. Viral findings, CNA copy number, VAF and
+the `data`/`sequence` criteria are not in the mart.
 
 ```sql
 -- patients with a KRAS G12C call from either vendor, and whether they also had TMB-High

@@ -11,7 +11,7 @@ that touch your change first.
 
 Caris and Foundation Medicine (FMI) NGS reports for UCCC patients, loaded into one encrypted DuckDB
 with identifiers (`genomics_phi.duckdb`), then de-identified into a second (`genomics.duckdb`,
-schemas `caris.*`, `fmi.*`, `unified.*`). Three consumers read only the de-identified file: a
+schemas `caris.*`, `fmi.*`, `unified.*`, `mart.*`). Three consumers read only the de-identified file: a
 read-only MCP server, a cohort-count API, and an Observable Framework dashboard on Cloudflare
 Workers behind Cloudflare Access.
 
@@ -37,7 +37,7 @@ src/uccc_genomics/
   db.py         bulk_insert via temp JSONL + try_cast (executemany is ~100x slower)
   caris.py fmi.py   per-vendor sync() + load() -> caris.* / fmi.*
   deid.py       drop PHI columns, keyed-hash ids, per-patient date shift, leak assert
-  sql/          caris_views.sql, fmi_views.sql, unified.sql
+  sql/          caris_views.sql, fmi_views.sql, unified.sql, mart.sql
   data/disease_crosswalk.csv   vendor disease term -> OncoTree/organ system/NCIt
 mcp/src/uccc_genomics_mcp/
   server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
