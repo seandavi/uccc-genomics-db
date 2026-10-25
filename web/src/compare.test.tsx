@@ -12,8 +12,10 @@ const columns: CompareColumn[] = [
   {label: "v1 · Untitled", definition: "NSCLC; KRAS mutation", window: [2023, 2024], error: null, result: result({
     cohort_id: "v1-aaaa", by_year: [{year: 2023, patients: 20, complete: true}, {year: 2024, patients: null, complete: true}]})},
   {label: "v2 · Wider", definition: "NSCLC · 2023–2025; KRAS mutation; no TP53 mutation; same report", window: [2023, 2025], error: null, result: result({
-    cohort_id: "v1-bbbb", patients: null, by_year: [{year: 2024, patients: 30, complete: true}, {year: 2025, patients: 25, complete: false}]})},
+    cohort_id: "v1-bbbb", by_year: [{year: 2024, patients: 30, complete: true}, {year: 2025, patients: 25, complete: false}]})},
 ];
+// the server returns no year rows for a column whose patient count is suppressed
+const suppressedColumn: CompareColumn = {label: "v3", definition: "All patients", error: null, result: result({patients: null, by_year: []})};
 const html = renderToStaticMarkup(<CompareTable columns={columns} minCell={5} />);
 
 describe("CompareTable", () => {
@@ -37,6 +39,12 @@ describe("CompareTable", () => {
     const shownOnly = renderToStaticMarkup(<CompareTable minCell={5} columns={[{label: "v1", definition: "All patients", error: null, result: result({})}]} />);
     expect(shownOnly).not.toContain("Blank:");
   });
+  test("a suppressed column's year cells are suppressed, never blank, and claim no 'no patients'", () => {
+    const out = renderToStaticMarkup(<CompareTable minCell={5} columns={[columns[1], suppressedColumn]} />);
+    expect(out).toMatch(/<th scope="row">2024<\/th><td>30<\/td><td><span class="suppressed"[^>]*>&lt;5<\/span><\/td>/);
+    expect(out).not.toContain("Blank:");
+    expect(out).toContain("legend");
+  });
   test("each column's cohort_id is its header's title", () => {
     expect(html).toContain('title="v1-aaaa"');
     expect(html).toContain('title="v1-bbbb"');
@@ -45,7 +53,8 @@ describe("CompareTable", () => {
     expect(html).toContain('<tbody><tr><th scope="row">Definition</th><td>NSCLC; KRAS mutation</td><td>NSCLC · 2023–2025; KRAS mutation; no TP53 mutation; same report</td></tr>');
   });
   test("accrual uses each column's own window, and a suppressed patient count has none", () => {
-    expect(html).toContain("<th scope=\"row\">Accrual a year</th><td>30.0</td><td>–</td>");
+    const out = renderToStaticMarkup(<CompareTable minCell={5} columns={[columns[0], suppressedColumn]} />);
+    expect(out).toContain("<th scope=\"row\">Accrual a year</th><td>30.0</td><td>–</td>");
   });
   test("a failed column says why", () => {
     const out = renderToStaticMarkup(<CompareTable minCell={5} columns={[...columns, {label: "v3", definition: "All patients", result: null, error: "request failed (500)"}]} />);

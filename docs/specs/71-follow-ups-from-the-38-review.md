@@ -299,10 +299,13 @@ failed.
 In `CompareTable`:
 
 ```ts
-const anyBlank = years.some((y) => columns.some((c) => c.result && !c.result.by_year.some((x) => x.year === y)));
+const yearsShown = (c: CompareColumn) => c.result != null && c.result.patients != null;
+const anyBlank = years.some((y) => columns.some((c) => yearsShown(c) && !c.result!.by_year.some((x) => x.year === y)));
 ```
 
-and, after the existing `<5` legend, `{anyBlank && <p className="legend">Blank: no patients that
+A column whose `patients` is null has `by_year == []` from the server (`suppress.py`), so its year
+cells render as `<Count n={null}>` (`<5`, with the existing legend), never blank, and it does not
+count towards `anyBlank`: a hidden count is not "no patients". After the existing `<5` legend, `{anyBlank && <p className="legend">Blank: no patients that
 year for that version.</p>}`. The existing `<5` legend text (`SUPPRESSED`) is unchanged.
 
 ## Acceptance criteria
@@ -407,6 +410,8 @@ Web (`bun test`):
   and not "&lt;5</span> reports"; the existing cases still pass.
 - `compare.test.tsx`: the shared fixture (blank 2023 and 2025 cells) contains
   "Blank: no patients that year for that version."; the `shownOnly` render (no years) does not.
+  A suppressed column (`patients: null`, `by_year: []`, as the server returns it) next to a shown
+  one renders `<5` in its year cells and no "Blank:" legend.
 - New `app.test.tsx`: static renders of `FeasibilityPanel`. With `statement=""`: contains
   "Recounting…", no `<textarea`, a Copy button with `disabled=""`, a Close button. With a
   statement: a textarea holding it and an enabled Copy. With `copied` true: "Copied".
