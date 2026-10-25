@@ -200,16 +200,21 @@ queries. Instead, the daily `genomics deid` builds two tables in a new
 kind compiles to the same template over them.
 
 ```
-mart.report        one row per report: research_id, vendor, report_id, year, sex,
-                   age, age_band, oncotree, organ, disease, assay_class, assay_name,
+mart.report        one row per report: research_id, vendor, report_id, year,
+                   year_complete, sex, age, age_band, oncotree, organ, disease, assay_class, assay_name,
                    purity, site_type, site, has_wts
 mart.fact          one row per finding: research_id, vendor, report_id,
-                   kind, key, sub, val, num, tier
-                   e.g. ('alteration', 'KRAS', 'mutation', 'G12C', NULL, 'pathogenic')
-                        ('ihc', 'PD-L1', '22c3', 'positive', 55.0 /*tps*/, NULL)
-                        ('expression', 'TACSTD2', 'percentile', NULL, 81.0, NULL)
-                        ('tested_negative', 'KRAS', NULL, NULL, NULL, NULL)
+                   kind, key, sub, val, num, unit, tier
+                   e.g. ('alteration', 'KRAS', 'mutation', 'G12C', NULL, NULL, 'pathogenic')
+                        ('ihc', 'PD-L1', '22c3', 'positive', 55.0, 'TPS', NULL)
+                        ('expression', 'TACSTD2', NULL, NULL, 81.0, 'percentile', NULL)
+                        ('tested_negative', 'KRAS', 'wildtype', NULL, NULL, NULL, NULL)
 ```
+
+`unit` says which measure `num` is (`TPS`, `CPS`, `% stained`, `mut/Mb`, `%`,
+`percentile`), so `TPS >= 10` cannot match a record whose only score is a
+CPS. It is NULL whenever `num` is. Built by #33 (spec
+`docs/specs/33-mart-schema-mart-report-and-mart-fact.md`).
 
 Compiler, in the API:
 

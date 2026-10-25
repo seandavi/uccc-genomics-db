@@ -81,11 +81,20 @@ CARIS = {
                                              "expressionType": "IHC", "stainPercent": "15"}},
                    {"expressionAlteration": {"biomarkerName": "Mismatch Repair Status", "result": "Proficient (Intact)",
                                              "expressionType": "IHC"}},
+                   {"genomicLevelHeterozygosity": {"result": "High", "LOHpercentage": "21"}},
+                   {"expressionAlteration": {"biomarkerName": "PD-L1 (22c3)", "result": "Positive",
+                                             "expressionType": "IHC", "tpScore": "55"}},
+                   {"expressionAlteration": {"biomarkerName": "PD-L1 (22c3)", "result": "Positive",
+                                             "expressionType": "IHC", "cpScore": "12"}},
+                   {"wtsExpression": {"gene": "TACSTD2", "tpm": "40.2", "tpmPercentile": "81"}},
                ] + [caris_variant(g, res, unk, hp) for g, res, unk, hp, _ in CARIS_TIERS[1:]]
                  + [her2_ihc(r) for r in ("Low", "HER2-Positive", "Positive", "HER2-Negative", "Negative", "HER2-Null",
                                           "HER2-Ultralow", "Equivocal", "Insufficient Tumor")]
                  + [her2_ihc(r, "ER/PR/Her2/Neu") for r in ("HR-Positive HER2-Low", "Triple Negative")]}],
-    "therapies": None,
+    "therapies": [{"therapyRecommendation": [
+        {"biomarker": "ERBB2", "method": "IHC", "therapyName": "Trastuzumab", "therapyAssociation": "Benefit", "biomarkerLevel": "Level 1"},
+        {"biomarker": "TP53", "method": "NGS", "therapyName": "Olaparib", "therapyAssociation": "Benefit", "biomarkerLevel": "Level 3"},
+        {"biomarker": "KRAS", "method": "NGS", "therapyName": "Cetuximab", "therapyAssociation": "Lack of Benefit", "biomarkerLevel": "Level 1"}]}],
 }
 
 FMI = f"""<?xml version="1.0"?>
@@ -100,7 +109,18 @@ FMI = f"""<?xml version="1.0"?>
   <Genes><Gene><Name>TP53</Name><Alterations><Alteration><Name>R175H</Name><Include>true</Include>
     <Interpretation>TP53 R175H ... ORD-0001234-01 was reviewed.</Interpretation>
     <Therapies><Therapy><Name>None</Name><GenericName>none</GenericName><FDAApproved>false</FDAApproved><Effect>none</Effect><Include>true</Include></Therapy></Therapies>
-  </Alteration></Alterations></Gene></Genes>
+  </Alteration></Alterations></Gene>
+  <Gene><Name>ERBB2</Name><Alterations><Alteration><Name>amplification</Name><Include>true</Include>
+    <Interpretation>ERBB2 amplification.</Interpretation>
+    <Therapies>
+     <Therapy><Name>Trastuzumab</Name><GenericName>trastuzumab</GenericName><FDAApproved>true</FDAApproved><Effect>Sensitizing</Effect><Include>true</Include></Therapy>
+     <Therapy><Name>Lapatinib</Name><GenericName>lapatinib</GenericName><FDAApproved>true</FDAApproved><Effect>Resistant</Effect><Include>true</Include></Therapy>
+     <Therapy><Name>Neratinib</Name><GenericName>neratinib</GenericName><FDAApproved>true</FDAApproved><Effect>Sensitizing</Effect><Include>false</Include></Therapy>
+    </Therapies></Alteration></Alterations></Gene></Genes>
+  <Trials>
+   <Trial><Gene>ERBB2</Gene><Alteration>amplification</Alteration><NCTID>NCT00000001</NCTID><Title>Synthetic trial A</Title><Include>true</Include></Trial>
+   <Trial><Gene>ERBB2</Gene><Alteration>amplification</Alteration><NCTID>NCT00000002</NCTID><Title>Synthetic trial B</Title><Include>false</Include></Trial>
+  </Trials>
   <VariantProperties><VariantProperty geneName="PIK3CA" variantName="E545K" isVUS="true"/></VariantProperties>
  </FinalReport>
  <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external"
@@ -198,7 +218,7 @@ def test_unified_views(db):
     # IHC rides along with the raw call kept (HER2-Low stays HER2-Low); only the MMR spelling is folded (issue #22);
     # the HER2 spellings are in test_her2_calls_fold_spellings_only.
     assert bm == {("caris", "TMB"): "high", ("caris", "MSI"): "stable", ("fmi", "TMB"): "high", ("fmi", "MSI"): "stable",
-                  ("caris", "Mismatch Repair Status"): "proficient"}
+                  ("caris", "Mismatch Repair Status"): "proficient", ("caris", "LOH"): "high", ("caris", "PD-L1"): "positive"}
     assert one(db, "SELECT call, value, unit FROM db.unified.biomarker WHERE name = 'ERBB2 (Her2/Neu)' AND call = 'HER2-Low'") == ("HER2-Low", 15.0, "% stained")
     assert one(db, "SELECT 22.0 IN (SELECT value FROM db.unified.biomarker WHERE name = 'TMB' AND vendor = 'caris')") == (True,)
     gt = db.execute("SELECT vendor, gene, evidence FROM db.unified.gene_tested ORDER BY 1").fetchall()
@@ -252,3 +272,97 @@ def test_crosswalk_keeps_colon_and_rectum_under_colorectal():
     with open(os.path.join(ROOT, "src", "uccc_genomics", "data", "disease_crosswalk.csv"), newline="") as f:
         codes = {r["oncotree_code"] for r in csv.DictReader(f)}
     assert "COADREAD" in codes and not codes & {"COAD", "READ"}
+
+
+REPORT_COLS = [("research_id", "VARCHAR"), ("vendor", "VARCHAR"), ("report_id", "VARCHAR"), ("year", "INTEGER"),
+               ("year_complete", "BOOLEAN"), ("sex", "VARCHAR"), ("age", "INTEGER"), ("age_band", "VARCHAR"),
+               ("oncotree", "VARCHAR"), ("organ", "VARCHAR"), ("disease", "VARCHAR"), ("assay_class", "VARCHAR"),
+               ("assay_name", "VARCHAR"), ("purity", "DOUBLE"), ("site_type", "VARCHAR"), ("site", "VARCHAR"),
+               ("has_wts", "BOOLEAN")]
+FACT_COLS = [("research_id", "VARCHAR"), ("vendor", "VARCHAR"), ("report_id", "VARCHAR"), ("kind", "VARCHAR"),
+             ("key", "VARCHAR"), ("sub", "VARCHAR"), ("val", "VARCHAR"), ("num", "DOUBLE"), ("unit", "VARCHAR"),
+             ("tier", "VARCHAR")]
+
+
+def facts(db, vendor, kind, cols="key, sub, val, num, unit"):
+    return set(db.execute(f"SELECT {cols} FROM db.mart.fact WHERE vendor = ? AND kind = ?", [vendor, kind]).fetchall())
+
+
+def test_mart_tables_are_tables_with_pinned_columns(db):
+    for t, want in (("report", REPORT_COLS), ("fact", FACT_COLS)):
+        assert one(db, f"SELECT table_type FROM information_schema.tables WHERE table_catalog='db' AND table_schema='mart' AND table_name='{t}'") == ("BASE TABLE",)
+        got = db.execute("SELECT column_name, data_type FROM information_schema.columns "
+                         f"WHERE table_catalog='db' AND table_schema='mart' AND table_name='{t}' ORDER BY ordinal_position").fetchall()
+        assert got == want
+
+
+def test_mart_report_rows(db):
+    assert one(db, "SELECT count(*) FROM db.mart.report") == (2,)
+    assert (set(db.execute("SELECT vendor, report_id, research_id FROM db.mart.report").fetchall())
+            == set(db.execute("SELECT vendor, report_id, research_id FROM db.unified.report").fetchall()))
+    assert one(db, "SELECT count(*) FROM db.mart.report m JOIN db.unified.report u USING (vendor, report_id) "
+                   "WHERE m.year IS DISTINCT FROM year(u.collected_on) "
+                   "OR m.year_complete IS DISTINCT FROM u.collected_year_complete") == (0,)
+    cols = "sex, age, age_band, oncotree, assay_class, site_type, site, has_wts, purity"
+    assert one(db, f"SELECT {cols} FROM db.mart.report WHERE vendor = 'caris'") == (
+        "female", 89, "75+", "BRCA", "tissue", "primary", "breast", True, None)
+    assert one(db, f"SELECT {cols} FROM db.mart.report WHERE vendor = 'fmi'") == (
+        "female", None, "unknown", "BRCA", "tissue", None, None, False, 50.0)
+
+
+def test_mart_fact_keys_and_kinds(db):
+    assert one(db, "SELECT count(*) FROM (SELECT vendor, report_id, research_id FROM db.mart.fact "
+                   "EXCEPT SELECT vendor, report_id, research_id FROM db.mart.report)") == (0,)
+    assert {r[0] for r in db.execute("SELECT DISTINCT kind FROM db.mart.fact").fetchall()} == {
+        "alteration", "biomarker", "ihc", "expression", "tested_negative", "actionability", "specimen"}
+    assert one(db, "SELECT count(*) FROM db.mart.fact WHERE num IS NULL AND unit IS NOT NULL") == (0,)
+    assert one(db, "SELECT count(*) FROM db.mart.fact "
+                   "WHERE (tier IS NOT NULL) <> (kind = 'alteration' AND sub = 'mutation')") == (0,)
+
+
+def test_mart_fact_alteration(db):
+    mut = lambda v: set(db.execute("SELECT key, tier FROM db.mart.fact WHERE kind = 'alteration' AND sub = 'mutation' "
+                                   "AND vendor = ?", [v]).fetchall())
+    assert mut("caris") == {(g, tier) for g, _, _, _, tier in CARIS_TIERS}
+    assert mut("fmi") == {("TP53", "pathogenic"), ("PIK3CA", "vus"), ("BRAF", "likely_pathogenic"), ("ARID1A", "unclassified")}
+    for v in ("caris", "fmi"):
+        assert one(db, f"SELECT val FROM db.mart.fact WHERE vendor = '{v}' AND key = 'TP53' AND sub = 'mutation'") == ("R175H",)
+        assert one(db, f"SELECT count(*) FROM db.mart.fact WHERE vendor = '{v}' AND key = 'ERBB2' AND sub = 'amplification'") == (1,)
+    assert set(db.execute("SELECT key, sub, val FROM db.mart.fact WHERE vendor = 'fmi' AND sub = 'fusion'").fetchall()) == {
+        ("ALK", "fusion", "EML4"), ("EML4", "fusion", "ALK")}
+
+
+def test_mart_fact_biomarker(db):
+    assert facts(db, "caris", "biomarker") == {("TMB", None, "high", 22.0, "mut/Mb"), ("MSI", None, "stable", None, None),
+                                               ("LOH", None, "high", 21.0, "%")}
+    assert facts(db, "fmi", "biomarker") == {("TMB", None, "high", 22.0, "mut/Mb"), ("MSI", None, "stable", None, None)}
+
+
+def test_mart_fact_ihc(db):
+    got = facts(db, "caris", "ihc")
+    assert got >= {("PD-L1", "22c3", "positive", 55.0, "TPS"), ("PD-L1", "22c3", "positive", 12.0, "CPS"),
+                   ("ERBB2 (Her2/Neu)", None, "her2-low", 15.0, "% stained"),
+                   ("Mismatch Repair Status", None, "proficient", None, None)}
+    assert facts(db, "fmi", "ihc") == set()
+    assert {r[0] for r in db.execute("SELECT clone FROM db.unified.biomarker WHERE name = 'PD-L1'").fetchall()} == {"22c3"}
+    assert one(db, "SELECT count(*) FROM db.unified.biomarker WHERE name <> 'PD-L1' AND clone IS NOT NULL") == (0,)
+
+
+def test_mart_fact_expression(db):
+    assert facts(db, "caris", "expression") == {("TACSTD2", None, None, 81.0, "percentile")}
+
+
+def test_mart_fact_tested_negative(db):
+    assert set(db.execute("SELECT vendor, key, sub FROM db.mart.fact WHERE kind = 'tested_negative'").fetchall()) == {
+        ("caris", "KRAS", "wildtype"), ("fmi", "KRAS", "pertinent_negative")}
+
+
+def test_mart_fact_actionability(db):
+    assert set(db.execute("SELECT vendor, key, sub, val FROM db.mart.fact WHERE kind = 'actionability'").fetchall()) == {
+        ("caris", "caris_level1", "ERBB2", "trastuzumab"), ("fmi", "fmi_fda_any_indication", "ERBB2", "trastuzumab"),
+        ("fmi", "fmi_trial", "ERBB2", "NCT00000001")}
+
+
+def test_mart_fact_specimen(db):
+    assert facts(db, "caris", "specimen", "key, val, num, unit") == {("site_type", "primary", None, None), ("site", "breast", None, None)}
+    assert facts(db, "fmi", "specimen", "key, val, num, unit") == {("purity", None, 50.0, "%")}

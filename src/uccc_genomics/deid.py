@@ -7,6 +7,7 @@ column is copied with
     normalized MRN, shared across vendors) on `report` tables,
   - every DATE/TIMESTAMP column shifted by a stable per-patient offset (±182 d),
   - any column named *age* capped at 89.
+Also builds `mart.*` (cohort report/fact tables) from `unified.*` (sql/mart.sql).
 Tables without the key column (e.g. load-error logs naming files) are not copied.
 Key in $DATA/.deid_key (mode 600); same key => same IDs on rebuild.
 """
@@ -91,6 +92,10 @@ def run():
 
     con.execute(sql("unified.sql"))
     print("views: unified.*")
+
+    con.execute(sql("mart.sql"))
+    for t in ("report", "fact"):
+        print(f"mart.{t:12s} {con.execute(f'SELECT count(*) FROM mart.{t}').fetchone()[0]:>12,}")
 
     # ponytail: leak check — no vendor accession / sample id may survive in any text column
     leaks = []
