@@ -80,6 +80,7 @@ src/uccc_genomics/
   data/disease_crosswalk.csv   vendor disease term -> OncoTree code/name, organ system, NCIt (-> reference.disease_crosswalk)
 mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/README.md);
                 genomics-cohort-api: the cohort page's floored-count endpoint (below)
+                cohort/: cohort definition, operations, cohort_id, compiler and suppression over mart.*
 dashboard/      Observable Framework site over aggregates of the de-id file (below)
 tests/          pytest: synthetic load -> deid -> unified, MCP query guard, cohort API, dashboard loader governance
 ```
@@ -125,8 +126,8 @@ term is mapped; unmapped terms keep the vendor string as `disease_text` with
 `oncotree_code = 'OTHER'`, and `raw_disease_text` always has the original.
 
 **`mart.*`** (de-identified file only; tables rebuilt by `genomics deid` from `unified.*`,
-`sql/mart.sql`) — the cohort mart of `dashboard/COHORT_DISCOVERY.md` §3.2. Nothing reads
-it yet.
+`sql/mart.sql`) — the cohort mart of `dashboard/COHORT_DISCOVERY.md` §3.2. Read by the cohort module
+(`mcp/src/uccc_genomics_mcp/cohort/`).
 `mart.report` is one row per `unified.report` row with the population dimensions: `year`,
 `year_complete`, `sex`, `age`/`age_band` (Caris tissue only, else `unknown`), `oncotree`, `organ`,
 `disease`, `assay_class`, `assay_name`, `purity`, `site_type`/`site` (Caris, first tumor

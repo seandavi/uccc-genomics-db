@@ -42,6 +42,7 @@ src/uccc_genomics/
 mcp/src/uccc_genomics_mcp/
   server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
   cohort_api.py genomics-cohort-api: fixed-parameter, floored patient counts, Access JWT auth
+  cohort/       cohort definition + operations + cohort_id, compile to SQL over mart.*, suppression (the seam REST/MCP/chat sit on)
 dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
                 src/components/cohort.js + test/; worker.js proxies /api/* to the cohort API
 tests/          pytest (synthetic pipeline, MCP query guard, cohort API, dashboard loader)

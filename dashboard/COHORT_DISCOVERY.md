@@ -147,17 +147,17 @@ serialise it. Neither the browser nor the LLM ever sends SQL.
 {
   "name": "KRAS G12C NSCLC, no STK11/KEAP1, PD-L1 high, 2023+",
   "population": {
-    "oncotree": ["NSCLC"], "sex": [], "age": [], "vendor": [],
+    "oncotree": ["NSCLC"], "sex": [], "age_band": [], "vendor": [],
     "assay_class": [], "years": [2023, 2026]
   },
   "criteria": [
     {"id": "c1", "kind": "alteration", "gene": ["KRAS"], "aa": ["G12C"], "tier": ["pathogenic", "likely_pathogenic"]},
-    {"id": "c2", "kind": "alteration", "gene": ["STK11", "KEAP1"], "mode": "exclude"},
-    {"id": "c3", "kind": "ihc", "marker": "PD-L1", "measure": "tps", "at_least": 50}
+    {"id": "c2", "kind": "alteration", "gene": ["STK11", "KEAP1"], "mode": "exclude"},   // phase 2
+    {"id": "c3", "kind": "ihc", "marker": "PD-L1", "measure": "TPS", "at_least": 50}
   ],
   "scope": "patient",
-  "breakdown": ["year", "vendor_class"],
-  "pivot": {"rows": "oncotree", "cols": "c1"}
+  "breakdown": ["oncotree", "has_wts"],
+  "pivot": {"rows": "oncotree", "cols": "year"}
 }
 ```
 
@@ -178,6 +178,31 @@ Rules:
   20, 30, 50). Free numbers would allow probing by sliding a threshold one
   patient at a time.
 
+**Phase 1 (#34)** implements the definition in `mcp/src/uccc_genomics_mcp/cohort/`
+(`docs/specs/34-cohort-module-definition-operations.md`). It differs from the text above in
+these ways:
+
+- `any_of` is a new kind: OR across modalities (2–8 leaf criteria, one funnel step), for
+  questions 4, 6 and 7.
+- `age` is `age_band` (the `mart.report` column), and `organ` is a population field.
+- `ihc.measure` is `TPS` or `CPS`, the mart's `unit` spelling. `% stained` has no cut points, so it is not a measure.
+- `expression.gene` is a list (values OR), like `alteration.gene`.
+- Breakdown dimensions are `oncotree`, `organ`, `sex`, `age_band`, `vendor`, `assay_class`,
+  `site_type` and `has_wts`. `by_year` is always returned, so `year` is not a breakdown, and
+  there is no `vendor_class` (pivot `vendor` × `assay_class`).
+- Pivot axes are a dimension (or `year`), or `c<n>.key|sub|val`: the matched fact's column.
+  There is no yes/no criterion axis; its "no" side is exclusion (phase 2).
+- Question 16's RNA part comes from the `has_wts` breakdown, because `data` is phase 2.
+- A criterion with no value filter means "has any result of this kind" (an `ihc` without
+  `call`, a `biomarker` without `call`), which restricts the cohort to tested patients.
+- `cohort_id` covers `version`, `population`, `scope` and the criteria, not the name,
+  breakdown, pivot, criterion ids or order.
+- "Any of the patient's reports" means any of the patient's *in-population* reports. The accrual
+  year is the latest, over the criteria, of the earliest matching year.
+- Pivot suppression runs on both axes to a fixed point, and also hides a row or column total when
+  its one hidden cell would otherwise equal it (the rest of the line being zeros).
+- Phase 2 and rejected with a clear error: `exclude`, `tested_negative`, `scope: "report"`, `sequence`, `data`.
+
 Criterion kinds and the questions they serve:
 
 | kind | fields | questions |
@@ -189,6 +214,7 @@ Criterion kinds and the questions they serve:
 | `specimen` | site_type[], site[], purity_at_least | 15, 16 |
 | `data` | has (wts, liquid, tissue, both_vendors, serial) | 14, 16, 17, 18 |
 | `actionability` | evidence (caris_level1, fmi_fda_any_indication, fmi_trial) | 20 |
+| `any_of` | of[] (2–8 leaf criteria above, OR) | 4, 6, 7 |
 | `sequence` (phase 2) | first, then, min_gap_days? | 14 |
 
 ### 3.2 The mart behind it
@@ -294,7 +320,10 @@ reorders the funnel.
   the cheapest way to loosen the cohort, computed from the funnel: which
   single criterion, if dropped or widened, brings the count back above the
   floor (for example "drop PD-L1 TPS ≥ 50 → 6"). These are ordinary cohort
-  queries, so they need no new privacy review.
+  queries, so they need no new privacy review. A suggestion is shown only if
+  its count is at least 5 *and* at least 5 above the current cohort's raw
+  count; otherwise it could reveal a count the funnel's delta rule hid.
+  Phase 1 offers "drop" only.
 
 **Top bar.**
 
