@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Answer, type AnswerProps, type Tab } from "./Answer.tsx";
+import { Answer, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
 import { EMPTY } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, PivotResult } from "./types.ts";
 
@@ -20,8 +20,9 @@ const result = (over: Partial<CountResult> = {}): CountResult => ({
   ...over,
 });
 
-const render = (r: CountResult | null, tab: Tab = "Accrual", extra: Partial<AnswerProps> = {}, d: Definition = def) =>
-  renderToStaticMarkup(<Answer definition={d} result={r} pivot={null} options={{entries: [], years: [2023, 2026], cut_points: {}, min_cell: 5}}
+const render = (r: CountResult | null, tab: Tab = "Accrual", extra: Partial<AnswerProps> = {}, d: Definition = def,
+                p: PivotResult | null = null) =>
+  renderToStaticMarkup(<Answer definition={d} answer={r && {d, r, p}} options={{entries: [], years: [2023, 2026], cut_points: {}, min_cell: 5}}
     tab={tab} onTab={() => {}} onOp={() => {}} {...extra} />);
 
 describe("suppressed counts", () => {
@@ -45,6 +46,11 @@ describe("suppressed counts", () => {
     expect(html).toMatch(/class="bar hatched"/);
     expect(html).toContain("∧ ALK fusion");
   });
+  test("a known zero is an empty bar, not a hatched one", () => {
+    const html = render(result({funnel: [{criterion: null, patients: 0}, {criterion: "c1", patients: 0}]}));
+    expect(html).not.toContain('class="bar hatched"');
+    expect(html).toContain("width:0%");
+  });
 });
 
 describe("cards", () => {
@@ -54,6 +60,11 @@ describe("cards", () => {
     expect(html).toContain("of 120 patients in NSCLC");
     expect(html).toContain("2.0");   // 8 patients over the 4-year options window
     expect(html).toContain("Low / pilot");
+  });
+  test("the share card's denominator goes through Count; an empty population reads (all patients)", () => {
+    const html = render(result({denominator: null}));
+    expect(html).toMatch(/of <span class="suppressed"[^>]*>&lt;5<\/span> patients in NSCLC/);
+    expect(render(result(), "Accrual", {}, {...def, population: EMPTY.population})).toContain("patients (all patients)");
   });
   test("suppressed share and accrual are dashes", () => {
     const html = render(result({patients: null, denominator: null}));
@@ -67,6 +78,17 @@ describe("loosen", () => {
     expect(html).toContain("Too few patients to show.");
     expect(html).toContain("Drop ALK fusion → 6 patients");
     expect(html).toContain(">Drop</button>");
+  });
+  test("labels come from the counted definition; Drop is disabled while stale, and the body is dimmed", () => {
+    const egfr = {...alk, gene: ["EGFR"], aa: [], class: ["mutation"]} as Criterion;
+    const edited: Definition = {...def, criteria: [kras, egfr]};
+    const counted: Counted = {d: def, r: result({patients: null, loosen: [{drop: "c2", patients: 6}]}), p: null};
+    const html = renderToStaticMarkup(<Answer definition={edited} answer={counted} options={null} tab="Accrual" onTab={() => {}} onOp={() => {}} />);
+    expect(html).toContain("∧ ALK fusion");
+    expect(html).not.toContain("EGFR");
+    expect(html).toMatch(/<button type="button" disabled="">Drop<\/button>/);
+    expect(html).toContain('class="answer-body dim"');
+    expect(render(result())).not.toContain("dim");
   });
   test("nothing to loosen says so", () => {
     expect(render(result({patients: null}))).toContain("No single criterion, dropped, brings this cohort to 5 or more.");
@@ -83,14 +105,18 @@ describe("tabs", () => {
     expect(html).toContain("partial year");
     expect(html).toContain("Patients by year of first qualifying report");
     expect(html).toContain('class="sr-only"');
+    expect(html).toContain('role="group" aria-label="Patients by year of first qualifying report"');
+    expect(html).toContain('<div class="barlabel" aria-hidden="true">');
   });
   test("breakdown: null denominator shows <5 and a dash share", () => {
     const html = render(result(), "Breakdown");
     expect(html).toContain("<th scope=\"row\">male</th><td class=\"hatched\"><span class=\"suppressed\"");
+    expect(html).toContain("Of patients in population");
+    expect(html).toContain('role="region" aria-label="Sex"');
     expect(html).toContain("9%");   // 6 of 70
     expect(html).toContain("<td>–</td>");
   });
-  test("pivot: a null cell renders <5 in its td; missing cells are dashes", () => {
+  test("pivot: a null cell renders <5 in its td; an omitted cell is a known zero", () => {
     const d: Definition = {...def, pivot: {rows: "oncotree", cols: "year"}};
     const pivot: PivotResult = {
       cohort_id: "abc", rows: "oncotree", cols: "year", patients: 8, min_cell: 5, notes: [],
@@ -98,9 +124,11 @@ describe("tabs", () => {
       row_totals: [{value: "NSCLC", patients: 8}, {value: "LUAD", patients: 12}],
       col_totals: [{value: "2023", patients: 6}, {value: "2024", patients: null}],
     };
-    const html = renderToStaticMarkup(<Answer definition={d} result={result()} pivot={pivot} options={null} tab="Pivot" onTab={() => {}} onOp={() => {}} />);
+    const html = render(result(), "Pivot", {}, d, pivot);
     expect(html).toContain('<td class="hatched"><span class="suppressed"');
-    expect(html).toContain("<td>–</td>");
+    expect(html).toContain("<td>0</td>");   // LUAD x 2023
+    expect(html).toContain("<caption>Tumor type (OncoTree) × Year of first qualifying report</caption>");
+    expect(html).toContain('<th scope="col">Tumor type (OncoTree)</th>');
     expect(html).toContain('<th scope="col">2023</th>');
   });
   test("pivot before choosing", () => {
@@ -117,6 +145,12 @@ describe("states", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain("Too many queries");
     expect(html).toContain("Patients");
+  });
+  test("an edit error and an answer error with Retry each render an alert", () => {
+    const html = render(result(), "Accrual", {editError: "c9: no such criterion", error: "request failed (500)", onRetry: () => {}});
+    expect(html).toContain("c9: no such criterion");
+    expect(html).toContain(">Retry</button>");
+    expect(render(result(), "Accrual", {error: "x"})).not.toContain("Retry");
   });
   test("tablist roles", () => {
     const html = render(result());

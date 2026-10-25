@@ -956,7 +956,9 @@ export interface operations {
             query?: {
                 q?: string;
                 limit?: number;
+                /** @description Only this vocabulary field's values (q may then be empty); one of population.oncotree, population.organ, population.sex, population.age_band, population.vendor, population.assay_class, alteration.gene, alteration.aa, biomarker.call, ihc.marker, ihc.clone, ihc.call, expression.gene, specimen.site_type, specimen.site, actionability.evidence. Any other value is a 400. */
                 field?: string | null;
+                /** @description With field: only values under this parent (alteration.aa: gene; biomarker.call: TMB/MSI/LOH; ihc.clone, ihc.call: marker) */
                 parent?: string | null;
             };
             header?: never;

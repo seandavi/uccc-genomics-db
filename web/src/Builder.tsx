@@ -3,7 +3,7 @@ import {
   EVIDENCE, POP_DIMS, addToPopulation, biomarkerEntries, comboKey, criterionLabel, fieldLabel, newCriterion,
   type ComboState, type PopDim,
 } from "./cohort.ts";
-import type { Transport } from "./transport.ts";
+import { describeError, type Transport } from "./transport.ts";
 import type { Criterion, Definition, Leaf, Operation, Option, Options, Population } from "./types.ts";
 
 const DIM_LABELS: Record<PopDim, string> = {
@@ -23,14 +23,15 @@ export function Typeahead({label, search, onPick, minChars = 1}: TypeaheadProps)
   const id = useId();
   const [q, setQ] = useState("");
   const [items, setItems] = useState<Option[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [st, setSt] = useState<ComboState>({open: false, active: 0});
 
   useEffect(() => {
-    if (!st.open || q.length < minChars) { setItems(null); return; }
+    if (!st.open || q.length < minChars) { setItems(null); setError(null); return; }
     let stale = false;
     const t = setTimeout(() => {
-      search(q).then((r) => { if (!stale) { setItems(r); setSt((s) => ({...s, active: 0})); } })
-        .catch(() => { if (!stale) setItems([]); });
+      search(q).then((r) => { if (!stale) { setItems(r); setError(null); setSt((s) => ({...s, active: 0})); } })
+        .catch((e) => { if (!stale) { setItems(null); setError(describeError(e)); } });
     }, 150);
     return () => { stale = true; clearTimeout(t); };
   }, [q, st.open]);   // search is a fresh closure each render; q and open are what change the request
@@ -61,6 +62,7 @@ export function Typeahead({label, search, onPick, minChars = 1}: TypeaheadProps)
           </li>
         ))}
       </ul>
+      {st.open && error && <p role="alert" className="error">Could not search: {error}</p>}
       {shown && shown.length === 0 && q.length >= minChars &&
         <p role="status" className="hint">No matching values (values held by fewer than 5 patients are not offered).</p>}
     </div>
@@ -70,23 +72,29 @@ export function Typeahead({label, search, onPick, minChars = 1}: TypeaheadProps)
 // --- small controls --------------------------------------------------------------------------------
 
 /** The values the vocabulary holds for one field (and parent), most common first; [] until loaded. */
-function useValues(transport: Transport, field: string, parent?: string): string[] {
+function useValues(transport: Transport, field: string, parent?: string): {values: string[]; error: string | null} {
   const [values, setValues] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let stale = false;
-    transport.options({field, parent, limit: 50}).then((o) => { if (!stale) setValues(o.entries.map((e) => e.value)); }).catch(() => {});
+    setError(null);
+    transport.options({field, parent, limit: 50})
+      .then((o) => { if (!stale) setValues(o.entries.map((e) => e.value)); })
+      .catch((e) => { if (!stale) setError(describeError(e)); });
     return () => { stale = true; };
   }, [transport, field, parent]);
-  return values;
+  return {values, error};
 }
 
-function Checks({legend, values, selected, onChange, labels}: {
+export function Checks({legend, values, selected, onChange, labels, error}: {
   legend: string; values: string[]; selected: string[]; onChange: (v: string[]) => void; labels?: Record<string, string>;
+  error?: string | null;
 }) {
   const all = [...values, ...selected.filter((s) => !values.includes(s))];
   return (
     <fieldset className="checks">
       <legend>{legend}</legend>
+      {error && <p role="alert" className="error">Could not load values: {error}</p>}
       {all.map((v) => (
         <label key={v}>
           <input type="checkbox" checked={selected.includes(v)}
@@ -169,8 +177,8 @@ function PopulationAdders({transport, p, options, onOp}: {transport: Transport; 
 }
 
 function PopulationChecks({transport, dim, p, set}: {transport: Transport; dim: PopDim; p: Population; set: (p: Population) => void}) {
-  const values = useValues(transport, `population.${dim}`);
-  return <Checks legend={`Limit to ${DIM_LABELS[dim]}`} values={values} selected={p[dim]} onChange={(v) => set({...p, [dim]: v})} />;
+  const {values, error} = useValues(transport, `population.${dim}`);
+  return <Checks legend={`Limit to ${DIM_LABELS[dim]}`} values={values} error={error} selected={p[dim]} onChange={(v) => set({...p, [dim]: v})} />;
 }
 
 // --- criterion editors -----------------------------------------------------------------------------
@@ -214,7 +222,7 @@ interface EditorProps<K extends Criterion["kind"]> { d: Of<K>; set: (c: Criterio
 function AlterationEditor({d, set, transport}: EditorProps<"alteration">) {
   const oneGene = d.gene.length === 1;
   const mutationOnly = d.class.length === 0 || (d.class.length === 1 && d.class[0] === "mutation");
-  const aaValues = useValues(transport, "alteration.aa", oneGene && mutationOnly ? d.gene[0] : undefined);
+  const aa = useValues(transport, "alteration.aa", oneGene && mutationOnly ? d.gene[0] : undefined);
   return (
     <>
       <Checks legend="Alteration class (none = any)" values={[...ALT_CLASSES]} selected={d.class}
@@ -223,8 +231,8 @@ function AlterationEditor({d, set, transport}: EditorProps<"alteration">) {
           const stillMutation = cls.length === 0 || (cls.length === 1 && cls[0] === "mutation");
           set({...d, class: cls, aa: stillMutation ? d.aa : []});
         }} />
-      {oneGene && mutationOnly && aaValues.length > 0 &&
-        <Checks legend={`${d.gene[0]} protein change (none = any)`} values={aaValues} selected={d.aa} onChange={(v) => set({...d, aa: v})} />}
+      {oneGene && mutationOnly && (aa.values.length > 0 || aa.error) &&
+        <Checks legend={`${d.gene[0]} protein change (none = any)`} values={aa.values} error={aa.error} selected={d.aa} onChange={(v) => set({...d, aa: v})} />}
       <Checks legend="Classification" values={[...TIERS]} selected={d.tier} labels={TIER_LABELS}
         onChange={(v) => set({...d, tier: v as typeof d.tier})} />
     </>
@@ -232,12 +240,12 @@ function AlterationEditor({d, set, transport}: EditorProps<"alteration">) {
 }
 
 function BiomarkerEditor({d, set, transport, cuts}: EditorProps<"biomarker"> & {cuts: (k: string) => number[]}) {
-  const calls = useValues(transport, "biomarker.call", d.name);
+  const {values: calls, error: callsError} = useValues(transport, "biomarker.call", d.name);
   return (
     <>
       {d.name === "TMB" &&
         <CutSelect label="At least (mut/Mb)" cuts={cuts("biomarker.TMB")} value={d.at_least} onChange={(v) => set({...d, at_least: v, call: v == null ? d.call : []})} />}
-      <Checks legend={`${d.name} call (none = tested)`} values={calls} selected={d.call}
+      <Checks legend={`${d.name} call (none = tested)`} values={calls} error={callsError} selected={d.call}
         onChange={(v) => set({...d, call: v, at_least: v.length ? null : d.at_least})} />
     </>
   );
@@ -251,10 +259,11 @@ function IhcEditor({d, set, transport, cuts}: EditorProps<"ihc"> & {cuts: (k: st
       <label>Clone{" "}
         <select value={d.clone ?? ""} onChange={(e) => set({...d, clone: e.target.value || null})}>
           <option value="">any clone</option>
-          {[...new Set([...clones, ...(d.clone ? [d.clone] : [])])].map((c) => <option key={c} value={c}>{c}</option>)}
+          {[...new Set([...clones.values, ...(d.clone ? [d.clone] : [])])].map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </label>
-      <Checks legend={`${d.marker} call`} values={calls} selected={d.call}
+      {clones.error && <p role="alert" className="error">Could not load values: {clones.error}</p>}
+      <Checks legend={`${d.marker} call`} values={calls.values} error={calls.error} selected={d.call}
         onChange={(v) => set({...d, call: v, measure: v.length ? null : d.measure, at_least: v.length ? null : d.at_least})} />
       <label>Measure{" "}
         <select value={d.measure ?? ""} onChange={(e) => set({...d, measure: (e.target.value || null) as typeof d.measure, at_least: null, call: e.target.value ? [] : d.call})}>
@@ -273,8 +282,8 @@ function SpecimenEditor({d, set, transport, cuts}: EditorProps<"specimen"> & {cu
   const sites = useValues(transport, "specimen.site");
   return (
     <>
-      <Checks legend="Site type" values={types} selected={d.site_type} onChange={(v) => set({...d, site_type: v})} />
-      <Checks legend="Site" values={sites} selected={d.site} onChange={(v) => set({...d, site: v})} />
+      <Checks legend="Site type" values={types.values} error={types.error} selected={d.site_type} onChange={(v) => set({...d, site_type: v})} />
+      <Checks legend="Site" values={sites.values} error={sites.error} selected={d.site} onChange={(v) => set({...d, site: v})} />
       <CutSelect label="Tumor purity at least (%)" cuts={cuts("specimen.purity")} value={d.purity_at_least} onChange={(v) => set({...d, purity_at_least: v})} />
     </>
   );
@@ -283,7 +292,7 @@ function SpecimenEditor({d, set, transport, cuts}: EditorProps<"specimen"> & {cu
 function ActionabilityEditor({d, set, transport}: EditorProps<"actionability">) {
   const present = useValues(transport, "actionability.evidence");
   return (
-    <Checks legend="Evidence" values={present} selected={d.evidence} labels={EVIDENCE}
+    <Checks legend="Evidence" values={present.values} error={present.error} selected={d.evidence} labels={EVIDENCE}
       onChange={(v) => set({...d, evidence: v as typeof d.evidence})} />
   );
 }
