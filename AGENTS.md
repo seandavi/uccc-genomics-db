@@ -42,6 +42,7 @@ src/uccc_genomics/
 mcp/src/uccc_genomics_mcp/
   server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
   cohort_api.py genomics-cohort-api: fixed-parameter, floored patient counts, Access JWT auth
+  app.py        genomics-app: FastAPI REST (/api/*) + MCP (/mcp) over cohort/, behind authen
   cohort/       cohort definition + operations + cohort_id, compile to SQL over mart.*, suppression (the seam REST/MCP/chat sit on)
 dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
                 src/components/cohort.js + test/; worker.js proxies /api/* to the cohort API
@@ -96,6 +97,7 @@ uv run pytest -q                    # ~10-30 s; real-DB tests skip when $DATA/ge
 (cd dashboard && npm ci && npm test)   # cohort page helpers
 uvx ruff check src mcp tests        # advisory
 uv run genomics-cohort-api --auth none --static dashboard/dist --port 8091   # local cohort API + site
+uv run genomics-app --auth password --port 8092   # local cohort app: REST /api/* + MCP /mcp (APP_USER, APP_PASSWORD_HASH in .env)
 ```
 
 `npm run build` in `dashboard/` needs the real de-id file (the loader queries it), so it only

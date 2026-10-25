@@ -392,6 +392,14 @@ open question 2.
 
 ### 3.5 API changes
 
+These endpoints live in `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35), not in
+`genomics-cohort-api`, which keeps the phase 1 `GET /api/cohort` and `/api/options`. Deviations
+from the table: `POST /api/pivot` takes the definition alone, because the pivot's `rows` and
+`cols` are `pivot` inside the definition (#34); the response of `GET /api/options` is
+`{entries, years, cut_points, min_cell}` with no counts; and `/api/apply` and `/api/schema`
+were added for the operations and the JSON Schemas. `/api/health` is open and returns only
+`{"status": "Healthy"}`, without the report total of the phase 1 contract.
+
 | Endpoint | Change |
 |---|---|
 | `POST /api/cohort` | Body is the cohort definition. Response: `funnel[]`, `patients`, `reports`, `denominator`, `by_year`, the breakdowns, `notes[]`, `loosen[]`. All counts pass through the existing `suppress()`. `GET` with the phase 1 parameters is kept until `cohort.md` is removed, then deleted. |
