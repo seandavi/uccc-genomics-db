@@ -39,9 +39,10 @@ Surface = Literal["rest", "mcp"]
 INSTRUCTIONS = (
     "Build a cohort definition (its JSON Schema comes from describe_definition), edit it with apply_op, "
     "map the user's words to vocabulary values with search_vocabulary, then count it, or pivot it once its "
-    "pivot is set. patients, denominator and every funnel, year, breakdown and pivot cell are distinct "
-    "patients across Caris and FMI (a patient with reports from both vendors counts once); reports counts "
-    "reports. null means suppressed (1-4, or recoverable by subtraction), never zero. Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, "
+    "pivot is set. patients, denominator, the funnel and years count distinct patients across Caris and FMI "
+    "(a patient with reports from both vendors counts once). A breakdown or pivot cell counts the patients "
+    "with a report having that value, so one patient can be in several cells and cells need not add up to "
+    "patients. reports counts reports. null means suppressed (1-4, or recoverable by subtraction), never zero. Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, "
     "race or ethnicity. Saved cohorts belong to the logged-in user: save_cohort, then edit with apply_saved_op "
     "(each edit is a new revision; revert_saved_cohort undoes). Saved cohorts hold no counts; count the head "
     "definition. Snapshots store the suppressed count with its data date for grant text.")

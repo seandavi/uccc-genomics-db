@@ -235,6 +235,14 @@ def test_mcp_get_is_405(client):
         assert (r.status_code, r.headers["allow"]) == (405, "POST")
 
 
+def test_instructions_say_how_cells_overlap():
+    text = " ".join(app.INSTRUCTIONS.split())
+    assert "a patient with reports from both vendors counts once" in text
+    assert "cells need not add up to patients" in text
+    assert "reports counts reports" in text
+    assert "Counts are distinct patients." not in text
+
+
 def test_no_swagger_ui(client):
     assert client.get("/api/docs", auth=AUTH).status_code == 404
     assert client.get("/api/openapi.json", auth=AUTH).status_code == 200

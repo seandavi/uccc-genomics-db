@@ -53,10 +53,10 @@ data, SQL, suppression or de-identification changes.
 **`INSTRUCTIONS`.** Replace the sentence `"Counts are distinct patients. "` with:
 
 ```text
-patients, denominator and every funnel, year, breakdown and pivot cell are distinct patients across Caris and FMI (a patient with reports from both vendors counts once); reports counts reports.
+patients, denominator, the funnel and years count distinct patients across Caris and FMI (a patient with reports from both vendors counts once). A breakdown or pivot cell counts the patients with a report having that value, so one patient can be in several cells and cells need not add up to patients. reports counts reports.
 ```
 
-The rest of the string is unchanged. "Counts once" holds because `research_id` is the same keyed
+The rest of the string is unchanged. "Counts once" holds for the totals because `research_id` is the same keyed
 hash for the same patient across vendors (README, "De-identification").
 
 **`count` docstring.** Append one sentence:
@@ -200,7 +200,7 @@ do not mention `/api/docs` or `GET /mcp`; they need no change.
 - [ ] `test_openapi_snapshot` passes with `web/openapi.json` unchanged (`git diff --stat web/`
       empty).
 - [ ] `INSTRUCTIONS` contains "a patient with reports from both vendors counts once" and
-      "reports counts reports", and no longer contains "Counts are distinct patients.".
+      "cells need not add up to patients", "reports counts reports", and no longer contains "Counts are distinct patients.".
 - [ ] The `count` docstring explains `denominator` and `reports`; the `search_vocabulary`
       docstring states the 100-character and empty-`q` rules, the 50-result cap and `field` /
       `parent`. Both show in `tools/list` descriptions.
