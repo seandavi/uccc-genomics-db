@@ -415,8 +415,9 @@ anything else.
   `GET /api/versions/{cohort_id}` returns the selecting part of a definition and nothing about who
   stored it.
 - Ownership: every read and write of `cohort`, `cohort_revision` and `snapshot` is filtered by the
-  email `RequireUser` stored. Someone else's id gives the same 404 as a missing one, so ids cannot be
-  probed for existence. Ids are random UUIDs.
+  email `RequireUser` stored. Someone else's id gives the same 404 as a missing one, so saved-cohort
+  ids cannot be probed for existence. Those ids are random UUIDs. `cohort_id` is different: see the
+  `cohort_id` existence oracle under Risks.
 - Differencing (decision 11): saved cohorts make repeated queries convenient but add no new
   count path. Every count still goes through the rate limit and the audit log. The caps
   (`MAX_*`) bound storage per user.
@@ -500,32 +501,47 @@ either id.
 `tests/test_app.py`) and a throwaway Postgres given by `TEST_DATABASE_URL`. No network beyond
 that Postgres, never `$DATA/raw`, the PHI file, the real de-id file or the real `DATABASE_URL`.
 
-Fixtures:
+Fixtures and helpers:
 
+- Imported from `tests/test_app.py`: the `mart_file` and `ids` fixtures (the synthetic #34 mart,
+  `use_mart`, `app.get_db` on it, a fresh `app._calls`), plus `MCP_HEADERS` and `walk`.
 - `pg_url` (module scope): `url = os.environ.get("TEST_DATABASE_URL")`; if unset,
   `pytest.skip("saved cohorts: set TEST_DATABASE_URL to a throwaway Postgres to run these (README)")`.
   If it equals `os.environ.get("DATABASE_URL")`, `pytest.fail` (the tests drop the schema). With
   `pytest.MonkeyPatch.context()` setting `DATABASE_URL=url`, run
   `command.downgrade(cfg, "base")`, `command.upgrade(cfg, "head")` and `command.check(cfg)`, where
   `cfg = alembic.config.Config(str(REPO / "mcp" / "alembic.ini"))`.
-- `ids`: import from `test_app` (mart, `use_mart`, `app.get_db`, fresh `_calls`), as `test_app`
-  does for its own tests.
-- `sclient` (function scope): `monkeypatch.setenv("DATABASE_URL", pg_url)`; truncate all four tables
-  with `asyncio.run(...)` on a short-lived `create_async_engine(saved.database_url())` (`TRUNCATE
-  snapshot, cohort_revision, cohort, cohort_version`); `monkeypatch.setattr(authen, "user", fake)`
+- `sql(statement, **params)`: runs one statement on a short-lived
+  `create_async_engine(saved.database_url())` inside `asyncio.run` and returns the rows as dicts
+  (an empty list when the statement returns none).
+- `clean` (function scope, needs `pg_url`): `monkeypatch.setenv("DATABASE_URL", pg_url)`, then
+  `sql("TRUNCATE snapshot, cohort_revision, cohort, cohort_version")`. Tests that call `saved.*`
+  directly use `clean` alone.
+- `sclient` (function scope, needs `ids` and `clean`): `monkeypatch.setattr(authen, "user", fake)`
   where `fake(request)` returns `request.headers["x-test-user"]` or raises `PermissionError`; then
-  `with TestClient(app.app()) as c: yield c`.
-- Helpers `rest(c, method, path, body=None, user="a@x.edu")` and `tool(c, name, args,
-  user="a@x.edu")` (the `tools/call` POST with `x-test-user`), and `mask(x)`, which replaces every
-  string matching a UUID or an ISO-8601 timestamp with `"*"`, recursively.
+  `with TestClient(app.app()) as c`, sets `c.ids = ids` and yields `c`.
+- `Resp(code, body)`: a namedtuple. `code` is the HTTP status for REST; for MCP it is 200, or
+  `None` when the result `isError` (then `body` is the error text).
+- Class `Rest(c, user="a@x.edu")`: one method per saved-cohort call, each sending `x-test-user`:
+  `save(d)`, `list()`, `get(id)`, `apply(id, op)`, `history(id)`, `revert(id, to)`, `snapshot(id)`,
+  `delete(id)`, `snapshots()`, `version(cohort_id)` and `count(d)` (`POST /api/cohort`).
+- Class `Mcp(Rest)`: the same methods as `tools/call` POSTs to `/mcp` (`save_cohort`,
+  `list_saved_cohorts`, `get_saved_cohort`, `apply_saved_op`, `saved_cohort_history`,
+  `revert_saved_cohort`, `snapshot_saved_cohort`, `delete_saved_cohort`, `list_snapshots`,
+  `get_cohort_version`, `count`), returning `structuredContent` or the `isError` text. A test runs
+  one script against either surface by passing a `Rest` or an `Mcp`.
+- `mask(x)`: replaces every string matching a UUID or an ISO-8601 timestamp with `"*"`,
+  recursively. `ok(r)`: asserts `r.code == 200` and returns `r.body`. `script(s)`: the parity
+  script below, returning every response.
 
 Tests:
 
-1. `test_saved_parity`: one script, run once through REST and once through MCP (each surface
-   creates its own cohort from `{"name": "x", "population": {"oncotree": ["NSCLC"]}}`): save; apply
+1. `test_saved_parity`: one script, run once through `Rest` as user A and once through `Mcp` as
+   user B (each surface creates its own cohort from `{"name": "x", "population": {"oncotree":
+   ["NSCLC"]}}`; a second user because snapshots outlive their cohort): save; get; apply
    `add_criterion` KRAS G12C; apply `rename`; apply `set_breakdown ["sex"]`; revert to 1; history;
-   get; snapshot; list snapshots; delete; list. `mask(rest_response) == mask(mcp_response)` at
-   every step.
+   snapshot; list snapshots; list; delete; list. Every step is 200, and
+   `mask(rest_response) == mask(mcp_response)` at every step.
 2. `test_saved_reads_are_identical`: create through REST, then get, history, list, list snapshots
    (after one snapshot) and version on both surfaces; exact equality.
 3. `test_revisions`: the seq, `op`, `cohort_id` and name rules in the acceptance list.
@@ -539,20 +555,26 @@ Tests:
    suppressed values; with `app.RATE_LIMIT` at 1 and the budget spent, 429 / `isError` and the
    snapshot list is unchanged.
 7. `test_nothing_small_or_identifying_stored`: after tests 1–6's kind of script, read every row of
-   all four tables with a raw engine; no `research_id`/`report_id` string from `ids`, no
+   all four tables with `sql`; no `research_id`/`report_id` string from `ids`, no
    `patients`/`denominator`/`reports` keys outside `snapshot.result`, and no 1–4 under those keys
    anywhere.
-8. `test_errors_agree`: unknown id (404, "no saved cohort"), malformed id (422 / `isError`),
-   gene not in the vocabulary on save and on apply (400, "gene"), unknown op (422, "op"), revert to
-   99 (404, "no revision"). REST status and MCP `isError` text both name the problem.
-9. `test_caps_and_conflict`: monkeypatch `saved.MAX_COHORTS`, `MAX_REVISIONS`, `MAX_SNAPSHOTS` to
-   small values; next write 409 / `isError`. Then, inside one `asyncio.run`, `saved.start(url)`,
-   `create`, `append(..., after=1)` succeeds, `append(..., after=1)` again raises `Conflict`,
-   `await saved.stop()`.
-10. `test_delete`: get, history and apply 404 afterwards; earlier snapshots and the
-    `cohort_version` row remain.
-11. `test_database_url` (no Postgres needed, not using `pg_url`): unset → `None`;
+8. `test_saved_errors_agree`, parametrized over `ERRORS`: unknown id (404, "no saved cohort"),
+   malformed id (422 / `isError`, "uuid"), gene not in the vocabulary on save and on apply (400,
+   "gene"), unknown op (422, "op"), revert to 99 (404, "no revision"). REST status and MCP
+   `isError` text both name the problem.
+9. `test_caps`: monkeypatch `saved.MAX_COHORTS` to 1, `MAX_REVISIONS` to 2 and `MAX_SNAPSHOTS` to
+   1; the next save, apply, revert and snapshot are 409 over REST and `isError` over MCP. Caps are
+   per user: user B can still save.
+10. `test_stale_append_conflicts` (uses `clean`, no TestClient): inside one `asyncio.run`,
+    `saved.start(saved.database_url())`, `create`, `append(..., after=1)` succeeds, `append(...,
+    after=1)` again raises `Conflict`, `append` as another user raises `NotFound`, and
+    `await saved.stop()` in a `finally`.
+11. `test_delete`: get, history, apply and a second delete 404 afterwards; earlier snapshots and the
+    `cohort_version` row remain, and `cohort_revision` is empty.
+12. `test_database_url` (no Postgres needed, not using `pg_url`): unset → `None`;
     `postgresql://u:p@h:5432/d` → drivername `postgresql+asyncpg`, same host, port, database.
+13. `test_data_date_is_a_date` (no Postgres needed, uses `ids`): `cohort.data_date()` returns a
+    `datetime.date`.
 
 `tests/test_app.py` changes (run everywhere, no Postgres):
 
@@ -573,6 +595,17 @@ Dashboard check: n/a.
 - **Ownership is the security boundary.** A query that forgets `owner = :email` leaks another
   user's definitions. Mitigation: ownership checks sit in `saved.py` only (one place), and
   `test_ownership` runs every id-taking operation as the wrong user on both surfaces.
+- **`cohort_id` is a cross-user existence oracle for definitions (accepted, #56).** `cohort_id` is
+  an unkeyed sha256 of the selecting definition, and the code that computes it is public. Any
+  logged-in user can compute the id of a candidate definition and call `GET
+  /api/versions/{cohort_id}` (or `get_cohort_version`). A 200 means some user has saved or
+  snapshotted that definition; a 404 means nobody has. The lookup is not rate-limited. It reveals
+  other users' research activity, not patient data: the response is the definition the caller
+  already had, with no counts and no `created_by`. Accepted because users are campus-only, nothing
+  about patients leaks, and a keyed `cohort_id` would add another key file to manage. Revisit if the
+  audience widens beyond campus. The fixes then are a share link that carries the selecting
+  definition itself (no server lookup), or a `cohort_id` computed with a server-side key (which
+  changes every id the cohort module returns, so it needs its own issue).
 - **Free text in names.** A user could type something identifying into a cohort name. Postgres
   would then hold it, readable only by that user (version rows store `name` ""). Out of scope; the
   same is true of the stdout audit log today.
