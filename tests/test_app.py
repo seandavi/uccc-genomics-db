@@ -284,6 +284,20 @@ def test_instructions_say_how_cells_overlap():
     assert "Counts are distinct patients." not in text
 
 
+def test_instructions_name_neighbours_and_loosen_offered():
+    text = " ".join(app.INSTRUCTIONS.split())
+    for part in ("with a tested_negative criterion as a plain exclude", "one end year",
+                 "at patient scope instead of report scope", "loosen_offered is false",
+                 "at least one include criterion"):
+        assert part in text
+    assert "match at least one criterion," not in text
+
+
+def test_loosen_offered_is_described():
+    props = app.app().openapi()["components"]["schemas"]["CountResult"]["properties"]
+    assert "not offered" in props["loosen_offered"]["description"]
+
+
 def test_no_swagger_ui(client):
     assert client.get("/api/docs", auth=AUTH).status_code == 404
     assert client.get("/api/openapi.json", auth=AUTH).status_code == 200

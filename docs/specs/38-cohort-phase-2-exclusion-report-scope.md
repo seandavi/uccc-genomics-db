@@ -45,7 +45,9 @@ defeats it.
 - No yes/no "criterion matched" pivot axis. Question 10's 2×2 is two counts: the co-alteration
   included, then excluded.
 - The union rule does **not** cover OR lists inside a criterion (several genes, protein changes or
-  `any_of` members). They are accepted under the audit log, as in phase 1 (Risks).
+  `any_of` members), or a criterion's own `vendor` (none against one vendor), and the union rule
+  takes out one value at a time, not two or more from one field. They are accepted under the audit
+  log, as in phase 1 (Risks).
 - Differencing that combines three or more queries is accepted under the audit log (Risks).
 - No change to `cohort_api.py` (the public phase 1 API), `server.py`, `authen.py`, `saved.py`,
   `deid.py`, id hashing or date shifting. `research_id` and `report_id` are unchanged. They are
@@ -502,7 +504,8 @@ as such.
 
 ### `app.py`
 
-- `INSTRUCTIONS` gains: `"A criterion's mode is include (default), exclude or tested_negative; scope 'report' makes every criterion match on one report. A count can also be null because it differs by 1-4 from the same cohort without an exclusion or one population value (so a small group cannot be worked out by subtraction)."`
+- `INSTRUCTIONS` gains: `"A criterion's mode is include (default), exclude or tested_negative; scope 'report' makes every criterion match on one report. A count can also be null because it differs by 1-4 from the same cohort one edit away: without an exclusion, with a tested_negative criterion as a plain exclude, without one listed population value or one end year of a year range, or at patient scope instead of report scope (the result's notes say so). Then loosen_offered is false: loosen suggestions were not computed, so an empty loosen does not mean that no single criterion would help."`
+- `count` docstring and `INSTRUCTIONS` say what `loosen_offered` false means, and which reports `reports` counts (#71).
 - The `count` and `pivot` tool docstrings: change "null means suppressed" to "null means suppressed
   (under 5, or hidden so a small count cannot be worked out by subtraction)".
 - No new route or tool. `apply_op` / `POST /api/apply` take the new operations through `Operation`.
@@ -530,8 +533,8 @@ Python changes. `types.ts` adds `export type SeqMember = S["Sequence"]["first"][
 
 ```ts
 export const DATA_LABELS: Record<string, string> = {
-  wts: "Has whole-transcriptome sequencing", liquid: "Has a liquid biopsy", tissue: "Has tissue testing",
-  both_vendors: "Tested by both Caris and FMI", serial: "Two or more reports",
+  wts: "whole-transcriptome sequencing", liquid: "liquid biopsy", tissue: "tissue testing",
+  both_vendors: "testing by both Caris and FMI", serial: "serial reports (two or more)",
 };
 export const DATA_ENTRIES: Option[]          // one {field: "data.has", parent: null, value} per DATA_LABELS key
 export function dataEntries(q: string): Option[]   // entries whose label contains q (case-insensitive); [] for blank q
@@ -841,12 +844,23 @@ Dashboard check: n/a (no change under `dashboard/` other than `COHORT_DISCOVERY.
 
 ## Risks
 
-- **Differencing beyond one edit.** The neighbour check closes two-query attacks one edit away.
-  These stay open and are accepted under the audit log and the rate limit, like phase 1's
+- **Differencing beyond one edit.** The neighbour check closes the two-query attacks one edit away
+  that `neighbours()` lists (§3.6 names them). These stay open and are accepted under the audit log and the rate limit, like phase 1's
   cross-query differencing:
   - Combinations of three or more queries, for example
     `[(A∧¬B over {X,Y}) − (A∧¬B over {X})]` against the same pair without the exclusion.
   - OR lists inside a criterion (decision 1's scope).
+  - A criterion's own vendor. `vendor: null` on a criterion is an OR of Caris and FMI, like an OR
+    list. A criterion without a vendor against the same criterion with `vendor: "caris"` is one
+    `update_criterion` apart, and the difference is the patients whose finding is only on FMI
+    reports. It is accepted with OR lists inside a criterion.
+  - Two or more values taken out of one population field. The union rule takes out one value at a
+    time. A patient whose reports carry two listed values (two OncoTree codes, or two age bands)
+    stays in when either one alone is taken out, so `[A, B, C]` against `[A]` can differ by 1–4
+    while every one-value neighbour differs by 0. It takes two queries and one `set_population`.
+  - Patient scope against report scope beyond one edit. The patient-scope twin of a report-scope
+    cohort is a neighbour. The pair combined with another edit (for example the scope switch and a
+    criterion's vendor together) is two edits away and is not checked.
   - An open population field or open year range against the same cohort with some values listed
     (decision 1): with a synthetic `NSCLC` + `KRAS` cohort, `years: null` and `years: [2023, 2024]`
     can both be shown, and their difference is the patients collected after 2024. Pinned by

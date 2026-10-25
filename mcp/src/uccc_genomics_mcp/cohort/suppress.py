@@ -9,13 +9,14 @@ instead of report scope: `neighbours`),
 leaves this module. A breakdown cell and its
 population denominator are nested sets whose difference is shown on purpose (it is the
 percentage). Not covered, and accepted under the audit log (spec rule 3, COHORT_DISCOVERY.md
-§3.6): OR lists inside a criterion, differencing that combines three or more queries, and that
-breakdown cell against its denominator.
+§3.6): OR lists inside a criterion, a criterion's own vendor (none against one vendor), two or more
+values taken out of one population field, the scope switch combined with another edit, differencing
+that combines three or more queries, and that breakdown cell against its denominator.
 """
 import os
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (COHORT_ROUND)
 from .definition import Definition, cohort_id, data_notes, neighbours
@@ -101,7 +102,10 @@ class CountResult(BaseModel):
     breakdowns: dict[str, list[BreakdownCell]]
     notes: list[str]
     loosen: list[Loosen]
-    loosen_offered: bool = True     # False when the definition has neighbours: a suggestion would need its own checks
+    loosen_offered: bool = Field(True, description=(
+        "False when the definition has neighbours (exclusions, multi-value population fields, a year "
+        "range or report scope): loosen suggestions are then not computed, so an empty loosen means "
+        "'not offered', not 'none would help'."))
     min_cell: int = MIN_CELL
 
 
