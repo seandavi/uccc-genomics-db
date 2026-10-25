@@ -1,0 +1,145 @@
+# AGENTS.md
+
+Conventions for anyone (human or agent) changing this repo. [README.md](README.md) is the operating
+doc and design record; [PLAN.md](PLAN.md) has the reasoning and vendor column mapping;
+[dashboard/COHORT_TOOL.md](dashboard/COHORT_TOOL.md) is the cohort API/page design. Read the parts
+that touch your change first.
+
+## What this is
+
+Caris and Foundation Medicine (FMI) NGS reports for UCCC patients, loaded into one encrypted DuckDB
+with identifiers (`genomics_phi.duckdb`), then de-identified into a second (`genomics.duckdb`,
+schemas `caris.*`, `fmi.*`, `unified.*`). Three consumers read only the de-identified file: a
+read-only MCP server, a cohort-count API, and an Observable Framework dashboard on Cloudflare
+Workers behind Cloudflare Access.
+
+**This is patient data and this GitHub repo is public.** Most rules below follow from that.
+
+## Stack (decided; do not substitute)
+
+- Python ≥ 3.12, **uv** workspace (root package + `mcp/` member). DuckDB ≥ 1.5 with native
+  encryption. stdlib otherwise; **polars**, not pandas, if a dataframe is ever needed. Ask before
+  adding a dependency.
+- Dashboard: Observable Framework, `node --test`, Wrangler. Match the surrounding code.
+- Scheduling: systemd `--user` units in `systemd/` (daily rebuild + dashboard deploy, MCP server,
+  cohort API).
+- Lint: `uvx ruff check` is advisory. There are existing findings; don't mass-reformat files you
+  aren't otherwise changing.
+
+## Layout
+
+```
+src/uccc_genomics/
+  cli.py        genomics sync|load|deid|all [--vendor] | shell [--phi]
+  config.py     $DATA paths, .env loading, key files, connect() (encrypted ATTACH)
+  db.py         bulk_insert via temp JSONL + try_cast (executemany is ~100x slower)
+  caris.py fmi.py   per-vendor sync() + load() -> caris.* / fmi.*
+  deid.py       drop PHI columns, keyed-hash ids, per-patient date shift, leak assert
+  sql/          caris_views.sql, fmi_views.sql, unified.sql
+  data/disease_crosswalk.csv   vendor disease term -> OncoTree/organ system/NCIt
+mcp/src/uccc_genomics_mcp/
+  server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
+  cohort_api.py genomics-cohort-api: fixed-parameter, floored patient counts, Access JWT auth
+dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
+                src/components/cohort.js + test/; worker.js proxies /api/* to the cohort API
+tests/          pytest (synthetic pipeline, MCP query guard, cohort API, dashboard loader)
+systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
+```
+
+## Rules
+
+- **PHI stays on the host.** Identified data lives only in `$DATA/raw/` and
+  `$DATA/genomics_phi.duckdb` (`DATA` defaults to `/data/davsean/genomics`). Never copy, print,
+  log, commit or paste it anywhere: issues, PRs, specs, commit messages, test fixtures and
+  `/tmp`. Don't open the PHI file (`genomics shell --phi`) unless the task can't be done without it.
+- **Nothing row-level or small leaves the de-id file.** The dashboard loader drops cells under
+  `MIN_CELL = 5`. The cohort API nulls counts under 5, applies secondary suppression and the
+  whole-cohort rule, and takes parameters only from allow-lists and as bound SQL parameters. Any
+  new output path (page, endpoint, MCP tool, export) needs the same treatment and a test that
+  pins it. Real counts, ids and query results don't go in GitHub either; synthetic examples do.
+- **De-identification is a seam.** Changes to `deid.py`, the PHI column lists, id hashing, date
+  shifting or the leak assert must keep `research_id` stable for the same key and same patient
+  (downstream cohort lists depend on it). They need a test in `tests/test_pipeline.py`.
+- **Keys and data are never touched by agents.** `$DATA/.db_key_phi`, `.db_key` and `.deid_key`
+  are not regenerable: losing `.deid_key` changes every id. Never delete, rotate, move or read
+  them into output. Never commit `.env`, `*.duckdb*`, key files or `.duckdb_init_*` (they're
+  gitignored; keep it that way).
+- **Site-specific values go in `.env`, not code or docs.** That covers the Caris bucket, the FMI
+  host/path, the Access team/AUD and real hostnames beyond the public dashboard domain. Use
+  placeholders in docs (see `.env.example`).
+- **Never run the production pipeline or deploys.** That means `genomics sync|load|deid|all`
+  against the real `$DATA`, `npm run deploy`, `wrangler deploy`, restarting the systemd services,
+  and any `aws s3`/`rsync` toward the vendor sources (never `--delete` toward the bucket or
+  share). The daily timer owns the real rebuild. To exercise the pipeline, set `DATA` to a temp
+  dir with synthetic inputs, as `tests/test_pipeline.py` does.
+- **Don't weaken Cloudflare Access.** Keep `workers_dev = false` and preview URLs off in
+  `dashboard/wrangler.toml`. The cohort API must keep refusing requests without a valid Access
+  JWT (only `/api/health` is open). `--insecure-no-auth` is for local dev only.
+- **Encrypted files:** plain `duckdb genomics.duckdb` fails by design. Use `uv run genomics shell`
+  or `uccc_genomics.config.connect()`. Reading the real de-id file read-only is fine for checking
+  a change on this host.
+- **Vendor quirks are documented; keep them.** For example, Caris re-deliveries (newest JSON
+  wins), FMI Monitor files without a FinalReport, FMI's missing MRN (~20%), and
+  `fmi.load_error` (nothing is dropped silently). New disease terms are added to
+  `disease_crosswalk.csv`, not special-cased in SQL.
+- Every load is a full drop-and-rebuild from the raw mirror. Keep it that way (no incremental
+  state).
+
+## Commands
+
+```bash
+uv sync --all-packages              # root + mcp/ workspace member
+uv run --all-packages pytest -q     # ~10-30 s; real-DB tests skip when $DATA/genomics.duckdb is absent
+(cd dashboard && npm ci && npm test)   # cohort page helpers
+uvx ruff check src mcp tests        # advisory
+uv run genomics-cohort-api --insecure-no-auth --static dashboard/dist --port 8091   # local cohort API + site
+```
+
+Plain `uv sync && uv run pytest` fails on a fresh checkout (missing `jwt`/`uccc_genomics_mcp`;
+issue #29); use the `--all-packages` forms. `npm run build` in `dashboard/` needs the real de-id
+file (the loader queries it), so it only works on the pipeline host.
+
+Tests build synthetic Caris JSON / FMI XML / DuckDB in temp dirs and need no network or
+credentials. On the pipeline host, `test_dashboard_loaders.py` and the cohort API's real-DB test
+also run against the real de-id file, read-only. A new test must never read `$DATA/raw/` or the
+PHI file.
+
+## Git
+
+- Branch per issue `issue-<n>-<slug>` in a worktree under `../uccc-genomics-db-worktrees/`. PRs
+  say `Closes #<n>`. One change per PR; say what you checked.
+- Small, well-described commits with a `Co-Authored-By` trailer when an agent wrote them. Never
+  `git stash` (parallel worktrees share it). Never force-push `main`.
+- Anything waiting on a person carries the `needs:human` label. A person always merges.
+
+## pi-crucible
+
+Issues can run through [pi-crucible](https://github.com/seandavi/pi-crucible). It runs spec (Opus)
+→ implement (Sonnet) → parallel review lenses (Opus) → up to two revise rounds → integrate with
+`origin/main` → PR labelled `needs:human`, and a person merges. Every stage reads this file first;
+the per-repo config is `.pi/crucible.json`, which `/crucible` reads **from `origin/main`**, so
+config changes take effect only once merged.
+
+```text
+/crucible init --write          # first time: writes a starter .pi/crucible.json; edit it, merge it
+/crucible 12 --dry-run          # worktree, branch, lenses and args for issue #12; changes nothing
+/crucible 12                    # launch (async); follow with /subagents-fleet
+/crucible 12 --start-at review  # re-review + re-integrate an existing branch, update its PR
+/crucible 12 --lens security    # add a lens the labels don't ask for
+```
+
+- **Install / update** (per machine): `pi install git:github.com/seandavi/pi-crucible`, then
+  `pi update --extensions` (plain `pi update` skips packages).
+- **Labels:** `review:security` and `review:ux` add those lenses (`code` always runs). `seam`
+  marks shared foundations, so reviewers rate inherited defects by blast radius. Use it for
+  `deid.py`, `config.connect()`, `db.bulk_insert`, `sql/unified.sql`, the cohort API's
+  suppression, and the MCP query guard. Any issue touching what can leave the host
+  (dashboard loader, cohort API, MCP tools) should carry `review:security`.
+- **Checks a run should use:** `uv run --all-packages pytest -q` and
+  `cd dashboard && npm ci && npm test`. Report the dashboard check as n/a for Python-only changes.
+  Ruff is advisory, not a gating check.
+- **Specs** go to `docs/specs/<issue>-<slug>.md`. They are public, so describe data with synthetic
+  examples and column names, never real counts, values or identifiers.
+- **Queue:** `gh issue list -l needs:human` and `gh pr list -l needs:human`.
+- Runs execute on the pipeline host, so the real de-id file is present and real-DB tests run.
+  Stages still follow every rule above: no pipeline runs against `$DATA`, no deploys, no PHI file.
