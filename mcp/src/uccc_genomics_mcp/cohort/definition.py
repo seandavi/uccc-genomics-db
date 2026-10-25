@@ -28,8 +28,8 @@ DEFAULT_TIERS = ["likely_pathogenic", "pathogenic"]
 CUT_POINTS = {"biomarker.TMB": [10.0, 16.0, 20.0], "ihc.TPS": [1.0, 50.0], "ihc.CPS": [1.0, 10.0, 20.0],
               "expression.percentile": [50.0, 75.0, 90.0], "specimen.purity": [20.0, 30.0, 50.0]}
 DEFERRED_KINDS = ("sequence", "data", "tested_negative", "exclude")
-ID_RE = re.compile(r"^c[1-9][0-9]{0,2}$")
-AXIS_RE = re.compile(r"^(c[1-9][0-9]{0,2})\.(key|sub|val)$")
+ID_RE = re.compile(r"^c[1-9][0-9]{0,2}\Z")
+AXIS_RE = re.compile(r"^(c[1-9][0-9]{0,2})\.(key|sub|val)\Z")
 
 _CONFIG = ConfigDict(extra="forbid", frozen=True, validate_by_name=True, validate_by_alias=True,
                      serialize_by_alias=True)
