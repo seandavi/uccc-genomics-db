@@ -289,8 +289,9 @@ assistant collapses into a drawer below 1,200 px.
 criterion is a card with an include, exclude or tested-negative toggle and a
 "same report" lock. "Add criterion" is a typeahead over the whole
 vocabulary: typing "her2" offers *IHC HER2 call*, *ERBB2 amplification* and
-*ERBB2 mutation*, each with its patient count. Genes show their common
-protein changes ("KRAS: G12D 240, G12V 180, G12C 60 …"). Dragging a card
+*ERBB2 mutation*, ranked by how many patients they match but shown without
+counts (§3.6). Genes list their common protein changes in that order ("KRAS:
+G12D, G12V, G12C …"). Dragging a card
 reorders the funnel.
 
 **Centre: answer.**
@@ -349,7 +350,7 @@ endpoints the page uses, so it cannot see more than a user clicking could.
 
 | Tool | Endpoint | Purpose |
 |---|---|---|
-| `search_vocabulary(text)` | `GET /api/options?q=` | map "HER2-low", "dMMR", "TROP2" to vocabulary values; returns floored counts |
+| `search_vocabulary(text)` | `GET /api/options?q=` | map "HER2-low", "dMMR", "TROP2" to vocabulary values; returns floored vocabulary values, no counts (§3.6) |
 | `count(definition)` | `POST /api/cohort` | the funnel, cards and breakdowns |
 | `pivot(definition, rows, cols)` | `POST /api/pivot` | cross-tabs |
 | `data_notes(definition)` | part of the `/api/cohort` response | coverage and caveats to quote |
