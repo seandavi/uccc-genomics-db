@@ -31,7 +31,7 @@ describe("suppressed counts", () => {
     expect(html).toContain('<span class="suppressed"');
     expect(html).toContain("&lt;5");
     expect(html).not.toContain(">0<");
-    expect(html).toContain("fewer than 5 patients");
+    expect(html).toContain("patient count not shown");
   });
   test("zero renders 0 and a shown count is formatted", () => {
     const html = render(result({patients: 0, reports: 1234}));

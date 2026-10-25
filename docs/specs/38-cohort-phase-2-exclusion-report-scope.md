@@ -17,6 +17,8 @@ the synthetic test mart.
 2. Suppression gains the §3.6 additions that phase 1 did not have:
    - the **A ∧ ¬B rule** for exclusions: a count is hidden when it differs by 1–4 from the same
      count without an exclusion;
+   - the **tested-negative rule**: the same check against the cohort with a `tested_negative`
+     criterion made a plain `exclude`;
    - the **union rule**: the same check against the cohort with one value taken out of a population
      field that lists two or more values, or with one end year taken off a year range.
 
@@ -61,8 +63,9 @@ defeats it.
    wild-type variant records and FMI pertinent negatives. It says nothing about one protein change,
    a copy-number change or a fusion.
 4. **At most 3 negated criteria** (`exclude` or `tested_negative`) per definition. The neighbour
-   check tries every non-empty subset of them (at most 7 extra statements). Question 11 needs 3.
-5. **At most 32 neighbours per count.** That is ≤ 7 exclusion subsets, plus 2 for a year range,
+   check tries every non-empty subset of them (at most 7 extra statements), and each
+   `tested_negative` criterion made a plain `exclude` (at most 3 more). Question 11 needs 3.
+5. **At most 32 neighbours per count.** That is ≤ 7 exclusion subsets, plus ≤ 3 `tested_negative` swaps, plus 2 for a year range,
    plus one per value in each multi-value population field. A definition that needs more is a 400
    when it is counted, not when it is parsed. Saved cohorts (#36) re-validate their stored
    definitions on read, and phase 1 allowed up to 100 OncoTree codes, so parse-time rejection would
@@ -268,7 +271,8 @@ class Neighbour(NamedTuple):
 
 def neighbours(d: Definition) -> list[Neighbour]:
     """The definitions one edit away whose counts a user could subtract from d's: d without each
-    non-empty subset of its negated criteria; d with one value taken out of a population field that
+    non-empty subset of its negated criteria; d with one tested_negative criterion made a plain
+    exclusion (the difference is the patients with no result for the gene); d with one value taken out of a population field that
     lists two or more; d with one end year taken off a year range (from < to). Raises
     DefinitionError if there are more than MAX_NEIGHBOURS."""
 ```
@@ -279,12 +283,17 @@ def neighbours(d: Definition) -> list[Neighbour]:
 - Exclusion subsets: `negated = [c.id for c in d.criteria if c.mode in NEGATED]`. For each
   `S` in `itertools.combinations(negated, r)`, `r = 1..len(negated)`, drop those criteria.
   `step[k] = k - (number of criteria in d.criteria[:k] whose id is in S)`.
+- Mode swaps: for each `tested_negative` criterion in `d.criteria` order, `d` with that criterion's
+  `mode` set to `"exclude"`. `step[k] = k`. `tested_negative` is ¬B ∧ T (every listed gene reported
+  wild-type), so without this neighbour the cohort with the exclusion minus the cohort with
+  tested-negative is A ∧ ¬B ∧ ¬T, the patients with no result at all, which no include query can
+  express. Only the `tested_negative` side gets the neighbour; its count is the one hidden.
 - Population values: for each field in `POP_DIMS` (in that order) with `len(values) >= 2`, and each
   value in it (sorted order), drop that value. `step[k] = k`.
 - Years: if `years` is set and `years[0] < years[1]`, add `[from + 1, to]` and then
   `[from, to - 1]`. `step[k] = k`.
-- More than `MAX_NEIGHBOURS` → `DefinitionError("population: this cohort needs <n> privacy checks (one per combination of exclusions, one per value in a field that lists two or more, two for a year range); at most 32 are allowed. Use fewer values or a coarser field such as organ")`.
-- Order is deterministic (subsets, then population, then years). It is part of the function's
+- More than `MAX_NEIGHBOURS` → `DefinitionError("population: this cohort needs <n> privacy checks (one per combination of exclusions, one per tested-negative criterion, one per value in a field that lists two or more, two for a year range); at most 32 are allowed. Use fewer values or a coarser field such as organ")`.
+- Order is deterministic (subsets, then mode swaps, then population, then years). It is part of the function's
   contract, so tests can index into it.
 
 #### Data notes
@@ -297,7 +306,7 @@ Add these keys to `NOTES`, after `fda` and before `absent`, in this order:
 | `tested_negative` | any `tested_negative` criterion | `Tested negative also needs every listed gene reported wild-type (Caris) or as a pertinent negative (FMI lists only some genes, so FMI patients are under-counted).` |
 | `sequence` | any `sequence` criterion | `Report order uses collection dates, shifted per patient for de-identification so intervals are kept; reports without a date are never ordered, and same-day reports are not later.` |
 | `both_vendors` | a `data` criterion with `has == "both_vendors"` | `Patients are linked across vendors by MRN, or name and birth date when an FMI report has no MRN; tested by both vendors is a lower bound.` |
-| `neighbours` | `neighbours(d)` is non-empty (computed without the cap) | `A count that differs by 1 to 4 from the same count without an exclusion, or without one of the listed population values or end years, is hidden so a small group cannot be worked out by subtraction; suggestions to loosen are not offered.` |
+| `neighbours` | `neighbours(d)` is non-empty (computed without the cap) | `A count that differs by 1 to 4 from the same count without an exclusion, with a tested-negative criterion as a plain exclusion, or without one of the listed population values or end years, is hidden so a small group cannot be worked out by subtraction; suggestions to loosen are not offered.` |
 
 `data_notes` keeps walking `any_of` members and now also walks `sequence` members
 (`first + then`) for the existing `ihc`, `expression`, `specimen` and `fda` triggers. For the
@@ -493,7 +502,8 @@ Nothing returns `collected_on`, a date, `research_id` or `report_id`.
 ### Discover (`web/`)
 
 Regenerate `web/openapi.json` and `web/src/api.gen.ts` with `cd web && bun run gen` after the
-Python changes. `types.ts` adds `export type SeqMember = S["Sequence"]["first"][number];`.
+Python changes. `types.ts` adds `export type SeqMember = S["Sequence"]["first"][number];` and
+`export type Mode = Criterion["mode"];`.
 
 #### `cohort.ts`
 
@@ -508,7 +518,9 @@ export function modesFor(c: Criterion): Mode[]     // sequence: ["include"]; alt
 export function feasibility(d: Definition, r: CountResult, years: readonly [number, number] | null): string
 ```
 
-`Mode` is `Criterion["mode"]` from the generated types.
+`Mode` is `Criterion["mode"]`, exported from `types.ts` (generated types). `cohort.ts` also exports
+`REPORT_DATA` (`["wts", "liquid", "tissue"]`, the `data.has` values judged per report), which
+`Builder.tsx` imports for the "Then…" button and the scope switch.
 
 - `criterionLabel`: `data` → `DATA_LABELS[has]`. `sequence` → `` `${first labels joined " and "}, then later ${then labels joined " and "}` ``.
   A leaf with `vendor` gets ` (Caris)` or ` (FMI)`. Mode wraps the label: exclude →
@@ -519,18 +531,22 @@ export function feasibility(d: Definition, r: CountResult, years: readonly [numb
   sets `vendor: null`.
 - `fieldLabel` gives `"Data available"` for `data.has`.
 - `pivotAxes` skips criteria whose `mode !== "include"` and the `data` and `sequence` kinds.
-- `feasibility` (pure, numbers only from `r` and `years`; `n(x)` is `"fewer than 5"` for null,
-  else `fmtCount(x)`):
+- `feasibility` (pure, numbers only from `r` and `years`; a null count claims no size, since it is
+  under 5 or hidden by the neighbour, funnel or line rules, whatever its size: the denominator reads
+  `a suppressed number of`, the criteria count `a suppressed number`, else `fmtCount(x)`):
 
   ```
   {window} the UCCC sequenced {n(r.denominator)} patients{ in <populationLabel> unless "All patients"}
   [, of whom {n(r.patients)} met: {criterionLabel of each criterion, joined "; "}]      -- only if criteria
   [ (about {perYear.toFixed(1)} a year)]                                              -- only if accrualPerYear(r.patients, years) != null
   .[ Every criterion was met on the same report.]                                     -- only if scope "report"
-   Counts are distinct de-identified patients from Caris and FMI reports; counts from 1 to 4 are shown as "fewer than 5". {r.notes joined " "}
+   Counts are distinct de-identified patients from Caris and FMI reports; counts under {r.min_cell}, and counts that would let one be worked out by subtraction, are not shown. {r.notes joined " "}
   ```
 
   `{window}` is `Between {years[0]} and {years[1]},` or `To date,` when `years` is null.
+
+  The same reasoning changes the `Answer.tsx` live region for a null `patients` from "fewer than 5
+  patients" (spec 37) to "patient count not shown".
 
 #### `Builder.tsx`
 
@@ -560,7 +576,10 @@ export function feasibility(d: Definition, r: CountResult, years: readonly [numb
 #### `Compare.tsx` (new)
 
 ```tsx
-export interface CompareColumn { label: string; result: CountResult | null; error: string | null }
+export interface CompareColumn {
+  label: string; result: CountResult | null; error: string | null;
+  window?: readonly [number, number] | null;   // the year span of this version's accrual
+}
 export function CompareTable({columns, minCell}: {columns: CompareColumn[]; minCell: number})   // pure
 export function Compare({versions, transport, years, onClose}: {
   versions: Version[]; transport: Transport; years: readonly [number, number] | null; onClose: () => void;
@@ -572,7 +591,8 @@ export function Compare({versions, transport, years, onClose}: {
   (`Promise.allSettled`). A failed one shows `describeError` in its column.
 - `CompareTable` (a `GridTable`-style scrolling table with a `<caption>`) has one column per
   definition. Rows: Patients, Population (denominator), Share (`pct`), Accrual a year
-  (`accrualPerYear` with the definition's `population.years` or `years`), then one row per year
+  (`accrualPerYear` over each column's `window`, which `Compare` sets to the definition's
+  `population.years`, falling back to `years`), then one row per year
   in the union of the results' `by_year` years, with each column's `patients` for that year (blank
   when that result has no such year). Every count goes through `Count` (null → "<5"). Each column
   header's `title` is the `cohort_id`.
@@ -656,7 +676,8 @@ pathogenic unless stated.
 |---|---|---|
 | NSCLC | `l0`–`l31`, report `l{i}r` 2024. Exceptions: `l20`–`l24` have `l{i}a` (2023) and `l{i}b` (2024); `l25`–`l26` have `l{i}r` in 2025. Male: `l0`–`l2`, `l9`–`l13` | KRAS G12D on `l0`–`l19` (r), `l20`–`l24` (a), `l25`–`l26` (r); none on `l27`–`l31`. STK11 (Q37*) on `l0`–`l5` (r) and `l20`–`l24` (b). KEAP1 (G333C) on `l6`–`l8`, `l27`–`l28` (r) |
 | PAAD | `q0`–`q9`, 2024 | KRAS G12D on `q0`–`q1` |
-| COADREAD | `c0`–`c29`, 2023 | KRAS G12D `c0`–`c7`; NRAS Q61K `c8`–`c12`; BRAF V600E `c13`–`c17`; `tested_negative` KRAS `wildtype` on `c8`–`c24`; `tested_negative` NRAS `wildtype` on `c18`–`c22` |
+| COADREAD | `d0`–`d29`, 2023 | KRAS G12D `d0`–`d7`; NRAS Q61K `d8`–`d12`; BRAF V600E `d13`–`d17`; `tested_negative` KRAS `wildtype` on `d8`–`d24`; `tested_negative` NRAS `wildtype` on `d18`–`d22` |
+| GIST | `g0`–`g29`, 2024 | KRAS G12D `g0`–`g9`; `tested_negative` KRAS `wildtype` on `g10`–`g26` (`g27`–`g29` have no KRAS result) |
 | BRCA | `s0`–`s9`: tissue `s{i}t` collected 2022-03-01; liquid `s{i}l` (assay_class liquid) on 2023-05-01 for `s0`–`s6`, 2022-03-01 for `s7` (same day), 2021-05-01 for `s8`; `s9` tissue only | ESR1 Y537S on `s0l`–`s4l` and on `s5t`–`s9t` |
 | MEL | `x0`–`x16`: Caris `x{i}c` 2024-02-01 and FMI `x{i}f` 2024-08-01; `y0`–`y5` Caris only 2024-02-01 | TMB (`biomarker`, key TMB, val call): Caris `low` on `x0`–`x6` and `y*`, `high` on `x7`–`x16`; FMI `low` on `x0`–`x6` and `x12`–`x16`, `high` on `x7`–`x11` |
 | PRAD | `h0`–`h14`, liquid, 2024 | DNMT3A R882H `h0`–`h4`; TET2 Q810* `h5`–`h9` |
@@ -705,6 +726,11 @@ Attack tests. Each asserts the raw numbers that make the attack (from `queries._
   cell is None, and the line rule then hides female (8).
 - `test_attack_exclusion_pivot_cell`: the same definition with pivot `sex` × `year`. The
   `("male", "2024")` cell is None, and `line_nones` holds no line with exactly one hidden value.
+- `test_attack_exclude_against_tested_negative`: population GIST, `c1` KRAS. `exclude` gives raw
+  `[30, 20]`, `tested_negative` gives `[30, 17]`; 20 − 17 is the 3 patients with no KRAS result.
+  The `exclude` count is shown (20) and the `tested_negative` count is None. `neighbours` of the
+  first is the criterion dropped; of the second, the criterion dropped and the criterion as
+  `exclude`.
 - `test_attack_union_population`: population `[NSCLC, PAAD]`, `c1` KRAS. Raw 29 against neighbour
   `[NSCLC]` 27, so 2 would be revealed. `patients is None`. `count` of `[NSCLC]` alone shows 27.
   The population alone (`[NSCLC, PAAD]`, no criteria) shows 42.
@@ -721,7 +747,7 @@ Attack tests. Each asserts the raw numbers that make the attack (from `queries._
   raises `ValueError`, and so does `suppress_pivot`.
 - `test_neighbours`: the order and `step` maps for a definition with `c1` include, `c2` exclude,
   `c3` include, `c4` tested_negative, oncotree `[A, B]` and years `[2022, 2024]`. That gives 3
-  subsets, 2 values and 2 year ends. For `S = {c2}`, `step == [0, 1, 1, 2, 3]`. Three negated
+  subsets, 1 mode swap (`c4`), 2 values and 2 year ends. For `S = {c2}`, `step == [0, 1, 1, 2, 3]`. Three negated
   criteria, a year range and 24 OncoTree values make 33 neighbours → `DefinitionError` naming
   `population`, while `parse` and `data_notes` on that definition do not raise.
 - `test_loosen_withheld_with_neighbours`: a small exclusion cohort gives `loosen == []` and
@@ -751,7 +777,8 @@ neighbours is a 400 whose detail starts with `population:` on REST, and a tool e
 - `cohort.test.ts`: `criterionLabel` for exclude, tested_negative, `data`, `sequence` and vendor;
   `newCriterion` for `data.has`; `dataEntries("liquid")`; `modesFor` for alteration with and
   without `aa`, `ihc` and `sequence`; `pivotAxes` skips negated, `data` and `sequence` criteria.
-  `feasibility`: with `patients: null` it says "fewer than 5". Every digit run in the statement is
+  `feasibility`: with `patients: null` it says "a suppressed number" and never "fewer than", and the
+  closing sentence names `r.min_cell`. Every digit run in the statement is
   a number in `r` (formatted), a year in `years`, a cut point in the definition or the
   `toFixed(1)` accrual figure. With no criteria there is no "of whom" clause.
 - `answer.test.tsx`: `loosen_offered: false` with `patients: null` renders the subtraction

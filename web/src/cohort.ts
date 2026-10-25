@@ -278,15 +278,16 @@ export function comboKey(state: ComboState, key: string, count: number): ComboSt
 
 /** One paragraph for a grant's feasibility section. Every number comes from the result, the window or the definition. */
 export function feasibility(d: Definition, r: CountResult, years: readonly [number, number] | null): string {
-  const n = (x: number | null | undefined) => (x == null ? `fewer than ${r.min_cell}` : fmtCount(x));
+  // A null count says nothing about its size: it is under min_cell or could be worked out by subtraction.
+  const n = (x: number | null | undefined, suppressed: string) => (x == null ? suppressed : fmtCount(x));
   const window = years ? `Between ${years[0]} and ${years[1]},` : "To date,";
   const pop = populationLabel(d.population);
   const perYear = accrualPerYear(r.patients, years);
-  let text = `${window} the UCCC sequenced ${n(r.denominator)} patients${pop === "All patients" ? "" : ` in ${pop}`}`;
-  if (d.criteria.length) text += `, of whom ${n(r.patients)} met: ${d.criteria.map(criterionLabel).join("; ")}`;
+  let text = `${window} the UCCC sequenced ${n(r.denominator, "a suppressed number of")} patients${pop === "All patients" ? "" : ` in ${pop}`}`;
+  if (d.criteria.length) text += `, of whom ${n(r.patients, "a suppressed number")} met: ${d.criteria.map(criterionLabel).join("; ")}`;
   if (perYear != null) text += ` (about ${perYear.toFixed(1)} a year)`;
   text += ".";
   if (d.scope === "report") text += " Every criterion was met on the same report.";
-  text += ` Counts are distinct de-identified patients from Caris and FMI reports; counts from 1 to 4 are shown as "fewer than 5". ${r.notes.join(" ")}`;
+  text += ` Counts are distinct de-identified patients from Caris and FMI reports; counts under ${r.min_cell}, and counts that would let one be worked out by subtraction, are not shown. ${r.notes.join(" ")}`;
   return text;
 }

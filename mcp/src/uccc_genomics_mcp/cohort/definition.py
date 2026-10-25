@@ -387,19 +387,21 @@ def _year_range(d: Definition) -> bool:
 
 def _neighbour_count(d: Definition) -> int:
     negated = sum(c.mode in NEGATED for c in d.criteria)
-    return 2 ** negated - 1 + sum(len(v) for _, v in _multi_values(d)) + 2 * _year_range(d)
+    swaps = sum(c.mode == "tested_negative" for c in d.criteria)
+    return 2 ** negated - 1 + swaps + sum(len(v) for _, v in _multi_values(d)) + 2 * _year_range(d)
 
 
 def neighbours(d: Definition) -> list[Neighbour]:
     """The definitions one edit away whose counts a user could subtract from d's: d without each
-    non-empty subset of its negated criteria; d with one value taken out of a population field that
+    non-empty subset of its negated criteria; d with one tested_negative criterion made a plain exclusion
+    (the difference is the patients with no result for the gene); d with one value taken out of a population field that
     lists two or more; d with one end year taken off a year range (from < to). Raises
-    DefinitionError if there are more than MAX_NEIGHBOURS. The order (subsets, population, years)
+    DefinitionError if there are more than MAX_NEIGHBOURS. The order (subsets, mode swaps, population, years)
     is part of the contract."""
     n = _neighbour_count(d)
     if n > MAX_NEIGHBOURS:
         raise DefinitionError(
-            f"population: this cohort needs {n} privacy checks (one per combination of exclusions, one per value "
+            f"population: this cohort needs {n} privacy checks (one per combination of exclusions, one per tested-negative criterion, one per value "
             "in a field that lists two or more, two for a year range); at most 32 are allowed. "
             "Use fewer values or a coarser field such as organ")
     base = d.model_dump(mode="json", by_alias=True)
@@ -416,6 +418,9 @@ def neighbours(d: Definition) -> list[Neighbour]:
         for dropped in itertools.combinations(negated, r):
             add(lambda data, dropped=dropped: data.update(criteria=[c for c in data["criteria"] if c["id"] not in dropped]),
                 [k - sum(c.id in dropped for c in d.criteria[:k]) for k in steps_all])
+    for c in d.criteria:
+        if c.mode == "tested_negative":
+            add(lambda data, cid=c.id: [x.update(mode="exclude") for x in data["criteria"] if x["id"] == cid], steps_all)
     for dim, values in _multi_values(d):
         for v in values:
             add(lambda data, dim=dim, v=v: data["population"].update({dim: [x for x in data["population"][dim] if x != v]}),
@@ -468,8 +473,8 @@ NOTES = {
                 "kept; reports without a date are never ordered, and same-day reports are not later.",
     "both_vendors": "Patients are linked across vendors by MRN, or name and birth date when an FMI report has no "
                     "MRN; tested by both vendors is a lower bound.",
-    "neighbours": "A count that differs by 1 to 4 from the same count without an exclusion, or without one of the "
-                  "listed population values or end years, is hidden so a small group cannot be worked out by "
+    "neighbours": "A count that differs by 1 to 4 from the same count without an exclusion, with a tested-negative "
+                  "criterion as a plain exclusion, or without one of the listed population values or end years, is hidden so a small group cannot be worked out by "
                   "subtraction; suggestions to loosen are not offered.",
     "absent": "Stage, treatment, outcomes, race and ethnicity are not in this data.",
 }

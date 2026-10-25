@@ -4,7 +4,8 @@ Raw counts go in, `CountResult` / `PivotResult` come out. Every number in a resu
 through `floor`, the neighbour check, the secondary-suppression line rule, the funnel delta rule
 and the whole-cohort rule, so nothing from 1 to 4 and nothing recoverable by subtraction within
 one list, one pivot or one funnel, or against the same cohort one edit away (without an exclusion,
-a population value or an end year: `neighbours`), leaves this module. A breakdown cell and its
+with tested_negative as a plain exclusion, without a population value or an end year: `neighbours`),
+leaves this module. A breakdown cell and its
 population denominator are nested sets whose difference is shown on purpose (it is the
 percentage). Not covered, and accepted under the audit log (spec rule 3, COHORT_DISCOVERY.md
 §3.6): OR lists inside a criterion, differencing that combines three or more queries, and that

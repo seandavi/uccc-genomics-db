@@ -272,7 +272,7 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
         return (
           <div className={busy || stale ? "answer-body dim" : "answer-body"}>
             <p aria-live="polite" className="sr-only">
-              {r.patients == null ? `fewer than ${r.min_cell} patients` : `${fmtCount(r.patients)} patients`}
+              {r.patients == null ? "patient count not shown" : `${fmtCount(r.patients)} patients`}
             </p>
             <Cards r={r} d={counted} options={options} />
             <Loosen r={r} d={counted} stale={stale} onOp={onOp} />

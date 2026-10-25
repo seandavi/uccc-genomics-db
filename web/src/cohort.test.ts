@@ -119,11 +119,13 @@ describe("feasibility", () => {
     // 1,200 and 48 are in the result, 2020 and 2024 the window, 10 the TMB cut point, 9.6 = 48 / 5 years.
     expect(numbers(feasibility(d, r, [2020, 2024]), r)).toEqual(["2020", "2024", "1,200", "48", "10", "9.6"]);
   });
-  test("a suppressed count says fewer than 5, with no number", () => {
+  test("a suppressed count claims no size and has no number", () => {
     const r = result({patients: null, denominator: null});
     const text = feasibility({...d, criteria: [alt({class: ["mutation"]})]}, r, null);
-    expect(text.startsWith("To date, the UCCC sequenced fewer than 5 patients in NSCLC, of whom fewer than 5 met: KRAS mutation.")).toBe(true);
-    expect(numbers(text, r)).toEqual(["5", "5"]);   // only "fewer than 5" (r.min_cell), twice
+    expect(text.startsWith("To date, the UCCC sequenced a suppressed number of patients in NSCLC, of whom a suppressed number met: KRAS mutation.")).toBe(true);
+    expect(text).not.toContain("fewer than");
+    expect(text).toContain("counts under 5, and counts that would let one be worked out by subtraction, are not shown.");
+    expect(numbers(text, r)).toEqual([]);
   });
   test("no criteria: no 'of whom' clause; report scope is stated", () => {
     const r = result();

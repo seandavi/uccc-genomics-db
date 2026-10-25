@@ -6,6 +6,7 @@ A synthetic mart of its own (`build_phase2_mart`); every value is invented. Pati
   NSCLC l0-l31     KRAS G12D l0-l26; STK11 l0-l5, l20-l24; KEAP1 l6-l8, l27-l28; l20-l24 have two reports
   PAAD  q0-q9      KRAS G12D q0-q1
   COADREAD d0-d29  KRAS d0-d7, NRAS d8-d12, BRAF d13-d17; tested negative KRAS d8-d24, NRAS d18-d22
+  GIST  g0-g29     KRAS g0-g9; tested negative KRAS g10-g26 (g27-g29 have no KRAS result)
   BRCA  s0-s9      tissue and liquid reports (dates in the build), ESR1
   MEL   x0-x16 y0-y5   TMB by vendor (x have both vendors)
   PRAD  h0-h14     liquid; DNMT3A h0-h4, TET2 h5-h9
@@ -61,6 +62,13 @@ def build_phase2_mart() -> Mart:
             m.fact(f"d{i}r", "tested_negative", "KRAS", sub="wildtype")
         if 18 <= i < 23:
             m.fact(f"d{i}r", "tested_negative", "NRAS", sub="wildtype")
+
+    for i in range(30):   # GIST
+        m.report(f"g{i}", f"g{i}r", "GIST", "Stomach", "caris", 2024)
+        if i < 10:
+            m.mutation(f"g{i}r", "KRAS", "G12D")
+        elif i < 27:
+            m.fact(f"g{i}r", "tested_negative", "KRAS", sub="wildtype")
 
     for i in range(10):   # BRCA
         m.report(f"s{i}", f"s{i}t", "BRCA", "Breast", "caris", 2022, collected_on=date(2022, 3, 1))
@@ -242,6 +250,18 @@ def test_attack_exclusion_pivot_cell(db):
         assert sum(v is None for v in line) != 1, line
 
 
+def test_attack_exclude_against_tested_negative(db):
+    """exclude minus tested_negative on one gene is the patients with no result for it (a group no include
+    query can express)."""
+    kras = alt("c1", ["KRAS"])
+    d = defn([exclude(kras)], population=pop("GIST"))
+    tn = defn([{**kras, "mode": "tested_negative"}], population=pop("GIST"))
+    assert raw_funnel(d) == [30, 20] and raw_funnel(tn) == [30, 17]   # 20 - 17 = 3 never tested
+    assert count(d).patients == 20 and count(tn).patients is None   # the tested_negative side is the one hidden
+    assert [[c.mode for c in n.definition.criteria] for n in neighbours(d)] == [[]]
+    assert [[c.mode for c in n.definition.criteria] for n in neighbours(tn)] == [[], ["exclude"]]
+
+
 def test_attack_union_population(db):
     d = defn([KRAS], population=pop("NSCLC", "PAAD"))
     assert raw_funnel(d) == [42, 29] and raw_funnel(defn([KRAS], population=NSCLC)) == [32, 27]
@@ -345,13 +365,15 @@ def test_neighbours():
     d = defn([c("c1"), c("c2", "exclude"), c("c3"), c("c4", "tested_negative")],
              population={"oncotree": ["A", "B"], "years": [2022, 2024]})
     near = neighbours(d)
-    assert len(near) == 3 + 2 + 2
+    assert len(near) == 3 + 1 + 2 + 2
     assert [[c.id for c in n.definition.criteria] for n in near[:3]] == [["c1", "c3", "c4"], ["c1", "c2", "c3"], ["c1", "c3"]]
+    assert [c.mode for c in near[3].definition.criteria] == ["include", "exclude", "include", "exclude"]
+    assert near[3].step == [0, 1, 2, 3, 4]
     assert near[0].step == [0, 1, 1, 2, 3]
     assert near[2].step == [0, 1, 1, 2, 2]
-    assert [n.definition.population.oncotree for n in near[3:5]] == [["B"], ["A"]]
+    assert [n.definition.population.oncotree for n in near[4:6]] == [["B"], ["A"]]
     assert all(n.step == [0, 1, 2, 3, 4] for n in near[3:])
-    assert [n.definition.population.years for n in near[5:]] == [(2023, 2024), (2022, 2023)]
+    assert [n.definition.population.years for n in near[6:]] == [(2023, 2024), (2022, 2023)]
     assert neighbours(defn([c("c1")])) == []
     assert neighbours(defn([c("c1")], population={"oncotree": ["A"], "years": [2022, 2022]})) == []
     big = defn([c("c1", "exclude"), c("c2", "exclude"), c("c3", "exclude")],
