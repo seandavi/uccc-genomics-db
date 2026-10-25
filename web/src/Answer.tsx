@@ -74,6 +74,11 @@ function Funnel({r, d}: {r: CountResult; d: Definition}) {
 }
 
 function Loosen({r, d, stale, onOp}: {r: CountResult; d: Definition; stale: boolean; onOp: (op: Operation) => void}) {
+  if (r.loosen_offered === false) {   // the definition has neighbours: a suggestion would need its own privacy checks
+    return r.patients == null
+      ? <div className="loosen"><p>Too few patients to show, or hidden so a small group cannot be worked out by subtraction.</p></div>
+      : null;
+  }
   if (r.patients != null && r.loosen.length === 0) return null;
   return (
     <div className="loosen">
@@ -160,7 +165,7 @@ function BreakdownTab({r, counted, d, onOp}: {r: CountResult; counted: Definitio
 }
 
 // Every count table goes through here so a wide one scrolls inside the answer column, not the page.
-function GridTable({label, children}: {label: string; children: ReactNode}) {
+export function GridTable({label, children}: {label: string; children: ReactNode}) {
   return (
     <div className="table-scroll" tabIndex={0} role="region" aria-label={label}>
       <table className="grid"><caption>{label}</caption>{children}</table>

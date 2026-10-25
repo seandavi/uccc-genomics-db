@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Answer, type Counted, type Tab } from "./Answer.tsx";
 import { Builder } from "./Builder.tsx";
-import { EMPTY, HISTORY_KEY, pushVersion, readShareHash, shareHash, type History } from "./cohort.ts";
+import { Compare } from "./Compare.tsx";
+import { EMPTY, HISTORY_KEY, feasibility, pushVersion, readShareHash, shareHash, type History } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
 import type { Definition, Operation, Options } from "./types.ts";
 
@@ -27,6 +28,9 @@ export function App({transport}: {transport: Transport}) {
   const [name, setName] = useState(hist.versions[hist.current].definition.name);
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [panel, setPanel] = useState<"compare" | "feasibility" | null>(null);
+  const [statementCopied, setStatementCopied] = useState(false);
+  const statementRef = useRef<HTMLTextAreaElement>(null);
   const seq = useRef(0);
   const started = useRef(false);
 
@@ -119,6 +123,16 @@ export function App({transport}: {transport: Transport}) {
     setLink(window.location.href);
   };
 
+  const stale = !!answer && answer.d !== current;
+  const statement = answer && !stale ? feasibility(answer.d, answer.r, answer.d.population.years ?? options?.years ?? null) : "";
+  const togglePanel = (p: "compare" | "feasibility") => { setPanel(panel === p ? null : p); setStatementCopied(false); };
+  const copyStatement = async () => {
+    if (navigator.clipboard) {
+      try { await navigator.clipboard.writeText(statement); setStatementCopied(true); return; } catch { /* fall through */ }
+    }
+    statementRef.current?.select();
+  };
+
   return (
     <div className="app">
       <header className="top">
@@ -136,7 +150,22 @@ export function App({transport}: {transport: Transport}) {
         <button type="button" onClick={share}>Share link</button>
         {copied && <span role="status">Link copied</span>}
         {link && <input readOnly aria-label="Share link" className="link" value={link} autoFocus onFocus={(e) => e.currentTarget.select()} />}
+        <button type="button" aria-expanded={panel === "compare"} onClick={() => togglePanel("compare")}>Compare</button>
+        <button type="button" aria-expanded={panel === "feasibility"} disabled={!answer || stale}
+          onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
       </header>
+      {panel === "compare" && (
+        <Compare versions={hist.versions} transport={transport} years={options?.years ?? null} onClose={() => setPanel(null)} />
+      )}
+      {panel === "feasibility" && (
+        <section aria-label="Feasibility statement" className="panel">
+          <textarea readOnly aria-label="Feasibility statement" rows={6} value={statement} onFocus={(e) => e.currentTarget.select()} ref={statementRef} />
+          <div className="row">
+            <button type="button" onClick={copyStatement}>Copy</button>
+            {statementCopied && <span role="status">Copied</span>}
+          </div>
+        </section>
+      )}
       <div className="cols">
         <div className="col-builder">
           {editError?.at === "builder" && <p role="alert" className="error">{editError.message}</p>}

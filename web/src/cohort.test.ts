@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
-  EMPTY, MAX_VERSIONS, accrualPerYear, addToPopulation, comboKey, criterionLabel, fmtCount, newCriterion, pct,
-  pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor, type History,
+  DATA_ENTRIES, EMPTY, MAX_VERSIONS, accrualPerYear, addToPopulation, comboKey, criterionLabel, dataEntries, feasibility,
+  fmtCount, modesFor, newCriterion, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
+  type History,
 } from "./cohort.ts";
-import type { Criterion, Definition, Option, Population } from "./types.ts";
+import type { CountResult, Criterion, Definition, Option, Population } from "./types.ts";
 
 const opt = (field: string, value: string, parent: string | null = null): Option => ({field, parent, value});
 const alt = (over: object = {}) => ({kind: "alteration", id: "c1", mode: "include", gene: ["KRAS"], aa: [], class: [], tier: ["likely_pathogenic", "pathogenic"], ...over}) as Criterion;
@@ -65,6 +66,73 @@ describe("labels", () => {
     const c = {kind: "any_of", id: "c2", mode: "include", of: [bio({call: ["high"]}), alt({gene: ["ERBB2"], class: ["amplification"]})]} as Criterion;
     expect(criterionLabel(c)).toBe("MSI high or ERBB2 amplification");
   });
+  test("criterionLabel for modes, data, sequence and vendor", () => {
+    expect(criterionLabel(alt({mode: "exclude", gene: ["STK11", "KEAP1"]}))).toBe("no STK11 or KEAP1 alteration");
+    expect(criterionLabel(alt({mode: "tested_negative", gene: ["KRAS", "NRAS"]}))).toBe("KRAS and NRAS tested negative");
+    expect(criterionLabel(alt({mode: "tested_negative", gene: ["KRAS"], vendor: "fmi"}))).toBe("KRAS tested negative (FMI)");
+    expect(criterionLabel(alt({vendor: "caris", class: ["mutation"]}))).toBe("KRAS mutation (Caris)");
+    expect(criterionLabel(bio({name: "TMB", vendor: "fmi", mode: "exclude"}))).toBe("no TMB tested (FMI)");
+    expect(criterionLabel({kind: "data", id: "c1", mode: "include", has: "liquid", vendor: null} as Criterion)).toBe("Has a liquid biopsy");
+    expect(criterionLabel({kind: "data", id: "c1", mode: "exclude", has: "both_vendors", vendor: null} as Criterion)).toBe("no Tested by both Caris and FMI");
+    const seq = {kind: "sequence", id: "c1", mode: "include",
+      first: [{kind: "data", mode: "include", has: "tissue", vendor: null}],
+      then: [{kind: "data", mode: "include", has: "liquid", vendor: "caris"}, alt({id: null, class: ["mutation"]})]} as Criterion;
+    expect(criterionLabel(seq)).toBe("Has tissue testing, then later Has a liquid biopsy (Caris) and KRAS mutation");
+  });
+});
+
+describe("modes and data entries", () => {
+  test("modesFor", () => {
+    expect(modesFor(alt())).toEqual(["include", "exclude", "tested_negative"]);
+    expect(modesFor(alt({class: ["mutation"]}))).toEqual(["include", "exclude", "tested_negative"]);
+    expect(modesFor(alt({aa: ["G12C"], class: ["mutation"]}))).toEqual(["include", "exclude"]);
+    expect(modesFor(alt({class: ["fusion"]}))).toEqual(["include", "exclude"]);
+    expect(modesFor(ihc())).toEqual(["include", "exclude"]);
+    expect(modesFor({kind: "sequence", id: "c1", mode: "include", first: [], then: []} as unknown as Criterion)).toEqual(["include"]);
+  });
+  test("dataEntries", () => {
+    expect(DATA_ENTRIES.map((e) => e.value)).toEqual(["wts", "liquid", "tissue", "both_vendors", "serial"]);
+    expect(dataEntries("liquid").map((e) => e.value)).toEqual(["liquid"]);
+    expect(dataEntries("TRANSCRIPTOME").map((e) => e.value)).toEqual(["wts"]);
+    expect(dataEntries("  ")).toEqual([]);
+    expect(dataEntries("zzz")).toEqual([]);
+  });
+});
+
+describe("feasibility", () => {
+  const result = (over: Partial<CountResult> = {}): CountResult => ({
+    cohort_id: "abc", patients: 48, reports: 50, denominator: 1200, min_cell: 5, funnel: [], loosen: [], loosen_offered: true,
+    by_year: [], breakdowns: {}, notes: ["Stage and treatment are not in the data."], ...over,
+  });
+  const d = {...EMPTY, population: {...EMPTY.population, oncotree: ["NSCLC"]}, criteria: [alt({class: ["mutation"]}), bio({name: "TMB", at_least: 10})]};
+  /** The digit runs of the statement, without its fixed policy sentence and the API's notes (which hold digits of their own). */
+  const numbers = (text: string, r: CountResult) =>
+    text.replace(/ Counts are distinct.*$/, "").replace(r.notes.join(" "), "").match(/\d+(?:,\d{3})*(?:\.\d+)?/g) ?? [];
+
+  test("says what the result says", () => {
+    const text = feasibility(d, result(), [2020, 2024]);
+    expect(text.startsWith("Between 2020 and 2024, the UCCC sequenced 1,200 patients in NSCLC, of whom 48 met: KRAS mutation; TMB ≥ 10 (about 9.6 a year).")).toBe(true);
+    expect(text).toContain("Stage and treatment are not in the data.");
+  });
+  test("every number is from the result, the years or the definition", () => {
+    const r = result();
+    // 1,200 and 48 are in the result, 2020 and 2024 the window, 10 the TMB cut point, 9.6 = 48 / 5 years.
+    expect(numbers(feasibility(d, r, [2020, 2024]), r)).toEqual(["2020", "2024", "1,200", "48", "10", "9.6"]);
+  });
+  test("a suppressed count says fewer than 5, with no number", () => {
+    const r = result({patients: null, denominator: null});
+    const text = feasibility({...d, criteria: [alt({class: ["mutation"]})]}, r, null);
+    expect(text.startsWith("To date, the UCCC sequenced fewer than 5 patients in NSCLC, of whom fewer than 5 met: KRAS mutation.")).toBe(true);
+    expect(numbers(text, r)).toEqual(["5", "5"]);   // only "fewer than 5" (r.min_cell), twice
+  });
+  test("no criteria: no 'of whom' clause; report scope is stated", () => {
+    const r = result();
+    const text = feasibility({...EMPTY}, r, [2020, 2024]);
+    expect(text.startsWith("Between 2020 and 2024, the UCCC sequenced 1,200 patients (about 9.6 a year).")).toBe(true);
+    expect(text).not.toContain("of whom");
+    expect(feasibility({...d, scope: "report"}, r, null)).toContain(". Every criterion was met on the same report.");
+    expect(text).not.toContain("same report");
+  });
 });
 
 describe("newCriterion and addToPopulation", () => {
@@ -83,9 +151,12 @@ describe("newCriterion and addToPopulation", () => {
   ];
   for (const [e, expected] of rows) {
     test(`${e.field} -> criterion`, () => {
-      expect(newCriterion(e)).toEqual({id: null, mode: "include", ...expected} as Criterion);
+      expect(newCriterion(e)).toEqual({id: null, mode: "include", vendor: null, ...expected} as Criterion);
     });
   }
+  test("data.has -> a data criterion", () => {
+    expect(newCriterion(opt("data.has", "serial"))).toEqual({id: null, mode: "include", vendor: null, kind: "data", has: "serial"} as Criterion);
+  });
   test("population entries are not criteria", () => {
     expect(newCriterion(opt("population.sex", "female"))).toBeNull();
   });
@@ -113,6 +184,12 @@ describe("pivotAxes", () => {
     expect(values).toEqual(["c1.key", "c1.sub", "c1.val", "c2.key", "c2.val", "c5.key", "c5.sub", "c5.val"]);
     const label = pivotAxes(d).find((x) => x.value === "c5.sub")!.label;
     expect(label).toBe("c5 · PD-L1 (22c3) TPS ≥ 50 · clone");
+  });
+  test("no axes for negated, data or sequence criteria", () => {
+    const data = {kind: "data", id: "c3", mode: "include", has: "wts", vendor: null} as Criterion;
+    const seq = {kind: "sequence", id: "c4", mode: "include", first: [data], then: [data]} as unknown as Criterion;
+    const d = defn([alt({id: "c1", mode: "exclude"}), bio({id: "c2", mode: "tested_negative"}), data, seq, ihc({id: "c5"})]);
+    expect(pivotAxes(d).slice(9).map((x) => x.value)).toEqual(["c5.key", "c5.sub", "c5.val"]);
   });
   test("an any_of without specimen offers finding/detail/value", () => {
     const c = {kind: "any_of", id: "c1", mode: "include", of: [bio(), bio({name: "LOH"})]} as Criterion;
