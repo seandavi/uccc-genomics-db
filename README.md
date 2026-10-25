@@ -80,6 +80,7 @@ src/uccc_genomics/
   data/disease_crosswalk.csv   vendor disease term -> OncoTree code/name, organ system, NCIt (-> reference.disease_crosswalk)
 mcp/            genomics-mcp: read-only MCP server over the de-id file (mcp/README.md);
                 genomics-cohort-api: the cohort page's floored-count endpoint (below)
+                app.py: genomics-app, FastAPI REST (/api/*) + MCP (/mcp) over cohort/, behind authen
                 cohort/: cohort definition, operations, cohort_id, compiler and suppression over mart.*
 dashboard/      Observable Framework site over aggregates of the de-id file (below)
 tests/          pytest: synthetic load -> deid -> unified, MCP query guard, cohort API, dashboard loader governance
@@ -256,6 +257,23 @@ application. Only `/api/health` is open, for the GCP uptime check
 The site only ever contains suppressed aggregates, but it does leave campus:
 if the DUA reads "data or any derivative", host it on the box behind Traefik
 instead (nginx over `dist/`, IP allowlist).
+
+### Cohort app (genomics-app)
+
+`mcp/src/uccc_genomics_mcp/app.py`: the campus cohort site's backend (docs/ARCHITECTURE.md). One
+process serves REST at `/api/*` (OpenAPI at `/api/docs`) and MCP (Streamable HTTP, stateless) at
+`/mcp`, both thin layers over `cohort/`. Every request but `/api/health` needs a login through
+`authen` (`--auth access|password|none`). `count` and `pivot` are limited to 60 a minute per user
+across both surfaces and logged to stdout as one JSON line each (user, cohort_id, definition,
+suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`, `count`, `pivot` and
+`describe_definition`; there is no SQL tool.
+
+    uv run python -m uccc_genomics_mcp.authen    # once: put APP_USER and the printed APP_PASSWORD_HASH in .env
+    uv run genomics-app --auth password --host <tailnet-addr> --port 8092 [--static <dir>]
+    # http://<tailnet-addr>:8092/api/docs, MCP clients at http://<tailnet-addr>:8092/mcp
+
+`--static` serves a built front end at `/` (the React app, later). Development only: no systemd
+unit or deploy yet.
 
 ## Cleanup
 
