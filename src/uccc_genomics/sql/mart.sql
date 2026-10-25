@@ -4,6 +4,7 @@
 CREATE SCHEMA IF NOT EXISTS mart;
 
 -- One row per unified.report row: the population dimensions a cohort filters and pivots on.
+-- collected_on (per-patient shifted by deid) only orders two reports of one patient (`sequence`); it is never output.
 CREATE OR REPLACE TABLE mart.report AS
 WITH age AS (
   -- Caris liquid specimens carry an age sentinel, so age is a tissue-only attribute (as cohort_api.REP).
@@ -23,7 +24,7 @@ wts AS (
 ),
 base AS (
   SELECT r.research_id, r.vendor, r.report_id,
-         year(r.collected_on)::INTEGER AS year, r.collected_year_complete AS year_complete,
+         year(r.collected_on)::INTEGER AS year, r.collected_year_complete AS year_complete, r.collected_on,
          lower(r.gender) AS sex,
          CASE WHEN r.vendor = 'caris' AND r.assay_class = 'tissue' THEN a.age::INTEGER END AS age,
          r.oncotree_code AS oncotree, r.organ_system AS organ, r.disease_text AS disease,
@@ -38,7 +39,7 @@ base AS (
 SELECT research_id, vendor, report_id, year, year_complete, sex, age,
        CASE WHEN age IS NULL THEN 'unknown' WHEN age < 50 THEN '<50' WHEN age < 65 THEN '50-64'
             WHEN age < 75 THEN '65-74' ELSE '75+' END AS age_band,
-       oncotree, organ, disease, assay_class, assay_name, purity, site_type, site, has_wts
+       oncotree, organ, disease, assay_class, assay_name, purity, site_type, site, has_wts, collected_on
 FROM base
 ORDER BY vendor, report_id;
 

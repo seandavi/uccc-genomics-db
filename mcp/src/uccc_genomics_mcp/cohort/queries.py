@@ -8,9 +8,9 @@ import os
 from uccc_genomics_mcp.server import DEID_DB, get_db
 
 from .compile import compile, compile_pivot
-from .definition import Definition, DefinitionError, apply
-from .suppress import (MIN_CELL, CountResult, PivotResult, RawCount, RawPivot, floor, suppress_count,
-                       suppress_pivot)
+from .definition import Definition, DefinitionError, apply, neighbours
+from .suppress import (MIN_CELL, CountResult, PivotResult, RawCount, RawNeighbour, RawPivot, RawPivotNeighbour,
+                       floor, suppress_count, suppress_pivot)
 from .vocabulary import VOCAB_SQL, VocabEntry, Vocabulary
 
 _vocab = {"mtime": None, "v": None}
@@ -61,11 +61,13 @@ def _run_count(con, d: Definition) -> RawCount:
 
 def count(d: Definition) -> CountResult:
     vocabulary().check(d)
+    near = neighbours(d)   # raises (a 400) before any query
     con = get_db()
     try:
         raw = _run_count(con, d)
+        raw.neighbours = [RawNeighbour(_run_count(con, n.definition), n.step) for n in near]
         result = suppress_count(d, raw)
-        if result.patients is None or raw.funnel[-1] < MIN_CELL:
+        if not near and (result.patients is None or raw.funnel[-1] < MIN_CELL):
             for c in d.criteria:
                 without = apply(d, {"op": "remove_criterion", "id": c.id})
                 raw.loosen[c.id] = _run_count(con, without).funnel[-1]
@@ -75,16 +77,9 @@ def count(d: Definition) -> CountResult:
         con.close()
 
 
-def pivot(d: Definition) -> PivotResult:
-    if d.pivot is None:
-        raise DefinitionError("pivot: the definition has no pivot")
-    vocabulary().check(d)
+def _run_pivot(con, d: Definition) -> RawPivot:
     sql, params = compile_pivot(d)
-    con = get_db()
-    try:
-        rows = con.execute(sql, params).fetchall()
-    finally:
-        con.close()
+    rows = con.execute(sql, params).fetchall()
     raw = RawPivot(funnel=_funnel(rows), cells={}, rows={}, cols={})
     for section, r, c, patients in (row[:4] for row in rows):
         if section == "cell":
@@ -93,4 +88,18 @@ def pivot(d: Definition) -> PivotResult:
             raw.rows[r] = patients
         elif section == "col":
             raw.cols[c] = patients
+    return raw
+
+
+def pivot(d: Definition) -> PivotResult:
+    if d.pivot is None:
+        raise DefinitionError("pivot: the definition has no pivot")
+    vocabulary().check(d)
+    near = neighbours(d)
+    con = get_db()
+    try:
+        raw = _run_pivot(con, d)
+        raw.neighbours = [RawPivotNeighbour(_run_pivot(con, n.definition), n.step) for n in near]
+    finally:
+        con.close()
     return suppress_pivot(d, raw)

@@ -26,7 +26,8 @@ def deid_lacks_tier():
 
 
 def deid_lacks_mart():
-    """True while the real de-id file has no `mart.fact` (#33), until the next daily rebuild.
+    """True while the real de-id file has no `mart.fact` (#33) or no `mart.report.collected_on` (#38),
+    until the next daily rebuild.
 
     Same collection-time guard as `deid_lacks_tier`: a file that can't be opened returns False.
     """
@@ -36,8 +37,10 @@ def deid_lacks_mart():
     try:
         con = server.get_db()
         try:
-            return not con.execute("SELECT 1 FROM information_schema.tables "
-                                   "WHERE table_schema = 'mart' AND table_name = 'fact'").fetchall()
+            return not con.execute("SELECT 1 FROM information_schema.columns "
+                                   "WHERE table_schema = 'mart' AND table_name = 'report' "
+                                   "AND column_name = 'collected_on'").fetchall() or not con.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'mart' AND table_name = 'fact'").fetchall()
         finally:
             con.close()
     except (duckdb.Error, OSError):

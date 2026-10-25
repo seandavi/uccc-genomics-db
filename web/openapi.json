@@ -34,10 +34,29 @@
             "type": "string"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
           }
         },
         "required": [
@@ -57,8 +76,10 @@
                 "alteration": "#/components/schemas/Alteration",
                 "any_of": "#/components/schemas/AnyOf",
                 "biomarker": "#/components/schemas/Biomarker",
+                "data": "#/components/schemas/Data",
                 "expression": "#/components/schemas/Expression",
                 "ihc": "#/components/schemas/Ihc",
+                "sequence": "#/components/schemas/Sequence",
                 "specimen": "#/components/schemas/Specimen"
               },
               "propertyName": "kind"
@@ -83,7 +104,13 @@
                 "$ref": "#/components/schemas/Actionability"
               },
               {
+                "$ref": "#/components/schemas/Data"
+              },
+              {
                 "$ref": "#/components/schemas/AnyOf"
+              },
+              {
+                "$ref": "#/components/schemas/Sequence"
               }
             ],
             "title": "Criterion"
@@ -153,8 +180,12 @@
             "type": "string"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -174,6 +205,21 @@
             },
             "title": "Tier",
             "type": "array"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
           }
         },
         "required": [
@@ -203,8 +249,12 @@
             "type": "string"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -267,8 +317,10 @@
                 "remove_criterion": "#/components/schemas/RemoveCriterion",
                 "rename": "#/components/schemas/Rename",
                 "set_breakdown": "#/components/schemas/SetBreakdown",
+                "set_mode": "#/components/schemas/SetMode",
                 "set_pivot": "#/components/schemas/SetPivot",
                 "set_population": "#/components/schemas/SetPopulation",
+                "set_scope": "#/components/schemas/SetScope",
                 "update_criterion": "#/components/schemas/UpdateCriterion"
               },
               "propertyName": "op"
@@ -284,6 +336,9 @@
                 "$ref": "#/components/schemas/UpdateCriterion"
               },
               {
+                "$ref": "#/components/schemas/SetMode"
+              },
+              {
                 "$ref": "#/components/schemas/SetPopulation"
               },
               {
@@ -291,6 +346,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetPivot"
+              },
+              {
+                "$ref": "#/components/schemas/SetScope"
               },
               {
                 "$ref": "#/components/schemas/Rename"
@@ -363,8 +421,12 @@
             "type": "string"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -376,6 +438,21 @@
             ],
             "title": "Name",
             "type": "string"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
           }
         },
         "required": [
@@ -487,6 +564,11 @@
             "title": "Loosen",
             "type": "array"
           },
+          "loosen_offered": {
+            "default": true,
+            "title": "Loosen Offered",
+            "type": "boolean"
+          },
           "min_cell": {
             "default": 5,
             "title": "Min Cell",
@@ -536,6 +618,69 @@
         "title": "CountResult",
         "type": "object"
       },
+      "Data": {
+        "additionalProperties": false,
+        "properties": {
+          "has": {
+            "enum": [
+              "wts",
+              "liquid",
+              "tissue",
+              "both_vendors",
+              "serial"
+            ],
+            "title": "Has",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "data",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
+          }
+        },
+        "required": [
+          "kind",
+          "has"
+        ],
+        "title": "Data",
+        "type": "object"
+      },
       "Definition": {
         "additionalProperties": false,
         "properties": {
@@ -567,8 +712,10 @@
                   "alteration": "#/components/schemas/Alteration",
                   "any_of": "#/components/schemas/AnyOf",
                   "biomarker": "#/components/schemas/Biomarker",
+                  "data": "#/components/schemas/Data",
                   "expression": "#/components/schemas/Expression",
                   "ihc": "#/components/schemas/Ihc",
+                  "sequence": "#/components/schemas/Sequence",
                   "specimen": "#/components/schemas/Specimen"
                 },
                 "propertyName": "kind"
@@ -593,7 +740,13 @@
                   "$ref": "#/components/schemas/Actionability"
                 },
                 {
+                  "$ref": "#/components/schemas/Data"
+                },
+                {
                   "$ref": "#/components/schemas/AnyOf"
+                },
+                {
+                  "$ref": "#/components/schemas/Sequence"
                 }
               ]
             },
@@ -629,8 +782,11 @@
             }
           },
           "scope": {
-            "const": "patient",
             "default": "patient",
+            "enum": [
+              "patient",
+              "report"
+            ],
             "title": "Scope",
             "type": "string"
           },
@@ -687,8 +843,12 @@
             "type": "string"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -702,6 +862,21 @@
               }
             ],
             "title": "Percentile At Least"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
           }
         },
         "required": [
@@ -843,10 +1018,29 @@
             "title": "Measure"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
           }
         },
         "required": [
@@ -1290,8 +1484,10 @@
                 "remove_criterion": "#/components/schemas/RemoveCriterion",
                 "rename": "#/components/schemas/Rename",
                 "set_breakdown": "#/components/schemas/SetBreakdown",
+                "set_mode": "#/components/schemas/SetMode",
                 "set_pivot": "#/components/schemas/SetPivot",
                 "set_population": "#/components/schemas/SetPopulation",
+                "set_scope": "#/components/schemas/SetScope",
                 "update_criterion": "#/components/schemas/UpdateCriterion"
               },
               "propertyName": "op"
@@ -1307,6 +1503,9 @@
                 "$ref": "#/components/schemas/UpdateCriterion"
               },
               {
+                "$ref": "#/components/schemas/SetMode"
+              },
+              {
                 "$ref": "#/components/schemas/SetPopulation"
               },
               {
@@ -1314,6 +1513,9 @@
               },
               {
                 "$ref": "#/components/schemas/SetPivot"
+              },
+              {
+                "$ref": "#/components/schemas/SetScope"
               },
               {
                 "$ref": "#/components/schemas/Rename"
@@ -1415,6 +1617,130 @@
         "title": "SchemaInfo",
         "type": "object"
       },
+      "Sequence": {
+        "additionalProperties": false,
+        "properties": {
+          "first": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "actionability": "#/components/schemas/Actionability",
+                  "alteration": "#/components/schemas/Alteration",
+                  "biomarker": "#/components/schemas/Biomarker",
+                  "data": "#/components/schemas/Data",
+                  "expression": "#/components/schemas/Expression",
+                  "ihc": "#/components/schemas/Ihc",
+                  "specimen": "#/components/schemas/Specimen"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Alteration"
+                },
+                {
+                  "$ref": "#/components/schemas/Biomarker"
+                },
+                {
+                  "$ref": "#/components/schemas/Ihc"
+                },
+                {
+                  "$ref": "#/components/schemas/Expression"
+                },
+                {
+                  "$ref": "#/components/schemas/Specimen"
+                },
+                {
+                  "$ref": "#/components/schemas/Actionability"
+                },
+                {
+                  "$ref": "#/components/schemas/Data"
+                }
+              ]
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "First",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "const": "sequence",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "then": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "actionability": "#/components/schemas/Actionability",
+                  "alteration": "#/components/schemas/Alteration",
+                  "biomarker": "#/components/schemas/Biomarker",
+                  "data": "#/components/schemas/Data",
+                  "expression": "#/components/schemas/Expression",
+                  "ihc": "#/components/schemas/Ihc",
+                  "specimen": "#/components/schemas/Specimen"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Alteration"
+                },
+                {
+                  "$ref": "#/components/schemas/Biomarker"
+                },
+                {
+                  "$ref": "#/components/schemas/Ihc"
+                },
+                {
+                  "$ref": "#/components/schemas/Expression"
+                },
+                {
+                  "$ref": "#/components/schemas/Specimen"
+                },
+                {
+                  "$ref": "#/components/schemas/Actionability"
+                },
+                {
+                  "$ref": "#/components/schemas/Data"
+                }
+              ]
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Then",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "first",
+          "then"
+        ],
+        "title": "Sequence",
+        "type": "object"
+      },
       "SetBreakdown": {
         "additionalProperties": false,
         "properties": {
@@ -1446,6 +1772,36 @@
           "breakdown"
         ],
         "title": "SetBreakdown",
+        "type": "object"
+      },
+      "SetMode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "op": {
+            "const": "set_mode",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id",
+          "mode"
+        ],
+        "title": "SetMode",
         "type": "object"
       },
       "SetPivot": {
@@ -1491,6 +1847,30 @@
           "population"
         ],
         "title": "SetPopulation",
+        "type": "object"
+      },
+      "SetScope": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "set_scope",
+            "title": "Op",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "patient",
+              "report"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "scope"
+        ],
+        "title": "SetScope",
         "type": "object"
       },
       "Snapshot": {
@@ -1568,8 +1948,12 @@
             "type": "string"
           },
           "mode": {
-            "const": "include",
             "default": "include",
+            "enum": [
+              "include",
+              "exclude",
+              "tested_negative"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -1601,6 +1985,21 @@
             "maxItems": 20,
             "title": "Site Type",
             "type": "array"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "enum": [
+                  "caris",
+                  "fmi"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor"
           }
         },
         "required": [
@@ -1619,8 +2018,10 @@
                 "alteration": "#/components/schemas/Alteration",
                 "any_of": "#/components/schemas/AnyOf",
                 "biomarker": "#/components/schemas/Biomarker",
+                "data": "#/components/schemas/Data",
                 "expression": "#/components/schemas/Expression",
                 "ihc": "#/components/schemas/Ihc",
+                "sequence": "#/components/schemas/Sequence",
                 "specimen": "#/components/schemas/Specimen"
               },
               "propertyName": "kind"
@@ -1645,7 +2046,13 @@
                 "$ref": "#/components/schemas/Actionability"
               },
               {
+                "$ref": "#/components/schemas/Data"
+              },
+              {
                 "$ref": "#/components/schemas/AnyOf"
+              },
+              {
+                "$ref": "#/components/schemas/Sequence"
               }
             ],
             "title": "Criterion"

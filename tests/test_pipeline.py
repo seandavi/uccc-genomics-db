@@ -396,7 +396,7 @@ REPORT_COLS = [("research_id", "VARCHAR"), ("vendor", "VARCHAR"), ("report_id", 
                ("year_complete", "BOOLEAN"), ("sex", "VARCHAR"), ("age", "INTEGER"), ("age_band", "VARCHAR"),
                ("oncotree", "VARCHAR"), ("organ", "VARCHAR"), ("disease", "VARCHAR"), ("assay_class", "VARCHAR"),
                ("assay_name", "VARCHAR"), ("purity", "DOUBLE"), ("site_type", "VARCHAR"), ("site", "VARCHAR"),
-               ("has_wts", "BOOLEAN")]
+               ("has_wts", "BOOLEAN"), ("collected_on", "DATE")]
 FACT_COLS = [("research_id", "VARCHAR"), ("vendor", "VARCHAR"), ("report_id", "VARCHAR"), ("kind", "VARCHAR"),
              ("key", "VARCHAR"), ("sub", "VARCHAR"), ("val", "VARCHAR"), ("num", "DOUBLE"), ("unit", "VARCHAR"),
              ("tier", "VARCHAR")]
@@ -420,7 +420,8 @@ def test_mart_report_rows(db):
             == set(db.execute("SELECT vendor, report_id, research_id FROM db.unified.report").fetchall()))
     assert one(db, "SELECT count(*) FROM db.mart.report m JOIN db.unified.report u USING (vendor, report_id) "
                    "WHERE m.year IS DISTINCT FROM year(u.collected_on) "
-                   "OR m.year_complete IS DISTINCT FROM u.collected_year_complete") == (0,)
+                   "OR m.year_complete IS DISTINCT FROM u.collected_year_complete "
+                   "OR m.collected_on IS DISTINCT FROM u.collected_on") == (0,)
     cols = "sex, age, age_band, oncotree, assay_class, site_type, site, has_wts, purity"
     assert one(db, f"SELECT {cols} FROM db.mart.report WHERE vendor = 'caris'") == (
         "female", 89, "75+", "BRCA", "tissue", "primary", "breast", True, None)

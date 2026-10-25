@@ -174,7 +174,7 @@ def test_no_small_numbers_and_no_ids(client, ids, case):
 
 
 ERRORS = [
-    ("POST", "/api/cohort", {"scope": "report"}, "count", {"definition": {"scope": "report"}}, "scope"),
+    ("POST", "/api/cohort", {"version": 2}, "count", {"definition": {"version": 2}}, "version"),
     ("POST", "/api/cohort", {"criteria": [alt("c1", ["NOTAGENE"])]}, "count",
      {"definition": {"criteria": [alt("c1", ["NOTAGENE"])]}}, "gene"),
     ("POST", "/api/pivot", {}, "pivot", {"definition": {}}, "pivot"),
@@ -318,7 +318,7 @@ def test_audit(client, capsys):
     rest(client, "POST", "/api/apply", {"definition": START, "op": {"op": "rename", "name": "x"}})
     rest(client, "GET", "/api/schema", None)
     client.get("/api/health")
-    rest(client, "POST", "/api/cohort", {"scope": "report"})
+    rest(client, "POST", "/api/cohort", {"version": 2})
     lines = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
     assert len(lines) == 2
     assert [(x["email"], x["surface"], x["endpoint"]) for x in lines] == [("sean", "rest", "count"), ("sean", "mcp", "pivot")]

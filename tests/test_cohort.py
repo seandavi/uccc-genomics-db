@@ -15,6 +15,7 @@ group (patients are `<prefix><i>`, one report `<pid>r` each unless noted):
 """
 import json
 import os
+from datetime import date
 
 import duckdb
 import pytest
@@ -45,9 +46,11 @@ class Mart:
         self.reports, self.facts = [], []
 
     def report(self, pid, rid, oncotree, organ, vendor, year, *, age=None, sex="female", assay_class="tissue",
-               complete=True, wts=False, site_type=None, site=None, purity=None):
+               complete=True, wts=False, site_type=None, site=None, purity=None, collected_on=None):
+        if collected_on is None and year is not None:
+            collected_on = date(year, 6, 1)
         self.reports.append((pid, vendor, rid, year, complete, sex, age, age_band(age), oncotree, organ, oncotree,
-                             assay_class, "synthetic", purity, site_type, site, wts))
+                             assay_class, "synthetic", purity, site_type, site, wts, collected_on))
         if site_type:
             self.fact(rid, "specimen", "site_type", val=site_type)
         if site:
@@ -164,10 +167,10 @@ def write_mart(path, m):
         CREATE TABLE mart.report (research_id VARCHAR, vendor VARCHAR, report_id VARCHAR, year INTEGER,
           year_complete BOOLEAN, sex VARCHAR, age INTEGER, age_band VARCHAR, oncotree VARCHAR, organ VARCHAR,
           disease VARCHAR, assay_class VARCHAR, assay_name VARCHAR, purity DOUBLE, site_type VARCHAR, site VARCHAR,
-          has_wts BOOLEAN);
+          has_wts BOOLEAN, collected_on DATE);
         CREATE TABLE mart.fact (research_id VARCHAR, vendor VARCHAR, report_id VARCHAR, kind VARCHAR, key VARCHAR,
           sub VARCHAR, val VARCHAR, num DOUBLE, unit VARCHAR, tier VARCHAR);""")
-    con.executemany("INSERT INTO mart.report VALUES (" + ", ".join("?" * 17) + ")", m.reports)
+    con.executemany("INSERT INTO mart.report VALUES (" + ", ".join("?" * 18) + ")", m.reports)
     con.executemany("INSERT INTO mart.fact VALUES (" + ", ".join("?" * 10) + ")", m.facts)
     con.close()
 
@@ -238,7 +241,9 @@ def test_mart_totals(cohort_db):
 
 def test_question_1(cohort_db):
     r = count(defn([alt("c1", ["KRAS"], aa=["G12C"])], population=pop("NSCLC", years=[2023, 2025])))
-    assert steps(r) == [15, 6] and r.patients == 6 and r.denominator == 15 and r.reports == 7
+    # reports is hidden: the year-range neighbour [2024, 2025] has 6 matching reports (n10b is the only
+    # 2023 one), so showing 7 would reveal 1 report.
+    assert steps(r) == [15, 6] and r.patients == 6 and r.denominator == 15 and r.reports is None
     # 2023 is 1 patient, so the line rule hides 2024's 5 too.
     assert [(y.year, y.patients, y.complete) for y in r.by_year] == [(2023, None, True), (2024, None, True)]
     r = count(defn([alt("c1", ["KRAS"], aa=["G12C"])], population=pop("NSCLC")))   # the n16 VUS is not counted
@@ -563,26 +568,19 @@ def test_cohort_id_stable():
     a = {"id": "c1", "kind": "alteration", "gene": ["KRAS"]}
     b = {"id": "c2", "kind": "biomarker", "name": "MSI", "call": ["high"]}
     assert cohort_id(parse({"criteria": [a, b]})) == cohort_id(parse({"criteria": [{**b, "id": "c1"}, {**a, "id": "c2"}]}))
+    explicit = {"criteria": [{**BASE["criteria"][0], "mode": "include", "vendor": None}], "scope": "patient"}
+    assert cohort_id(parse(explicit)) == cohort_id(base)
+    assert cohort_id(parse({"criteria": [{**BASE["criteria"][0], "mode": "exclude"}]})) != cohort_id(base)
+    assert cohort_id(parse({"criteria": [{**BASE["criteria"][0], "vendor": "fmi"}]})) != cohort_id(base)
+    assert cohort_id(parse({**BASE, "scope": "report"})) != cohort_id(base)
     m1, m2 = {"kind": "biomarker", "name": "MSI", "call": ["high"]}, {"kind": "alteration", "gene": ["KRAS"]}
     assert parse({"criteria": [{"id": "c1", "kind": "any_of", "of": [m1, m2]}]}) \
         == parse({"criteria": [{"id": "c1", "kind": "any_of", "of": [m2, m1]}]})
 
 
-@pytest.mark.parametrize("data, fragment", [
-    ({"criteria": [{"id": "c1", "kind": "sequence"}]}, "criterion kind 'sequence' is not supported yet"),
-    ({"criteria": [{"id": "c1", "kind": "data"}]}, "criterion kind 'data' is not supported yet"),
-    ({"criteria": [{"id": "c1", "kind": "tested_negative", "gene": ["TP53"]}]}, "'tested_negative' is not supported yet"),
-    ({"criteria": [{"id": "c1", "kind": "exclude"}]}, "criterion kind 'exclude' is not supported yet"),
-    ({"criteria": [{"id": "c1", "kind": "any_of", "of": [{"kind": "exclude"}, {"kind": "ihc", "marker": "ER"}]}]},
-     "criterion kind 'exclude' is not supported yet"),
-    ({"criteria": [{**BASE["criteria"][0], "mode": "exclude"}]}, "criterion mode 'exclude' is not supported yet"),
-    ({"criteria": [{**BASE["criteria"][0], "mode": "tested_negative"}]}, "criteria are include-only"),
-    ({**BASE, "scope": "report"}, "scope 'report' is not supported yet"),
-    ({**BASE, "version": 2}, "unsupported definition version 2"),
-])
-def test_deferred_features_rejected(data, fragment):
-    with pytest.raises(DefinitionError, match=fragment):
-        parse(data)
+def test_unsupported_version_rejected():
+    with pytest.raises(DefinitionError, match="unsupported definition version 2"):
+        parse({**BASE, "version": 2})
 
 
 @pytest.mark.parametrize("criterion, fragment", [
@@ -597,6 +595,20 @@ def test_deferred_features_rejected(data, fragment):
     ({"id": "c1", "kind": "specimen"}, "specimen needs"),
     ({"id": "c1", "kind": "expression", "gene": ["TACSTD2"], "percentile_at_least": 60}, "must be one of"),
     (alt("c1", [" "]), "empty string"),
+    ({"id": "c1", "kind": "data", "has": "serial", "vendor": "fmi"}, "vendor does not apply to data 'serial'"),
+    ({"id": "c1", "kind": "data", "has": "both_vendors", "vendor": "caris"}, "vendor does not apply to data"),
+    ({"id": "c1", "kind": "any_of", "of": [alt("", ["KRAS"]) | {"id": None, "mode": "exclude"}, ihc("", "ER") | {"id": None}]},
+     "any_of members are include-only; set mode on the any_of itself"),
+    ({"id": "c1", "kind": "sequence", "first": [{"kind": "data", "has": "serial"}], "then": [{"kind": "data", "has": "wts"}]},
+     "sequence members can only use data 'wts', 'liquid' or 'tissue'"),
+    ({"id": "c1", "kind": "sequence", "first": [{"kind": "data", "has": "wts", "mode": "exclude"}],
+      "then": [{"kind": "data", "has": "wts"}]}, "sequence members are include-only"),
+    ({"id": "c1", "kind": "sequence", "mode": "exclude", "first": [{"kind": "data", "has": "wts"}],
+      "then": [{"kind": "data", "has": "liquid"}]}, "a sequence criterion is include-only"),
+    ({"id": "c1", "kind": "sequence", "first": [], "then": [{"kind": "data", "has": "wts"}]}, "at least 1 item"),
+    (alt("c1", ["KRAS"], aa=["G12C"], mode="tested_negative"), "tested_negative applies to an alteration criterion"),
+    (alt("c1", ["KRAS"], mode="tested_negative", **{"class": ["fusion"]}), "tested_negative applies to an alteration"),
+    (ihc("c1", "ER", mode="tested_negative"), "tested_negative applies to an alteration"),
 ])
 def test_static_validation(criterion, fragment):
     with pytest.raises(DefinitionError, match=fragment):
@@ -609,6 +621,22 @@ def test_static_validation_definition_level():
         ({"criteria": [a, {**b, "id": "c1"}]}, "duplicate criterion id"),
         ({"criteria": [{**a, "id": None}]}, "needs an id"),
         ({"criteria": [{**a, "id": "c1\n"}]}, "needs an id"),
+        ({"criteria": [{"id": "c1", "kind": "sequence", "first": [{"kind": "data", "has": "wts", "id": "c2"}],
+                        "then": [{"kind": "data", "has": "wts"}]}]}, "sequence members take no id"),
+        ({"criteria": [{**alt(f"c{i}", ["KRAS"]), "mode": "exclude"} for i in range(1, 5)]},
+         "at most 3 exclude or tested_negative criteria"),
+        ({"scope": "report", "criteria": [{"id": "c1", "kind": "sequence", "first": [{"kind": "data", "has": "wts"}],
+                                           "then": [{"kind": "data", "has": "liquid"}]}]},
+         "criteria.c1: 'sequence' spans several reports and cannot be used with scope 'report'"),
+        ({"scope": "report", "criteria": [{"id": "c1", "kind": "data", "has": "serial"}]},
+         "criteria.c1: 'serial' spans several reports"),
+        ({"criteria": [{**a, "mode": "exclude"}], "pivot": {"rows": "c1.key", "cols": "year"}},
+         "pivot.rows: an exclude or tested_negative criterion cannot be a pivot axis"),
+        ({"criteria": [{"id": "c1", "kind": "data", "has": "wts"}], "pivot": {"rows": "year", "cols": "c1.key"}},
+         "pivot.cols: a data criterion cannot be a pivot axis"),
+        ({"criteria": [{"id": "c1", "kind": "sequence", "first": [{"kind": "data", "has": "wts"}],
+                        "then": [{"kind": "data", "has": "liquid"}]}], "pivot": {"rows": "c1.key", "cols": "year"}},
+         "pivot.rows: a sequence criterion cannot be a pivot axis"),
         ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "oncotree"}}, "must differ"),
         ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "c9.key"}}, "unknown criterion 'c9'"),
         ({"criteria": [a], "pivot": {"rows": "oncotree", "cols": "nonsense"}}, "not a dimension"),
@@ -645,12 +673,22 @@ def test_operations():
     assert apply(d, {"op": "set_pivot", "pivot": None}).pivot is None
     assert apply(d, {"op": "set_pivot", "pivot": {"rows": "sex", "cols": "year"}}).pivot.rows == "sex"
     assert apply(d, {"op": "rename", "name": "renamed"}).name == "renamed"
+    assert apply(d, {"op": "set_mode", "id": "c1", "mode": "include"}) == d
+    excluded = apply(d, {"op": "set_mode", "id": "c1", "mode": "exclude"})
+    assert excluded.criteria[0].mode == "exclude" and excluded.pivot is None      # the pivot referenced c1
+    assert apply(d, {"op": "set_mode", "id": "c3", "mode": "exclude"}).pivot == d.pivot
+    assert apply(d, {"op": "set_mode", "id": "c1", "mode": "tested_negative"}).criteria[0].mode == "tested_negative"
+    assert apply(d, {"op": "set_scope", "scope": "report"}).scope == "report"
     assert d == before                                                              # the input is never changed
     for op, fragment in [
         ({"op": "remove_criterion", "id": "c9"}, "unknown criterion id 'c9'"),
         ({"op": "update_criterion", "id": "c9", "criterion": {"kind": "ihc", "marker": "ER"}}, "unknown criterion id"),
         ({"op": "add_criterion", "criterion": {"id": "c1", "kind": "ihc", "marker": "ER"}}, "already exists"),
-        ({"op": "add_criterion", "criterion": {"kind": "exclude"}}, "not supported yet"),
+        ({"op": "add_criterion", "criterion": {"kind": "exclude"}}, "does not match any of the expected tags"),
+        ({"op": "set_mode", "id": "c9", "mode": "exclude"}, "unknown criterion id 'c9'"),
+        ({"op": "set_mode", "id": "c3", "mode": "tested_negative"}, "tested_negative applies to an alteration"),
+        ({"op": "set_mode", "id": "c3", "mode": "nonsense"}, "mode"),
+        ({"op": "set_scope", "scope": "nonsense"}, "scope"),
         ({"op": "set_pivot", "pivot": {"rows": "sex", "cols": "sex"}}, "must differ"),
         ({"op": "set_breakdown", "breakdown": ["nonsense"]}, "breakdown"),
         ({"op": "nonsense"}, "nonsense"),
@@ -668,14 +706,16 @@ def test_operation_checks_vocabulary(cohort_db):
 def test_json_schema():
     schema = json_schema()
     kinds = {d["properties"]["kind"]["const"] for d in schema["$defs"].values() if "kind" in d.get("properties", {})}
-    assert kinds == {"alteration", "biomarker", "ihc", "expression", "specimen", "actionability", "any_of"}
+    assert kinds == {"alteration", "biomarker", "ihc", "expression", "specimen", "actionability", "any_of", "data",
+                     "sequence"}
     assert "class" in schema["$defs"]["Alteration"]["properties"] and "class_" not in schema["$defs"]["Alteration"]["properties"]
     ops = {o["properties"]["op"]["const"] for o in operation_json_schema()["$defs"].values() if "op" in o.get("properties", {})}
-    assert ops == {"add_criterion", "remove_criterion", "update_criterion", "set_population", "set_breakdown",
-                   "set_pivot", "rename"}
-    # The COHORT_DISCOVERY.md §3.1 example, minus the phase 2 exclude criterion.
+    assert ops == {"add_criterion", "remove_criterion", "update_criterion", "set_mode", "set_population",
+                   "set_breakdown", "set_pivot", "set_scope", "rename"}
+    # The COHORT_DISCOVERY.md §3.1 example.
     d = parse({"version": 1, "name": "HER2-low breast", "population": {"oncotree": ["BRCA"], "age_band": ["<50"], "years": [2020, 2025]},
-               "criteria": [{"id": "c1", "kind": "ihc", "marker": "ERBB2 (Her2/Neu)", "measure": "TPS", "at_least": 1}],
+               "criteria": [{"id": "c1", "kind": "ihc", "marker": "ERBB2 (Her2/Neu)", "measure": "TPS", "at_least": 1},
+                            {"id": "c2", "kind": "alteration", "gene": ["STK11", "KEAP1"], "mode": "exclude"}],
                "scope": "patient", "breakdown": ["oncotree", "has_wts"], "pivot": {"rows": "oncotree", "cols": "year"}})
     assert d.criteria[0].at_least == 1.0 and CUT_POINTS["ihc.TPS"][0] == 1.0
 
