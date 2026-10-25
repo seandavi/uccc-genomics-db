@@ -13,6 +13,7 @@ group (patients are `<prefix><i>`, one report `<pid>r` each unless noted):
   CHOL ch0-ch14  TP53, CDKN2A, IDH1; the trailing year is incomplete
   THYM t0-t1     below the floor
 """
+import json
 import os
 
 import duckdb
@@ -26,6 +27,7 @@ from uccc_genomics_mcp.cohort import (CUT_POINTS, MIN_CELL, Definition, Definiti
                                       parse, pivot, vocabulary)
 from uccc_genomics_mcp.cohort import queries, suppress
 from uccc_genomics_mcp.cohort.compile import compile, compile_pivot
+from uccc_genomics_mcp.cohort.definition import Pivot
 from uccc_genomics_mcp.cohort.suppress import _funnel, _line, floor
 
 
@@ -154,10 +156,7 @@ def build_mart() -> Mart:
     return m
 
 
-@pytest.fixture(scope="module")
-def mart_file(tmp_path_factory):
-    path = str(tmp_path_factory.mktemp("cohort") / "cohort.duckdb")
-    m = build_mart()
+def write_mart(path, m):
     con = duckdb.connect(path)
     con.execute("""
         CREATE SCHEMA mart;
@@ -170,12 +169,23 @@ def mart_file(tmp_path_factory):
     con.executemany("INSERT INTO mart.report VALUES (" + ", ".join("?" * 17) + ")", m.reports)
     con.executemany("INSERT INTO mart.fact VALUES (" + ", ".join("?" * 10) + ")", m.facts)
     con.close()
+
+
+@pytest.fixture(scope="module")
+def mart_file(tmp_path_factory):
+    path = str(tmp_path_factory.mktemp("cohort") / "cohort.duckdb")
+    m = build_mart()
+    write_mart(path, m)
     return path, m
 
 
 @pytest.fixture
 def cohort_db(mart_file, monkeypatch):
     path, m = mart_file
+    return use_mart(path, m, monkeypatch)
+
+
+def use_mart(path, m, monkeypatch):
     monkeypatch.setattr(queries, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
     monkeypatch.setattr(queries, "DEID_DB", path)
     monkeypatch.setattr(queries, "_vocab", {"mtime": None, "v": None})
@@ -364,6 +374,19 @@ def test_loosen(cohort_db):
     assert [(s.drop, s.patients) for s in r.loosen] == [("c3", 5)]
 
 
+def test_loosen_does_not_repeat_hidden_funnel_steps(cohort_db):
+    d = defn([alt("c1", ["TP53"]), alt("c2", ["KRAS"]), alt("c3", ["IDH1"])])
+    for funnel in ([20, 17, 3], [20, 18, 3]):
+        raw = suppress.RawCount(funnel=funnel, reports=0, by_year={}, year_complete={}, breakdowns={}, denominators={},
+                                loosen={"c1": 20, "c2": funnel[1], "c3": 9})
+        r = suppress.suppress_count(d, raw)
+        assert steps(r) == [20, None, None] and r.patients is None
+        # c2 would repeat the hidden step; c1 repeats shown step 0, which reveals nothing new.
+        assert [(s.drop, s.patients) for s in r.loosen] == [("c1", 20), ("c3", 9)]
+    raw.loosen["c3"] = 16   # 1..4 away from shown step 0 (20)
+    assert [s.drop for s in suppress.suppress_count(d, raw).loosen] == ["c1"]
+
+
 def test_line_rule():
     assert _line([12, None], 14) == [None, None]
     assert _line([None, None, 5], 20) == [None, None, 5]
@@ -406,6 +429,63 @@ def test_pivot_whole_cohort_rule(cohort_db):
     assert r.patients is None and r.cells == [] and r.row_totals == [] and r.col_totals == []
 
 
+def test_pivot_rare_fact_values_become_other(cohort_db):
+    r = pivot(defn([ihc("c1", "ERBB2 (Her2/Neu)")], pivot={"rows": "c1.val", "cols": "vendor"}))
+    assert margins(r.row_totals) == {"her2-low": None, "her2-ultralow": 5, "other": None}   # 'positive' has 2 patients, so is "other"
+    r = pivot(defn([alt("c1", ["RET"])], pivot={"rows": "c1.val", "cols": "c1.sub"}))
+    assert margins(r.row_totals) == {"other": 5} and margins(r.col_totals) == {"other": 5}
+    text = json.dumps(r.model_dump())
+    assert "KIF5B" not in text and "M918T" not in text   # a fusion partner and a protein change, 2 and 3 patients
+    r = pivot(defn([alt("c1", ["KRAS", "ALK"])], pivot={"rows": "c1.key", "cols": "c1.val"}))
+    assert {"KRAS", "ALK"} >= set(margins(r.row_totals))   # `key` is a vocabulary value the caller chose
+
+
+def test_pivot_margins_count_only_patients_in_a_cell(tmp_path, monkeypatch):
+    m = Mart()
+    for i in range(6):   # c1 matches the 2022 report, c2 the 2024 one: nothing in a 2024 row of a c1 column
+        m.report(f"p{i}", f"p{i}a", "BRCA", "Breast", "caris", 2022)
+        m.report(f"p{i}", f"p{i}b", "BRCA", "Breast", "caris", 2024)
+        m.mutation(f"p{i}a", "KRAS", "G12C")
+        m.fact(f"p{i}b", "ihc", "ER", "sp1", "positive")
+    path = str(tmp_path / "two.duckdb")
+    write_mart(path, m)
+    use_mart(path, m, monkeypatch)
+    r = pivot(defn([alt("c1", ["KRAS"]), ihc("c2", "ER")], pivot={"rows": "year", "cols": "c1.key"}))
+    assert pcells(r) == {("2022", "KRAS"): 6} and margins(r.row_totals) == {"2022": 6}
+    for line in line_nones(r):
+        assert sum(v is None for v in line) != 1, line
+
+
+def test_unlisted_small_remainder_is_a_hidden_value(tmp_path, monkeypatch):
+    m = Mart()
+    for i in range(12):
+        m.report(f"f{i}", f"f{i}r", "BRCA", "Breast", "caris", 2022 if i < 10 else None)
+        m.fact(f"f{i}r", "ihc", "ER", "sp1", "positive")
+    for i in range(6):   # female, untested
+        m.report(f"u{i}", f"u{i}r", "BRCA", "Breast", "caris", 2022)
+    for i in range(3):   # the whole male remainder: in the population, not in the cohort
+        m.report(f"m{i}", f"m{i}r", "BRCA", "Breast", "caris", 2022, sex="male")
+    path = str(tmp_path / "remainder.duckdb")
+    write_mart(path, m)
+    use_mart(path, m, monkeypatch)
+    r = count(defn([ihc("c1", "ER")], breakdown=["sex"]))
+    assert r.patients == 12 and r.denominator == 21
+    assert cells(r, "sex") == {"female": (12, None)}   # a shown 18 beside 21 would give the male 3
+    # The 2 patients with no dated report are the whole undated remainder of by_year.
+    assert [(y.year, y.patients) for y in r.by_year] == [(2022, None)]
+
+
+def test_compile_validates_names_it_puts_in_the_sql():
+    d = defn([alt("c1", ["KRAS"])], pivot={"rows": "oncotree", "cols": "year"})
+    bad = Pivot.model_construct(rows="(SELECT 1); --", cols="year")
+    with pytest.raises(DefinitionError, match="not a pivot axis"):
+        compile_pivot(d.model_copy(update={"pivot": bad}))
+    with pytest.raises(DefinitionError, match="names no criterion"):
+        compile_pivot(d.model_copy(update={"pivot": Pivot.model_construct(rows="c9.key", cols="year")}))
+    with pytest.raises(DefinitionError, match="not a breakdown dimension"):
+        compile(d.model_copy(update={"breakdown": ["sex; DROP TABLE x"]}))
+
+
 def walk(x):
     """Every (key, value) pair anywhere in a result; list items come with key None."""
     if isinstance(x, dict):
@@ -432,6 +512,8 @@ LEAK_DEFS = [
     defn([ihc("c1", "CLDN18", call=["positive"]), ihc("c2", "PD-L1", measure="CPS", at_least=10),
           ihc("c3", "ER", call=["positive"])], population=pop("STAD")),
     defn([{"id": "c1", "kind": "specimen", "site_type": ["metastatic"], "site": ["liver"]}], breakdown=["oncotree"]),
+    defn([ihc("c1", "ERBB2 (Her2/Neu)")], pivot={"rows": "c1.val", "cols": "vendor"}),
+    defn([alt("c1", ["RET"])], pivot={"rows": "c1.val", "cols": "c1.sub"}),
 ]
 
 
@@ -449,7 +531,7 @@ def test_vocabulary_has_no_small_numbers_and_no_ids(cohort_db):
     for k, v in walk(vocabulary().model_dump()):
         assert not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 4), (k, v)
         assert not (isinstance(v, str) and v in cohort_db["ids"]), (k, v)
-    assert all(e.patients >= MIN_CELL for e in vocabulary().entries)
+    assert all(e.patients is None if e.parent else e.patients >= MIN_CELL for e in vocabulary().entries)
 
 
 # --- definition ---------------------------------------------------------------------------------------
@@ -605,7 +687,8 @@ def test_data_notes():
 
 def test_vocabulary_floor_and_check(cohort_db):
     v = vocabulary()
-    assert all(e.patients >= MIN_CELL for e in v.entries) and v.years == (2022, 2025)
+    assert all(e.patients is None if e.parent else e.patients >= MIN_CELL for e in v.entries)
+    assert v.years == (2022, 2025)
     assert "THYM" not in v.allowed("population.oncotree") and "NSCLC" in v.allowed("population.oncotree")
     assert "positive" not in v.allowed("ihc.call", "ERBB2 (Her2/Neu)") and "positive" in v.allowed("ihc.call", "ER")
     assert "G13D" not in v.allowed("alteration.aa", "KRAS") and "G12C" in v.allowed("alteration.aa", "KRAS")

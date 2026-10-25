@@ -2,7 +2,10 @@
 
 Raw counts go in, `CountResult` / `PivotResult` come out. Every number in a result has been
 through `floor`, the secondary-suppression line rule, the funnel delta rule and the whole-cohort
-rule, so nothing from 1 to 4 and nothing recoverable by subtraction leaves this module.
+rule, so nothing from 1 to 4 and nothing recoverable by subtraction within one list, one pivot or
+one funnel leaves this module. A breakdown cell and its population denominator are nested sets
+whose difference is shown on purpose (it is the percentage); that, like differencing across
+queries, is accepted under the audit log (spec rule 3, COHORT_DISCOVERY.md §3.6).
 """
 import os
 from dataclasses import dataclass, field
@@ -133,12 +136,11 @@ def _line(values: list[int | None], total: int | None) -> list[int | None]:
     return out
 
 
-def _suppress_line(cells: dict, keys: list, total) -> bool:
-    """Apply `_line` to `cells[k] for k in keys` in place; True if anything changed."""
-    new = _line([cells[k] for k in keys], total)
-    changed = new != [cells[k] for k in keys]
+def _suppress_line(cells: dict, keys: list, total, unlisted_small: bool = False) -> None:
+    """Apply `_line` to `cells[k] for k in keys` in place. `unlisted_small`: patients that belong
+    in this line were left out of it and could be 1..4, so they count as one more hidden value."""
+    new = _line([cells[k] for k in keys] + [None] * unlisted_small, total)
     cells.update(zip(keys, new))
-    return changed
 
 
 def suppress_count(d: Definition, raw: RawCount) -> CountResult:
@@ -150,7 +152,9 @@ def suppress_count(d: Definition, raw: RawCount) -> CountResult:
     if patients is not None:
         reports = floor(raw.reports)
         years = {y: floor(n) for y, n in sorted(raw.by_year.items())}
-        _suppress_line(years, list(years), patients)
+        # Patients with no dated report are in `patients` but in no year.
+        undated = raw.funnel[-1] - sum(raw.by_year.values())
+        _suppress_line(years, list(years), patients, 0 < undated < MIN_CELL)
         by_year = [YearCount(year=y, patients=n, complete=raw.year_complete.get(y, True))
                    for y, n in years.items()]
         for dim in d.breakdown:
@@ -158,7 +162,10 @@ def suppress_count(d: Definition, raw: RawCount) -> CountResult:
             cells = {v: floor(raw.breakdowns[dim][v]) for v in values}
             dens = {v: floor(raw.denominators.get(dim, {}).get(v, 0)) for v in values}
             _suppress_line(cells, values, patients)
-            _suppress_line(dens, values, denominator)
+            # Population values with no cohort patients are not listed. If every one is under MIN_CELL
+            # they are 1..4 patients in all, a hidden value; one of MIN_CELL or more keeps them above that.
+            unlisted = [n for v, n in raw.denominators.get(dim, {}).items() if v not in values]
+            _suppress_line(dens, values, denominator, bool(unlisted) and max(unlisted) < MIN_CELL)
             # Sorted after suppression, so the order says nothing about hidden values.
             breakdowns[dim] = sorted((BreakdownCell(value=v, patients=cells[v], denominator=dens[v])
                                       for v in values),
@@ -166,8 +173,11 @@ def suppress_count(d: Definition, raw: RawCount) -> CountResult:
     loosen = []
     if patients is None or raw.funnel[-1] < MIN_CELL:
         for cid, n in raw.loosen.items():
-            # The delta test keeps a suggestion from revealing a count the funnel rule hid.
-            if floor(n) is not None and n - raw.funnel[-1] >= MIN_CELL:
+            # A suggestion is a set nested in every earlier funnel step. Shown next to a shown step 1..4
+            # away, or equal to a step the funnel rule hid, it would reveal what that rule hid.
+            clear = all(n != s if shown is None else abs(s - n) >= MIN_CELL or s == n
+                        for s, shown in zip(raw.funnel, steps))
+            if floor(n) is not None and n - raw.funnel[-1] >= MIN_CELL and clear:
                 loosen.append(Loosen(drop=cid, patients=floor(n)))
         loosen.sort(key=lambda s: (-s.patients, s.drop))
     return CountResult(cohort_id=cohort_id(d), patients=patients, reports=reports, denominator=denominator,

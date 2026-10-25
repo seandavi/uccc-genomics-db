@@ -4,7 +4,8 @@ Caller values enter only through the params dict (DuckDB `$name` parameters). Ev
 interpolated into the SQL text comes from code: parameter and CTE names, and column names that
 are validated against `POP_DIMS` / `BREAKDOWN_DIMS` / `PIVOT_DIMS` Literals.
 """
-from .definition import AXIS_RE, POP_DIMS, Definition, DefinitionError
+from .definition import AXIS_RE, BREAKDOWN_DIMS, PIVOT_DIMS, POP_DIMS, Definition, DefinitionError
+from .suppress import MIN_CELL
 
 _FUNNEL_COLS = "section, dim, value, patients, flag"
 
@@ -159,6 +160,8 @@ def compile(d: Definition) -> tuple[str, dict]:
         "WHERE year IS NOT NULL GROUP BY year",
     ]
     for dim in d.breakdown:
+        if dim not in BREAKDOWN_DIMS:   # the name goes into the SQL text; models built without validation get here
+            raise DefinitionError(f"breakdown: {dim!r} is not a breakdown dimension")
         rows.append(f"SELECT 'breakdown', '{dim}', coalesce({dim}::VARCHAR, 'unknown'), "
                     "count(DISTINCT research_id), NULL FROM hit GROUP BY 3")
         rows.append(f"SELECT 'denominator', '{dim}', coalesce({dim}::VARCHAR, 'unknown'), "
@@ -169,9 +172,14 @@ def compile(d: Definition) -> tuple[str, dict]:
 def _axis(axis: str, d: Definition) -> tuple[str, str | None, int | None]:
     """('dim', column, None) for a dimension; ('fact', F, criterion position) for `c<n>.F`."""
     m = AXIS_RE.match(axis)
-    if not m:
-        return "dim", axis, None
-    return "fact", m[2], next(i for i, c in enumerate(d.criteria) if c.id == m[1])
+    if m:
+        ids = [c.id for c in d.criteria]
+        if m[1] not in ids:
+            raise DefinitionError(f"pivot: {axis!r} names no criterion")
+        return "fact", m[2], ids.index(m[1])
+    if axis not in PIVOT_DIMS:   # the name goes into the SQL text
+        raise DefinitionError(f"pivot: {axis!r} is not a pivot axis")
+    return "dim", axis, None
 
 
 def compile_pivot(d: Definition) -> tuple[str, dict]:
@@ -194,18 +202,29 @@ def compile_pivot(d: Definition) -> tuple[str, dict]:
         return fact_scan(f"h.research_id, h.vendor, h.report_id, coalesce(f.{field}, 'unknown') AS v", i)
 
     if rk == ck == "fact" and ri == ci:
-        pv = fact_scan(f"h.research_id, coalesce(f.{rf}, 'unknown') AS rv, coalesce(f.{cf}, 'unknown') AS cv", ri)
-        extra = [f"pv AS ({pv})", "ra AS (SELECT research_id, rv AS v FROM pv)",
-                 "ca AS (SELECT research_id, cv AS v FROM pv)"]
+        pv0 = fact_scan(f"h.research_id, coalesce(f.{rf}, 'unknown') AS rv, coalesce(f.{cf}, 'unknown') AS cv", ri)
+        extra = [f"pv0 AS ({pv0})"]
     else:
         # A dimension pairs with the same report; two different criteria pair on the same patient.
         on = ("ca.research_id = ra.research_id" if rk == ck == "fact"
               else "ca.vendor = ra.vendor AND ca.report_id = ra.report_id")
         extra = [f"ra AS ({axis_cte(rk, rf, ri)})", f"ca AS ({axis_cte(ck, cf, ci)})",
-                 f"pv AS (SELECT ra.research_id, ra.v AS rv, ca.v AS cv FROM ra JOIN ca ON {on})"]
+                 f"pv0 AS (SELECT ra.research_id, ra.v AS rv, ca.v AS cv FROM ra JOIN ca ON {on})"]
+
+    def label(column: str, kind: str, field: str | None) -> str:
+        """`sub` and `val` carry vendor free text that the vocabulary floor keeps out (a rare protein
+        change, fusion partner, therapy name, trial id): a value held by fewer than MIN_CELL patients
+        becomes 'other'. A dimension value or a `key` is already a vocabulary value the caller chose."""
+        if kind == "dim" or field == "key":
+            return column
+        return (f"CASE WHEN {column} IN (SELECT {column} FROM pv0 GROUP BY {column} "
+                f"HAVING count(DISTINCT research_id) >= {MIN_CELL}) THEN {column} ELSE 'other' END")
+
+    # Margins count the same (patient, row, col) set as the cells, so every patient in a margin is in a cell of that line.
+    extra.append(f"pv AS (SELECT research_id, {label('rv', rk, rf)} AS rv, {label('cv', ck, cf)} AS cv FROM pv0)")
     rows = [
         "SELECT 'cell' AS section, rv AS r, cv AS c, count(DISTINCT research_id) AS patients FROM pv GROUP BY rv, cv",
-        "SELECT 'row', v, NULL, count(DISTINCT research_id) FROM ra GROUP BY v",
-        "SELECT 'col', NULL, v, count(DISTINCT research_id) FROM ca GROUP BY v",
+        "SELECT 'row', rv, NULL, count(DISTINCT research_id) FROM pv GROUP BY rv",
+        "SELECT 'col', NULL, cv, count(DISTINCT research_id) FROM pv GROUP BY cv",
     ] + _funnel_rows(d, "NULL")
     return ctes + ",\n  " + ",\n  ".join(extra) + "\n" + "\nUNION ALL ".join(rows), params

@@ -38,7 +38,7 @@ class VocabEntry(BaseModel):
     field: str            # e.g. "population.oncotree", "alteration.aa"
     parent: str | None    # alteration.aa -> gene; biomarker.call -> name; ihc.clone/ihc.call -> marker
     value: str
-    patients: int         # floor()ed, always >= MIN_CELL
+    patients: int | None  # floor()ed, >= MIN_CELL; None when parent is set (see queries.vocabulary)
 
 
 class Vocabulary(BaseModel):
@@ -104,7 +104,7 @@ class Vocabulary(BaseModel):
 
         def rank(e: VocabEntry):
             v = e.value.lower()
-            return (v != q, not v.startswith(q), -e.patients, e.value)
+            return (v != q, not v.startswith(q), -(e.patients or 0), e.value)
 
         return sorted((e for e in self.entries if q in e.value.lower()), key=rank)[:limit]
 

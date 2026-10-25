@@ -70,7 +70,11 @@ mart, and the suppression tests pass.
    `c<n>.sub` or `c<n>.val`: the matched fact's column for criterion `c<n>`. There is no yes/no
    criterion axis (see Non-goals). Question 9's "CLDN18+ only" and "neither" cells therefore wait
    for exclusion. Its include-only counts (both stains, CLDN18+, CPS ≥ 10, both) come from the
-   funnel.
+   funnel. A `sub` or `val` axis carries vendor free text (protein change, fusion partner,
+   therapy name, trial id, IHC clone), which the vocabulary floor keeps out of the typeahead.
+   A pivot label held by fewer than 5 cohort patients is therefore folded into one `other`
+   label in SQL before counting. A `key` axis is a value the caller chose from the vocabulary
+   and is not folded.
 8. **Question 16's RNA part** comes from the `has_wts` breakdown, because the `data` kind is
    phase 2.
 9. **A criterion with no value filter means "has any result of this kind"**: an `ihc` without
@@ -87,13 +91,25 @@ mart, and the suppression tests pass.
     criterion: for each criterion, the earliest year among the in-population reports that match
     it, and then the latest of those years.
 12. **Loosen suggestions are delta-floored.** A suggestion is shown only if its count is at
-    least 5 **and** at least 5 above the current cohort's raw count. Without the second rule, a
-    suggestion can reveal a count the funnel delta rule hid (worked example under Suppression).
+    least 5, at least 5 above the current cohort's raw count, **and** consistent with the whole
+    funnel: it is not 1..4 away from a shown funnel step and does not equal a step the funnel
+    rule hid. A suggestion is a set nested in every earlier funnel step, so without these tests
+    it can reveal a count the funnel delta rule hid (worked examples under Suppression).
+13. **Breakdown cell versus denominator is not delta-floored.** A cell is nested in its
+    population denominator, so the two shown together differ by the patients with that value who
+    miss the criteria. Questions 4 and 20 are exactly that ratio (8 of 10, 6 of 10), so hiding
+    it would remove the answer. It is accepted under the audit log like differencing across
+    queries (§3.6 of `COHORT_DISCOVERY.md`). Everything else in one result (a list, a pivot, the
+    funnel, the loosen suggestions) is closed under subtraction.
+14. **The vocabulary shows `patients` only for entries without a parent.** A parent's count
+    minus the sum of its shown children would recover the floored-out children (a marker's
+    count minus its shown calls). Children (`alteration.aa`, `biomarker.call`, `ihc.clone`,
+    `ihc.call`) carry `patients = None`; they are offered, validated and ranked alphabetically.
 
 Docs to update: `COHORT_DISCOVERY.md` §3.1 needs a short "Phase 1 (#34)" paragraph listing
 items 2–9 and 11, the `any_of` row, and the example JSON with `age_band`, `"measure": "TPS"`,
 `breakdown: ["oncotree", "has_wts"]`, and the `exclude` criterion marked phase 2. §3.3's
-loosen bullet takes item 12. ARCHITECTURE decision 1 gets one sentence naming the package path.
+loosen bullet takes item 12. §3.6 takes items 13 and 14 and the pivot label fold. ARCHITECTURE decision 1 gets one sentence naming the package path.
 README Layout gets a `cohort/` line, and `mart.*` "Nothing reads it yet" becomes "read by the
 cohort module". AGENTS.md Layout gets a `cohort/` line.
 
@@ -347,7 +363,7 @@ class VocabEntry(BaseModel):
     field: str            # e.g. "population.oncotree", "alteration.aa"
     parent: str | None    # alteration.aa -> gene; biomarker.call -> name; ihc.clone/ihc.call -> marker
     value: str
-    patients: int         # floor()ed, always >= MIN_CELL
+    patients: int | None  # floor()ed, >= MIN_CELL; None when parent is set (deviation 14)
 
 class Vocabulary(BaseModel):
     entries: list[VocabEntry]
@@ -400,7 +416,8 @@ The message names the field path and the value, e.g.
 `search(q, limit)`: `q.strip().lower()`. An empty `q` or one longer than 100 characters gives
 `[]`. `limit` is clamped to 1..50. An entry matches when `q` is a substring of
 `value.lower()`. Order: exact match, then prefix match, then substring, then `patients`
-descending, then `value`.
+descending, then `value`. Entries with a parent have no `patients` and rank as 0, so they come
+alphabetically within their tier.
 
 ### `compile.py`
 
@@ -413,7 +430,11 @@ Parameters are DuckDB named parameters (`$name`, bound from the dict, as in `coh
 Names come from code, never from the caller: population `pop_<field>`, `pop_year_from`,
 `pop_year_to`; criterion `i` (0-based position) uses prefix `k{i}`, and `any_of` member `j` uses
 `k{i}m{j}`. CTE names are `m{i}`/`q{i}`. Every caller value enters only through the dict.
-Clauses for empty lists and `None` numbers are left out, never bound as NULL.
+Clauses for empty lists and `None` numbers are left out, never bound as NULL. The names that do
+go into the SQL text (breakdown dimensions, pivot dimension axes, the fact column of a
+criterion axis) are checked inside `compile`/`compile_pivot` against `BREAKDOWN_DIMS` /
+`PIVOT_DIMS` / `AXIS_RE`, raising `DefinitionError`, so a `Definition` built or copied without
+validation (`model_construct`, `model_copy(update=...)`) cannot inject SQL.
 
 Shared CTEs (`_ctes(d) -> (sql, params)`):
 
@@ -474,8 +495,8 @@ UNION ALL SELECT 'breakdown', 'd', coalesce(d::VARCHAR, 'unknown'), count(DISTIN
 UNION ALL SELECT 'denominator', 'd', coalesce(d::VARCHAR, 'unknown'), count(DISTINCT research_id), NULL FROM pop GROUP BY 3
 ```
 
-**Pivot statement** (`compile_pivot`): `_ctes`, then the axis CTEs `ra` and `ca`, then `pv`
-holding `(research_id, rv, cv)`:
+**Pivot statement** (`compile_pivot`): `_ctes`, then `pv0` holding `(research_id, rv, cv)`, built
+from the axes:
 
 - dimension axis `x`: `SELECT DISTINCT research_id, vendor, report_id, coalesce(x::VARCHAR, 'unknown') AS v FROM hit`
 - criterion axis `c<n>.F` (criterion at position `i`, F ∈ key/sub/val):
@@ -483,22 +504,29 @@ holding `(research_id, rv, cv)`:
   For `any_of`, `fact_cond_i` is the OR of its members' `fact_cond`s. It reuses the same
   parameter names.
 
-How `pv` pairs the axes:
+How `pv0` pairs the axes (CTEs `ra`, `ca` hold the two axis scans where needed):
 
-| axes | `pv` |
+| axes | `pv0` |
 |---|---|
-| both on the same criterion (e.g. `c1.key` × `c1.sub`) | one scan pairing on the **same fact row**: `SELECT DISTINCT h.research_id, coalesce(f.Fr,'unknown') AS rv, coalesce(f.Fc,'unknown') AS cv FROM hit h JOIN mart.fact f ON … WHERE <fact_cond_i>`; `ra`/`ca` are then `SELECT research_id, rv/cv AS v FROM pv` |
+| both on the same criterion (e.g. `c1.key` × `c1.sub`) | one scan pairing on the **same fact row**: `SELECT DISTINCT h.research_id, coalesce(f.Fr,'unknown') AS rv, coalesce(f.Fc,'unknown') AS cv FROM hit h JOIN mart.fact f ON … WHERE <fact_cond_i>` |
 | at least one dimension | same **report**: `SELECT ra.research_id, ra.v AS rv, ca.v AS cv FROM ra JOIN ca ON ca.vendor = ra.vendor AND ca.report_id = ra.report_id` |
-| two different criteria | same **patient**: `… FROM ra JOIN ca USING (research_id)` |
+| two different criteria | same **patient**: `… FROM ra JOIN ca ON ca.research_id = ra.research_id` |
 
-Then:
+`pv` maps each criterion axis whose column is `sub` or `val` through
+`CASE WHEN x IN (SELECT x FROM pv0 GROUP BY x HAVING count(DISTINCT research_id) >= 5) THEN x ELSE 'other' END`
+(deviation 7). Dimension axes and `key` axes pass through. Then:
 
 ```sql
 SELECT 'cell' AS section, rv AS r, cv AS c, count(DISTINCT research_id) AS patients FROM pv GROUP BY rv, cv
-UNION ALL SELECT 'row', v, NULL, count(DISTINCT research_id) FROM ra GROUP BY v
-UNION ALL SELECT 'col', NULL, v, count(DISTINCT research_id) FROM ca GROUP BY v
+UNION ALL SELECT 'row', rv, NULL, count(DISTINCT research_id) FROM pv GROUP BY rv
+UNION ALL SELECT 'col', NULL, cv, count(DISTINCT research_id) FROM pv GROUP BY cv
 UNION ALL SELECT 'funnel', '<k>', NULL, <same funnel subqueries as above>      -- one row per step
 ```
+
+Margins are counted over `pv`, the same set the cells come from, so every patient in a margin
+is in a cell of that line. (Margins over the axis scans would include a patient who matched a
+row on one report and the cell's fact on another, and the row total minus its cells would
+recover that patient.)
 
 The pivot computes the funnel too, so its total has the same delta rule as `count`.
 
@@ -575,7 +603,11 @@ stays meaningful.
    breakdown's `patients` (line order ascending value, total `patients`) and each breakdown's
    `denominator` (same order, total `denominator`). One rule pass each. Denominators are output
    **only for values present in that breakdown's cells**, so a small population value with no
-   cohort patients is never listed. Output order: `by_year` ascending. Breakdown cells: shown
+   cohort patients is never listed. Those unlisted values are a hidden value of the denominator
+   line when each of them is under 5 (their patients are then 1..4 in all and `denominator`
+   minus the listed ones would give them): that line is passed to `_line` with one extra `None`.
+   The same applies to `by_year` when `0 < patients - sum(by_year) < 5` (patients with no dated
+   report). Output order: `by_year` ascending. Breakdown cells: shown
    cells by `patients` descending, then hidden, ties by `value`. Sorting happens after
    suppression, so the order says nothing about hidden values.
 4. **Pivot (two-way)**: rows `R` and cols `C` sorted ascending. Absent cells are 0. Lines, in
@@ -590,10 +622,14 @@ stays meaningful.
 6. **Loosen** (count only): computed when `patients` (after rule 1) is `None` or raw `patients`
    is under `MIN_CELL`. For each criterion `cj`, the raw count `L` of the definition without it
    (`apply(d, remove_criterion cj)`, compiled and run on the same connection). A suggestion
-   `{drop: cj, patients: floor(L)}` is kept only if `floor(L)` is not `None` **and**
-   `L - raw_patients >= MIN_CELL`. Sorted by `patients` descending, then `drop`. Worked example
-   of why the second test exists: steps `[15, 7, 7, 6]` hide the last step (delta 1). Dropping a
-   redundant criterion would return 6, the hidden value.
+   `{drop: cj, patients: floor(L)}` is kept only if `floor(L)` is not `None`,
+   `L - raw_patients >= MIN_CELL`, **and** for every raw funnel step `s`: if `s` is shown, `L == s`
+   or `|L - s| >= MIN_CELL`; if `s` was hidden by rule 1, `L != s`. `L` is a set nested in every
+   earlier step, so a suggestion 1..4 from a shown step, or equal to a hidden one, would reveal
+   the delta rule 1 hid. Sorted by `patients` descending, then `drop`. Worked examples: steps
+   `[15, 7, 7, 6]` hide the last step (delta 1), and dropping a redundant criterion would return
+   6. Steps `[20, 17, 3]` show `[20, None, None]`; dropping c2 gives 17, and a shown 17 beside
+   20 would reveal the 3 patients missing from the second step, so it is not offered.
 
 ### `queries.py`
 
@@ -621,8 +657,10 @@ This package is a new output path, though it has no transport yet. The REST/MCP 
 it. Everything it returns is one of `CountResult`, `PivotResult`, `Vocabulary`/`VocabEntry`
 (floored, ≥ 5) or a `Definition` (caller input, normalised). Every count passes `floor()`, the
 line rule, the funnel delta rule and the whole-cohort rule. Loosen counts also pass the delta
-rule against the cohort. The §3.6 multi-select (union) differencing stays as it is in phase 1:
-accepted under the audit log that the REST layer writes. Tests pin all of this (below).
+rule against the cohort and every funnel step. The §3.6 multi-select (union) differencing stays as it is in phase 1:
+accepted under the audit log that the REST layer writes, as is a breakdown cell against its
+denominator (deviation 13). Pivot labels from `sub`/`val` axes are folded to `other` below 5
+patients (deviation 7), and the vocabulary offers counts only for parentless entries (deviation 14). Tests pin all of this (below).
 
 `research_id`/`report_id`: unaffected. The package reads them inside SQL only. It adds no hash,
 key or hash input, and returns no ids.
@@ -649,9 +687,13 @@ key or hash input, and returns no ids.
 - [ ] Every operation works through `apply` with a dict op and leaves the input unchanged.
       `add_criterion` assigns `c{max+1}`. `remove_criterion` clears a pivot that references
       it. Unknown ids and duplicate ids raise `DefinitionError`.
-- [ ] `Vocabulary` on the synthetic mart: every entry has `patients >= 5`; `THYM`, `positive`
+- [ ] `Vocabulary` on the synthetic mart: every parentless entry has `patients >= 5` and every
+      entry with a parent has `patients = None`; `THYM`, `positive`
       under `ERBB2 (Her2/Neu)` and `G13D` are absent; `check` rejects them, naming the field.
       `search("erbb2")` returns `alteration.gene ERBB2` and `ihc.marker ERBB2 (Her2/Neu)`.
+- [ ] `compile`/`compile_pivot` raise `DefinitionError` for a pivot axis, criterion axis or
+      breakdown dimension that is not in the allow-lists, even on a `Definition` built with
+      `model_construct`/`model_copy(update=...)`.
 - [ ] `compile` for each kind contains that kind's `fact_cond` and binds the values as
       parameters. No caller value appears in the SQL text. Only `mart.report`/`mart.fact` are
       referenced. The same definition compiles to identical output.
@@ -740,16 +782,28 @@ BRCA 15, CHOL 15, PAAD 15, MEL 10, OV 10, THYM 2.
   loosen `[{drop: "c1", patients: 15}]`. Population `[STAD]`; c1 ihc `CLDN18 call [positive]`,
   c2 ihc `PD-L1 measure CPS at_least 10`, c3 ihc `ER call [positive]` gives funnel
   `[20, 10, 5, 0]`, patients 0 and loosen `[{drop: "c3", patients: 5}]`.
+- `test_loosen_does_not_repeat_hidden_funnel_steps`: `suppress_count` on a `RawCount` with funnel
+  `[20, 17, 3]` (and `[20, 18, 3]`) and loosen `{c1: 20, c2: <step 1>, c3: 9}` offers c1 and c3
+  but not c2; with c3 = 16 (4 from the shown 20) only c1 is offered.
+- `test_unlisted_small_remainder_is_a_hidden_value`: a synthetic mart with 18 female and 3 male
+  patients in the population, 12 female patients in the cohort (2 with no dated report): the
+  female denominator and the 2022 count are `None`.
 - `test_line_rule`: `_line([12, None], total)` hides 12. `[None, None, 5]` stays as it is. A
   zero is never chosen. Ties go to the first in line order.
 - `test_pivot_two_way`: questions 2, 5 and 12 above, plus the invariant that in every returned
   pivot, no line (each row with its total, each column with its total, both margin lines with
   the grand total, absent cells as 0) has exactly one `None`.
+- `test_pivot_rare_fact_values_become_other`: a `c1.val` axis on the HER2 IHC criterion folds
+  `positive` (2 patients) into `other`; a `c1.val` axis on `RET` leaves neither the fusion
+  partner nor the protein change in `model_dump()`; a `c1.key` axis keeps its gene names.
+- `test_pivot_margins_count_only_patients_in_a_cell`: six patients with two reports in
+  different years, c1 on the first and c2 on the second: a `year` × `c1.key` pivot has no 2024
+  row, and every line has other than one `None`.
 - `test_no_small_numbers_and_no_ids`: parametrised over every question definition (count, and
   pivot where set) plus the suppression definitions. Walk each `result.model_dump()` as
   `tests/test_cohort_api.py::walk` does: no key `research_id`/`report_id`, no non-bool `int`
   from 1 to 4, and no string in the set of fixture research_ids and report_ids. Also walk
-  `vocabulary().model_dump()`: every entry `patients >= 5`, no fixture id.
+  `vocabulary().model_dump()`: every parentless entry `patients >= 5`, children `None`, no fixture id.
 
 ### Definition, operation, vocabulary and compile tests
 
@@ -763,6 +817,9 @@ BRCA 15, CHOL 15, PAAD 15, MEL 10, OV 10, THYM 2.
   unchanged (`==` to a copy taken before).
 - `test_vocabulary_floor_and_check`, `test_search`: per the acceptance criteria. Also that
   `check` accepts every fixture value the question definitions use.
+- `test_compile_validates_names_it_puts_in_the_sql`: `compile_pivot` of a definition copied with
+  `Pivot.model_construct(rows="(SELECT 1); --", ...)`, an axis naming no criterion, and
+  `compile` with a breakdown `"sex; DROP TABLE x"` raise `DefinitionError`.
 - `test_compile_each_kind`: for one definition per kind (and an `any_of`), assert the `fact_cond`
   fragment is in the SQL, the values are in `params`, the value strings (`"KRAS"`, `"G12C"`,
   `"CLDN18"`, …) are not in the SQL text, `"unified."`/`"caris."`/`"fmi."` do not appear, and

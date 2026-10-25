@@ -321,8 +321,9 @@ reorders the funnel.
   single criterion, if dropped or widened, brings the count back above the
   floor (for example "drop PD-L1 TPS ≥ 50 → 6"). These are ordinary cohort
   queries, so they need no new privacy review. A suggestion is shown only if
-  its count is at least 5 *and* at least 5 above the current cohort's raw
-  count; otherwise it could reveal a count the funnel's delta rule hid.
+  its count is at least 5, at least 5 above the current cohort's raw count,
+  and not 1 to 4 away from a shown funnel step or equal to a hidden one;
+  otherwise it could reveal a count the funnel's delta rule hid.
   Phase 1 offers "drop" only.
 
 **Top bar.**
@@ -408,6 +409,9 @@ The phase 1 controls in `COHORT_TOOL.md` stay as they are. New exposure:
 | Pivot | A cell can be recovered from row and column totals. | Secondary suppression along both axes (iterate until no row or column has exactly one hidden cell). |
 | Numeric thresholds | A sliding cut point can isolate one patient. | Fixed cut points only. |
 | Multi-select population (OR) | Adding one tumor type to a list exposes that type's own small count by subtraction. In the prototype, KRAS G12C since 2023 is 8 in NSCLC and 9 in NSCLC or pancreas, so pancreas contributes about 1. The phase 1 API has the same exposure through repeated `disease`. The vocabulary floor only removes tumor types with fewer than 5 patients overall, not ones whose count inside a cohort is small. | Open: apply the A ∧ ¬B rule to unions (show {A, B} only if {B} alone is 0 or at least 5 in the same cohort), or accept the risk under the audit log, as `COHORT_TOOL.md` does for differencing today. |
+| Breakdown cell against its denominator | The cell is nested in the population count, so both shown give the patients with that value who miss the criteria (questions 4 and 20 are this ratio). | Accepted under the audit log, like differencing across queries. Everything else in one result is closed under subtraction. |
+| Pivot labels from `sub`/`val` axes | They are vendor free text (protein change, fusion partner, therapy name) that the vocabulary floor keeps out. | A label held by fewer than 5 cohort patients becomes `other`; `key` axes are vocabulary values the caller chose. |
+| Vocabulary counts | A parent's count minus its shown children's counts gives the floored-out children. | Counts are returned only for entries without a parent. |
 | `loosen[]` suggestions | Each suggestion is itself a count. | Each one is an ordinary floored cohort query and is logged like any other. |
 | Chat | Prompts and counts leave the host. | Only floored counts; audit log; open question 2. |
 

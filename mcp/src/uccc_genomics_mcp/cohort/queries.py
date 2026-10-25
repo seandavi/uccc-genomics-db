@@ -21,7 +21,8 @@ def vocabulary() -> Vocabulary:
     if _vocab["mtime"] != mtime:
         con = get_db()
         try:
-            entries = [VocabEntry(field=f, parent=p, value=v, patients=floor(n))
+            # A child's count would let a parent's count minus its shown children recover a floored-out child.
+            entries = [VocabEntry(field=f, parent=p, value=v, patients=floor(n) if p is None else None)
                        for f, p, v, n in con.execute(VOCAB_SQL).fetchall()]
             years = con.execute("SELECT min(year), max(year) FROM mart.report").fetchone()
         finally:
