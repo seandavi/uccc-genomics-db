@@ -5,9 +5,10 @@ equal cohorts compare equal and hash to the same `cohort_id`. A definition chang
 `apply(definition, op)`. Spec: docs/specs/34-cohort-module-definition-operations.md.
 """
 import hashlib
+import itertools
 import json
 import re
-from typing import Annotated, Literal, get_args
+from typing import Annotated, Literal, NamedTuple, get_args
 
 from pydantic import (AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError,
                       field_validator, model_validator)
@@ -16,6 +17,13 @@ SCHEMA_VERSION = 1
 AltClass = Literal["mutation", "amplification", "loss", "fusion"]
 Tier = Literal["pathogenic", "likely_pathogenic", "vus", "unclassified"]   # benign is never an alteration (#32)
 Evidence = Literal["caris_level1", "fmi_fda_any_indication", "fmi_trial"]
+Mode = Literal["include", "exclude", "tested_negative"]
+NEGATED = ("exclude", "tested_negative")
+MAX_NEGATED = 3
+MAX_NEIGHBOURS = 32
+DataHas = Literal["wts", "liquid", "tissue", "both_vendors", "serial"]
+REPORT_DATA = ("wts", "liquid", "tissue")           # per report; the other two are per patient
+Vendor = Literal["caris", "fmi"]
 BreakdownDim = Literal["oncotree", "organ", "sex", "age_band", "vendor", "assay_class", "site_type", "has_wts"]
 POP_DIMS = ("oncotree", "organ", "sex", "age_band", "vendor", "assay_class")   # = mart.report columns
 BREAKDOWN_DIMS = get_args(BreakdownDim)
@@ -27,7 +35,6 @@ DEFAULT_TIERS = ["likely_pathogenic", "pathogenic"]
 # COHORT_DISCOVERY.md §3.1 fixed cut points (open question 4); no free numbers.
 CUT_POINTS = {"biomarker.TMB": [10.0, 16.0, 20.0], "ihc.TPS": [1.0, 50.0], "ihc.CPS": [1.0, 10.0, 20.0],
               "expression.percentile": [50.0, 75.0, 90.0], "specimen.purity": [20.0, 30.0, 50.0]}
-DEFERRED_KINDS = ("sequence", "data", "tested_negative", "exclude")
 ID_RE = re.compile(r"^c[1-9][0-9]{0,2}\Z")
 AXIS_RE = re.compile(r"^(c[1-9][0-9]{0,2})\.(key|sub|val)\Z")
 
@@ -76,23 +83,6 @@ def _check_cut_point(name: str, value: float | None, key: str) -> None:
         raise ValueError(f"{name} must be one of {CUT_POINTS[key]}, not {value}")
 
 
-def _reject_deferred(item):
-    """Deferred features get a clear message instead of Pydantic's generic discriminator error."""
-    if isinstance(item, dict):
-        if item.get("kind") in DEFERRED_KINDS:
-            raise ValueError(f"criterion kind '{item['kind']}' is not supported yet")
-        if item.get("mode") not in (None, "include"):
-            raise ValueError(f"criterion mode '{item['mode']}' is not supported yet; criteria are include-only")
-    return item
-
-
-def _reject_deferred_all(items):
-    if isinstance(items, list):
-        for item in items:
-            _reject_deferred(item)
-    return items
-
-
 # --- criteria ------------------------------------------------------------------------------------
 
 class Population(BaseModel):
@@ -115,11 +105,23 @@ class Population(BaseModel):
 
 class _Criterion(BaseModel):
     model_config = _CONFIG
-    id: str | None = None                           # required at the top level, absent in any_of members
-    mode: Literal["include"] = "include"            # exclude / tested_negative: phase 2
+    id: str | None = None                           # required at the top level, absent in any_of / sequence members
+    mode: Mode = "include"
+
+    @model_validator(mode="after")
+    def _mode_applies(self):
+        if self.mode == "tested_negative" and not (
+                self.kind == "alteration" and not self.aa and self.class_ in ([], ["mutation"])):
+            raise ValueError("tested_negative applies to an alteration criterion without aa, "
+                             "of class mutation or any class")
+        return self
 
 
-class Alteration(_Criterion):
+class _Leaf(_Criterion):
+    vendor: Vendor | None = None                    # only this vendor's reports can match
+
+
+class Alteration(_Leaf):
     kind: Literal["alteration"]
     gene: Annotated[list[str], Field(min_length=1, max_length=100), _strs("upper")]
     aa: Annotated[list[str], Field(max_length=50), _strs()] = []             # needs exactly one gene
@@ -148,7 +150,7 @@ class Alteration(_Criterion):
         return v or list(DEFAULT_TIERS)
 
 
-class Biomarker(_Criterion):
+class Biomarker(_Leaf):
     kind: Literal["biomarker"]
     name: Literal["TMB", "MSI", "LOH"]
     call: Annotated[list[str], Field(max_length=10), _strs("lower")] = []
@@ -165,7 +167,7 @@ class Biomarker(_Criterion):
         return self
 
 
-class Ihc(_Criterion):
+class Ihc(_Leaf):
     kind: Literal["ihc"]
     marker: str = Field(min_length=1)
     clone: str | None = None
@@ -202,7 +204,7 @@ class Ihc(_Criterion):
         return self
 
 
-class Expression(_Criterion):
+class Expression(_Leaf):
     kind: Literal["expression"]
     gene: Annotated[list[str], Field(min_length=1, max_length=20), _strs("upper")]
     percentile_at_least: float | None = None        # CUT_POINTS["expression.percentile"]
@@ -214,7 +216,7 @@ class Expression(_Criterion):
         return v
 
 
-class Specimen(_Criterion):
+class Specimen(_Leaf):
     kind: Literal["specimen"]
     site_type: Annotated[list[str], Field(max_length=20), _strs("lower")] = []
     site: Annotated[list[str], Field(max_length=50), _strs("lower")] = []
@@ -228,33 +230,74 @@ class Specimen(_Criterion):
         return self
 
 
-class Actionability(_Criterion):
+class Actionability(_Leaf):
     kind: Literal["actionability"]
     evidence: Annotated[list[Evidence], Field(min_length=1), Sorted]
 
 
+class Data(_Leaf):
+    kind: Literal["data"]
+    has: DataHas
+
+    @model_validator(mode="after")
+    def _vendor_applies(self):
+        if self.vendor is not None and self.has not in REPORT_DATA:
+            raise ValueError(f"vendor does not apply to data '{self.has}'")
+        return self
+
+
 Leaf = Annotated[Alteration | Biomarker | Ihc | Expression | Specimen | Actionability,
                  Field(discriminator="kind")]
+SeqMember = Annotated[Alteration | Biomarker | Ihc | Expression | Specimen | Actionability | Data,
+                      Field(discriminator="kind")]
 
 
 def _canon(c: BaseModel) -> dict:
     return c.model_dump(mode="json", by_alias=True, exclude_defaults=True, exclude={"id"})
 
 
+def _member_order(m: BaseModel) -> str:
+    return json.dumps(_canon(m), sort_keys=True)
+
+
+def _include_only(kind: str, members: list) -> None:
+    if any(m.mode != "include" for m in members):
+        raise ValueError(f"{kind} members are include-only; set mode on the {kind} itself")
+
+
 class AnyOf(_Criterion):
     kind: Literal["any_of"]
     of: Annotated[list[Leaf], Field(min_length=2, max_length=8)]
 
-    reject_deferred = field_validator("of", mode="before")(_reject_deferred_all)
-
     @field_validator("of")
     @classmethod
     def _order_independent(cls, v):
-        return sorted(v, key=lambda m: json.dumps(_canon(m), sort_keys=True))
+        _include_only("any_of", v)
+        return sorted(v, key=_member_order)
 
 
-Criterion = Annotated[Alteration | Biomarker | Ihc | Expression | Specimen | Actionability | AnyOf,
-                      Field(discriminator="kind")]
+class Sequence(_Criterion):
+    kind: Literal["sequence"]
+    first: Annotated[list[SeqMember], Field(min_length=1, max_length=4)]   # AND, on one report
+    then: Annotated[list[SeqMember], Field(min_length=1, max_length=4)]    # AND, on one strictly later report
+
+    @field_validator("first", "then")
+    @classmethod
+    def _members(cls, v):
+        _include_only("sequence", v)
+        if any(m.kind == "data" and m.has not in REPORT_DATA for m in v):
+            raise ValueError("sequence members can only use data 'wts', 'liquid' or 'tissue'")
+        return sorted(v, key=_member_order)
+
+    @model_validator(mode="after")
+    def _include(self):
+        if self.mode != "include":
+            raise ValueError("a sequence criterion is include-only")
+        return self
+
+
+Criterion = Annotated[Alteration | Biomarker | Ihc | Expression | Specimen | Actionability | Data
+                      | AnyOf | Sequence, Field(discriminator="kind")]
 
 
 class Pivot(BaseModel):
@@ -273,7 +316,7 @@ class Definition(BaseModel):
     name: str = Field(default="", max_length=200)
     population: Population = Population()
     criteria: list[Criterion] = Field(default=[], max_length=10)
-    scope: Literal["patient"] = "patient"
+    scope: Literal["patient", "report"] = "patient"
     breakdown: list[BreakdownDim] = Field(default=[], max_length=4)
     pivot: Pivot | None = None
 
@@ -283,16 +326,6 @@ class Definition(BaseModel):
         if v != 1:
             raise ValueError(f"unsupported definition version {v}")
         return v
-
-    @field_validator("scope", mode="before")
-    @classmethod
-    def _scope(cls, v):
-        if v == "report":
-            raise ValueError("scope 'report' is not supported yet; "
-                             "criteria match on any of the patient's in-population reports")
-        return v
-
-    reject_deferred = field_validator("criteria", mode="before")(_reject_deferred_all)
 
     @model_validator(mode="after")
     def _check(self):
@@ -305,6 +338,13 @@ class Definition(BaseModel):
         for c in self.criteria:
             if c.kind == "any_of" and any(m.id is not None for m in c.of):
                 raise ValueError(f"criteria.{c.id}: any_of members take no id")
+            if c.kind == "sequence" and any(m.id is not None for m in c.first + c.then):
+                raise ValueError(f"criteria.{c.id}: sequence members take no id")
+            if self.scope == "report" and (c.kind == "sequence" or (c.kind == "data" and c.has not in REPORT_DATA)):
+                raise ValueError(f"criteria.{c.id}: '{c.has if c.kind == 'data' else c.kind}' spans several "
+                                 "reports and cannot be used with scope 'report'")
+        if sum(c.mode in NEGATED for c in self.criteria) > MAX_NEGATED:
+            raise ValueError(f"criteria: at most {MAX_NEGATED} exclude or tested_negative criteria")
         if len(set(self.breakdown)) != len(self.breakdown):
             raise ValueError("breakdown: duplicate dimension")
         if self.pivot:
@@ -323,8 +363,82 @@ class Definition(BaseModel):
                 raise ValueError(f"pivot.{field}: '{axis}' is not a dimension or a criterion axis like 'c1.key'")
             if m[1] not in by_id:
                 raise ValueError(f"pivot.{field}: unknown criterion '{m[1]}'")
-            if _has_specimen(by_id[m[1]]):
+            c = by_id[m[1]]
+            if c.mode in NEGATED:
+                raise ValueError(f"pivot.{field}: an exclude or tested_negative criterion cannot be a pivot axis")
+            if c.kind in ("data", "sequence"):
+                raise ValueError(f"pivot.{field}: a {c.kind} criterion cannot be a pivot axis")
+            if _has_specimen(c):
                 raise ValueError(f"pivot.{field}: a specimen criterion cannot be a pivot axis")
+
+
+class Neighbour(NamedTuple):
+    definition: Definition
+    step: list[int]      # step[k]: this neighbour's funnel index that pairs with step k of the definition
+
+
+def _multi_values(d: Definition) -> list[tuple[str, list[str]]]:
+    return [(dim, getattr(d.population, dim)) for dim in POP_DIMS if len(getattr(d.population, dim)) >= 2]
+
+
+def _year_range(d: Definition) -> bool:
+    return d.population.years is not None and d.population.years[0] < d.population.years[1]
+
+
+def _scope_swap(d: Definition) -> bool:
+    # One include criterion counts the same at both scopes; one negated criterion does not
+    # (report scope: some report lacks B; patient scope: no report has B).
+    return d.scope == "report" and (len(d.criteria) >= 2 or any(c.mode in NEGATED for c in d.criteria))
+
+
+def _neighbour_count(d: Definition) -> int:
+    negated = sum(c.mode in NEGATED for c in d.criteria)
+    swaps = sum(c.mode == "tested_negative" for c in d.criteria)
+    return 2 ** negated - 1 + swaps + sum(len(v) for _, v in _multi_values(d)) + 2 * _year_range(d) + _scope_swap(d)
+
+
+def neighbours(d: Definition) -> list[Neighbour]:
+    """The definitions one edit away whose counts a user could subtract from d's: d without each
+    non-empty subset of its negated criteria; d with one tested_negative criterion made a plain exclusion
+    (the difference is the patients with no result for the gene); d with one value taken out of a population field that
+    lists two or more; d with one end year taken off a year range (from < to); a report-scope d with
+    two or more criteria, or any negated criterion, at patient scope (the difference is the patients whose criteria match only on
+    different reports). Raises DefinitionError if there are more than MAX_NEIGHBOURS. The order (subsets,
+    mode swaps, population, years, scope) is part of the contract."""
+    n = _neighbour_count(d)
+    if n > MAX_NEIGHBOURS:
+        raise DefinitionError(
+            f"population: this cohort needs {n} privacy checks (one per combination of exclusions, one per tested-negative criterion, one per value "
+            "in a field that lists two or more, two for a year range, one for report scope); at most 32 are allowed. "
+            "Use fewer values or a coarser field such as organ")
+    base = d.model_dump(mode="json", by_alias=True)
+    steps_all = list(range(len(d.criteria) + 1))
+    out = []
+
+    def add(edit, step):
+        data = json.loads(json.dumps(base))
+        edit(data)
+        out.append(Neighbour(Definition.model_validate(data), step))
+
+    negated = [c.id for c in d.criteria if c.mode in NEGATED]
+    for r in range(1, len(negated) + 1):
+        for dropped in itertools.combinations(negated, r):
+            add(lambda data, dropped=dropped: data.update(criteria=[c for c in data["criteria"] if c["id"] not in dropped]),
+                [k - sum(c.id in dropped for c in d.criteria[:k]) for k in steps_all])
+    for c in d.criteria:
+        if c.mode == "tested_negative":
+            add(lambda data, cid=c.id: [x.update(mode="exclude") for x in data["criteria"] if x["id"] == cid], steps_all)
+    for dim, values in _multi_values(d):
+        for v in values:
+            add(lambda data, dim=dim, v=v: data["population"].update({dim: [x for x in data["population"][dim] if x != v]}),
+                steps_all)
+    if _year_range(d):
+        lo, hi = d.population.years
+        for years in ([lo + 1, hi], [lo, hi - 1]):
+            add(lambda data, years=years: data["population"].update(years=years), steps_all)
+    if _scope_swap(d):
+        add(lambda data: data.update(scope="patient"), steps_all)
+    return out
 
 
 def parse(data: dict) -> Definition:
@@ -359,13 +473,27 @@ NOTES = {
     "specimen": "Specimen site and type are Caris only, from the report's first tumor specimen.",
     "has_wts": "has_wts is Caris only; FMI reports are always 'false'.",
     "fda": "FMI's FDA flag means approved in any indication, not necessarily in this tumor type.",
+    "exclude": "An exclusion drops patients with a matching finding on any of their in-population reports "
+               "(on the same report when all criteria must match on one report); a gene that was not tested "
+               "counts as not found.",
+    "tested_negative": "Tested negative also needs every listed gene reported wild-type (Caris) or as a pertinent "
+                       "negative (FMI lists only some genes, so FMI patients are under-counted).",
+    "sequence": "Report order uses collection dates, shifted per patient for de-identification so intervals are "
+                "kept; reports without a date are never ordered, and same-day reports are not later.",
+    "both_vendors": "Patients are linked across vendors by MRN, or name and birth date when an FMI report has no "
+                    "MRN; tested by both vendors is a lower bound.",
+    "neighbours": "A count that differs by 1 to 4 from the same count without an exclusion, with a tested-negative "
+                  "criterion as a plain exclusion, without one of the listed population values or end years, or matched "
+                  "across reports instead of on one report, is hidden so a small group cannot be worked out by "
+                  "subtraction; suggestions to loosen are not offered.",
     "absent": "Stage, treatment, outcomes, race and ethnicity are not in this data.",
 }
 
 
 def data_notes(d: Definition) -> list[str]:
     """The caveats that apply to this definition: a pure function of it. `absent` always last."""
-    leaves = [m for c in d.criteria for m in (c.of if c.kind == "any_of" else [c])]
+    leaves = [m for c in d.criteria
+              for m in (c.of if c.kind == "any_of" else c.first + c.then if c.kind == "sequence" else [c])]
     axes = {d.pivot.rows, d.pivot.cols} if d.pivot else set()
     uses = lambda dim: dim in d.breakdown or dim in axes   # noqa: E731
     on = {
@@ -375,6 +503,11 @@ def data_notes(d: Definition) -> list[str]:
         "specimen": any(m.kind == "specimen" and (m.site_type or m.site) for m in leaves) or uses("site_type"),
         "has_wts": uses("has_wts"),
         "fda": any(m.kind == "actionability" and "fmi_fda_any_indication" in m.evidence for m in leaves),
+        "exclude": any(c.mode in NEGATED for c in d.criteria),
+        "tested_negative": any(c.mode == "tested_negative" for c in d.criteria),
+        "sequence": any(c.kind == "sequence" for c in d.criteria),
+        "both_vendors": any(c.kind == "data" and c.has == "both_vendors" for c in d.criteria),
+        "neighbours": _neighbour_count(d) > 0,
     }
     return [NOTES[k] for k, v in on.items() if v] + [NOTES["absent"]]
 
@@ -388,7 +521,6 @@ class _Op(BaseModel):
 class AddCriterion(_Op):
     op: Literal["add_criterion"]
     criterion: Criterion
-    reject_deferred = field_validator("criterion", mode="before")(_reject_deferred)
 
 
 class RemoveCriterion(_Op):
@@ -400,7 +532,12 @@ class UpdateCriterion(_Op):
     op: Literal["update_criterion"]
     id: str
     criterion: Criterion
-    reject_deferred = field_validator("criterion", mode="before")(_reject_deferred)
+
+
+class SetMode(_Op):
+    op: Literal["set_mode"]
+    id: str
+    mode: Mode
 
 
 class SetPopulation(_Op):
@@ -418,13 +555,18 @@ class SetPivot(_Op):
     pivot: Pivot | None
 
 
+class SetScope(_Op):
+    op: Literal["set_scope"]
+    scope: Literal["patient", "report"]
+
+
 class Rename(_Op):
     op: Literal["rename"]
     name: str
 
 
-Operation = Annotated[AddCriterion | RemoveCriterion | UpdateCriterion | SetPopulation | SetBreakdown
-                      | SetPivot | Rename, Field(discriminator="op")]
+Operation = Annotated[AddCriterion | RemoveCriterion | UpdateCriterion | SetMode | SetPopulation | SetBreakdown
+                      | SetPivot | SetScope | Rename, Field(discriminator="op")]
 _OPERATION = TypeAdapter(Operation)
 
 
@@ -458,12 +600,21 @@ def apply(d: Definition, op: "Operation | dict", vocab=None) -> Definition:
                     pivot = data["pivot"]
                     if pivot and any(a.startswith(f"{o.id}.") for a in (pivot["rows"], pivot["cols"])):
                         data["pivot"] = None
+            case SetMode():
+                if o.id not in position:
+                    raise DefinitionError(f"unknown criterion id '{o.id}'")
+                criteria[position[o.id]]["mode"] = o.mode
+                pivot = data["pivot"]
+                if o.mode in NEGATED and pivot and any(a.startswith(f"{o.id}.") for a in (pivot["rows"], pivot["cols"])):
+                    data["pivot"] = None
             case SetPopulation():
                 data["population"] = o.population.model_dump(mode="json", by_alias=True)
             case SetBreakdown():
                 data["breakdown"] = list(o.breakdown)
             case SetPivot():
                 data["pivot"] = o.pivot.model_dump(mode="json") if o.pivot else None
+            case SetScope():
+                data["scope"] = o.scope
             case Rename():
                 data["name"] = o.name
         new_d = Definition.model_validate(data)

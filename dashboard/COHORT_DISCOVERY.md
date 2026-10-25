@@ -192,7 +192,7 @@ these ways:
   there is no `vendor_class` (pivot `vendor` × `assay_class`).
 - Pivot axes are a dimension (or `year`), or `c<n>.key|sub|val`: the matched fact's column.
   There is no yes/no criterion axis; its "no" side is exclusion (phase 2).
-- Question 16's RNA part comes from the `has_wts` breakdown, because `data` is phase 2.
+- Question 16's RNA part comes from the `has_wts` breakdown, because `data` is phase 2 (built in #38).
 - A criterion with no value filter means "has any result of this kind" (an `ihc` without
   `call`, a `biomarker` without `call`), which restricts the cohort to tested patients.
 - `cohort_id` covers `version`, `population`, `scope` and the criteria, not the name,
@@ -201,7 +201,28 @@ these ways:
   year is the latest, over the criteria, of the earliest matching year.
 - Pivot suppression runs on both axes to a fixed point, and also hides a row or column total when
   its one hidden cell would otherwise equal it (the rest of the line being zeros).
-- Phase 2 and rejected with a clear error: `exclude`, `tested_negative`, `scope: "report"`, `sequence`, `data`.
+- Phase 2 and rejected with a clear error: nothing now; see the Phase 2 (#38) paragraph below.
+
+**Phase 2 (#38)** adds `mode`, `scope: "report"`, `data`, `sequence` and a per-criterion `vendor`
+(`docs/specs/38-cohort-phase-2-exclusion-report-scope.md`). It differs from the text above in
+these ways:
+
+- `data.has` is one value (`wts`, `liquid`, `tissue`, `both_vendors` or `serial`), not a list: it
+  mixes per-report facts with patient-level ones, and an OR across the two has no clear accrual
+  year. `both_vendors` and `serial` cannot be used with `scope: "report"` or a `vendor`.
+- `sequence` has `first` and `then` (1-4 leaf or `data` members each, AND on one report each) and
+  no `min_gap_days`: "later" means a strictly later collection date. Members take no `id` and are
+  include-only; `data` members are limited to `wts`, `liquid` and `tissue`.
+- Leaf criteria take `vendor` (`caris` or `fmi`, default null): only that vendor's reports can
+  match. Question 17 needs it to tell "Caris TMB" from "FMI TMB" apart on one patient.
+- `tested_negative` with several genes means every gene (the negation of the OR the criterion's
+  genes mean): the patient has no matching finding for any listed gene, and each listed gene was
+  reported wild-type or as a pertinent negative. It applies to `alteration` criteria without `aa`,
+  of class `mutation` or any class.
+- At most 3 criteria per definition are negated (`exclude` or `tested_negative`). A negated
+  criterion gives no accrual year and cannot be a pivot axis.
+- `scope` is a field of the definition (one switch), not of each criterion.
+- Request data stays deferred (#16).
 
 Criterion kinds and the questions they serve:
 
@@ -213,9 +234,11 @@ Criterion kinds and the questions they serve:
 | `expression` | gene, percentile_at_least | 8 |
 | `specimen` | site_type[], site[], purity_at_least | 15, 16 |
 | `data` | has (wts, liquid, tissue, both_vendors, serial) | 14, 16, 17, 18 |
+
+Every leaf kind (`alteration` to `data`, not `any_of` or `sequence`) also takes `vendor` (`caris`, `fmi` or null) and `mode`.
 | `actionability` | evidence (caris_level1, fmi_fda_any_indication, fmi_trial) | 20 |
 | `any_of` | of[] (2–8 leaf criteria above, OR) | 4, 6, 7 |
-| `sequence` (phase 2) | first, then, min_gap_days? | 14 |
+| `sequence` | first[], then[] (1-4 members each) | 14 |
 
 ### 3.2 The mart behind it
 
@@ -228,7 +251,8 @@ kind compiles to the same template over them.
 ```
 mart.report        one row per report: research_id, vendor, report_id, year,
                    year_complete, sex, age, age_band, oncotree, organ, disease, assay_class, assay_name,
-                   purity, site_type, site, has_wts
+                   purity, site_type, site, has_wts, collected_on   (collected_on only orders two reports
+                   of one patient, for `sequence`; it is never output)
 mart.fact          one row per finding: research_id, vendor, report_id,
                    kind, key, sub, val, num, unit, tier
                    e.g. ('alteration', 'KRAS', 'mutation', 'G12C', NULL, NULL, 'pathogenic')
@@ -268,9 +292,16 @@ assistant collapses into a drawer below 1,200 px.
 `dashboard/src/discover.md` on Observable Framework. Versions are kept in the browser's local
 storage, and the share link carries the definition in the URL fragment (saved cohorts (#36) store
 only the cohorts a user saves; Discover does not call `/api/saved*` yet, so a link carries the
-definition, and `/c/<cohort_id>` comes when Discover uses saved cohorts). The include / exclude toggle, the "same report" lock, drag-to-reorder,
-Compare, Feasibility statement and Request data are not built (phase 2, or no operation yet), and
+definition, and `/c/<cohort_id>` comes when Discover uses saved cohorts). Drag-to-reorder and Request data are not built (no operation yet, and #16), and
 the assistant column is empty.
+
+**Phase 2 (#38).** Discover gains the include / exclude / tested-negative select on each card, one
+"All criteria on the same report" switch for the definition (not a lock per card), `data` entries
+in the typeahead, a vendor select, "Then…" and the sequence card, **Compare** and the
+**Feasibility statement**. Compare picks 2-4 versions from the local history (Discover does not call
+`/api/saved*`), not saved cohorts. Loosen suggestions are offered only for a definition with no
+neighbours (§3.6): a suggestion is itself a count, and for a definition with neighbours it would
+need its own checks, so the page says why there are none.
 
 ```
 ┌ KRAS G12C NSCLC, no STK11/KEAP1, PD-L1 high, 2023+  v4 ▾  [Compare] [Share link] [Feasibility statement] [Request data] ┐
@@ -426,15 +457,16 @@ The phase 1 controls in `COHORT_TOOL.md` stay as they are. New exposure:
 
 | New capability | Risk | Control |
 |---|---|---|
-| `exclude` / `tested_negative` | A ∧ ¬B is the difference of two allowed queries, A and A ∧ B. Shown exactly, it reveals A ∧ B even when that is under 5. | Compute A ∧ ¬B, then return it only if A ∧ B is 0 or at least 5. Otherwise return "<5" for A ∧ B and suppress A ∧ ¬B as well. |
+| `exclude` / `tested_negative` | A ∧ ¬B is the difference of two allowed queries, A and A ∧ B. Shown exactly, it reveals A ∧ B even when that is under 5. | The neighbour check (#38): every count (funnel step, `reports`, year, breakdown cell, denominator, pivot cell and margin) is compared with the same count of each *neighbour* (the definition without each non-empty subset of its negated criteria, at most 7 for at most 3 of them, and with each `tested_negative` criterion made a plain `exclude`, since the two differ by the patients with no result for the gene), and hidden when it differs by 1 to 4. A caller cannot skip the check: `suppress_count` and `suppress_pivot` refuse input without the neighbours. |
 | Funnel | Consecutive steps difference to the patients removed at each step. | Apply the floor to the step deltas as well as to the step counts. |
 | Pivot | A cell can be recovered from row and column totals. | Secondary suppression along both axes (iterate until no row or column has exactly one hidden cell). |
 | Numeric thresholds | A sliding cut point can isolate one patient. | Fixed cut points only. |
-| Multi-select population (OR) | Adding one tumor type to a list exposes that type's own small count by subtraction. In the prototype, KRAS G12C since 2023 is 8 in NSCLC and 9 in NSCLC or pancreas, so pancreas contributes about 1. The phase 1 API has the same exposure through repeated `disease`. The vocabulary floor only removes tumor types with fewer than 5 patients overall, not ones whose count inside a cohort is small. | Open: apply the A ∧ ¬B rule to unions (show {A, B} only if {B} alone is 0 or at least 5 in the same cohort), or accept the risk under the audit log, as `COHORT_TOOL.md` does for differencing today. |
+| Multi-select population (OR) | Adding one tumor type to a list exposes that type's own small count by subtraction. In the prototype, KRAS G12C since 2023 is 8 in NSCLC and 9 in NSCLC or pancreas, so pancreas contributes about 1. The phase 1 API has the same exposure through repeated `disease`. The vocabulary floor only removes tumor types with fewer than 5 patients overall, not ones whose count inside a cohort is small. | The neighbour check (#38) applies to unions: the cohort with one value taken out of a population field that lists two or more values (`oncotree`, `organ`, `sex`, `age_band`, `vendor`, `assay_class`), and with one end year taken off a year range, is a neighbour. So is a report-scope cohort ("all criteria on the same report") with two or more criteria, or with any exclusion, at patient scope: the two differ by the patients whose criteria match only on different reports (for one exclusion, those with B on one report and a report without it). At most 32 neighbours per count; a definition that needs more is a 400 when it is counted. An empty population field (all values) and `years: null` (all years) get no neighbours, so the full union against a listed subset is a two-query subtraction accepted under the audit log, as are OR lists inside a criterion (several genes, protein changes or `any_of` members), as `COHORT_TOOL.md` does for differencing today. |
+| Differencing over three or more queries | Combinations of three or more allowed counts (for example the A ∧ ¬B of two exclusions against the same pair without them) can still isolate a small group. | Accepted under the audit log and the rate limit, like cross-query differencing in phase 1. `COHORT_ROUND=5` is the lever if this proves too weak. |
 | Breakdown cell against its denominator | The cell is nested in the population count, so both shown give the patients with that value who miss the criteria (questions 4 and 20 are this ratio). | Accepted under the audit log, like differencing across queries. Everything else in one result is closed under subtraction. |
 | Pivot labels from `sub`/`val` axes | They are vendor free text (protein change, fusion partner, therapy name) that the vocabulary floor keeps out. | A label held by fewer than 5 cohort patients becomes `other`; `key` axes are vocabulary values the caller chose. |
 | Vocabulary counts | Any shown count lets a nested list (a parent and its children, organ and OncoTree code) give back a floored-out value by subtraction. | No counts are returned; the floor decides which values appear and counts only rank search. |
-| `loosen[]` suggestions | Each suggestion is itself a count. | Floored; shown only if at least 5 above the current cohort's raw count, not 1 to 4 from a shown funnel step and not equal to a hidden one (§3.3); logged with the `count` request that computed it. |
+| `loosen[]` suggestions | Each suggestion is itself a count. | Floored; shown only if at least 5 above the current cohort's raw count, not 1 to 4 from a shown funnel step and not equal to a hidden one (§3.3); logged with the `count` request that computed it. Not offered at all for a definition with neighbours (`loosen_offered` is false), because a suggestion would need its own neighbour checks. |
 | Chat | Prompts and counts leave the host. | Only floored counts; audit log; open question 2. |
 
 ## 4. Phases
@@ -443,7 +475,7 @@ The phase 1 controls in `COHORT_TOOL.md` stay as they are. New exposure:
 |---|---|---|
 | 0, data readiness | Significance tier in `unified.variant`; HER2 call normalisation (#22); `consequence` case; flag partial years; hold viral calls | correct counts for every question |
 | 1, mart and builder | `sql/mart.sql`; `POST /api/cohort` with include criteria of every kind except sequence; funnel; pivot; Discover page with builder, cards, accrual, breakdown, pivot and data notes; versions and share link | questions 1–9, 12, 13, 15, 16, 20 |
-| 2, exclusion and order | `exclude`, `tested_negative`, report scope, `sequence`, `data` kind, the privacy additions in 3.6, compare, feasibility statement, request data | questions 10, 11, 14, 17, 18 |
+| 2, exclusion and order | `exclude`, `tested_negative`, report scope, `sequence`, `data` kind, the privacy additions in 3.6, compare, feasibility statement (#38); request data is still deferred (#16) | questions 10, 11, 14, 17, 18 |
 | 3, assistant | `/api/chat`, the tool set, behaviour tests | the guided path for every question |
 
 The twenty questions are the acceptance suite. Each phase is done when its
@@ -460,9 +492,8 @@ definition it proposes must match a hand-written one.
 2. **Assistant and the DUAs.** May floored aggregate counts and researchers'
    prompts go to an external model provider? If not, the assistant needs a
    model hosted on campus, or it waits.
-3. **Exclusion.** Ship `exclude` and `tested_negative` with the
-   differencing rule in 3.6, or keep the tool include-only as
-   `COHORT_TOOL.md` phase 3 proposed?
+3. **Exclusion.** Answered by #38: ship `exclude` and `tested_negative` with
+   the neighbour check in 3.6.
 4. **Cut points.** Are TMB 10/16/20, CPS 1/10/20, TPS 1/50, expression
    percentile 50/75/90 and purity 20/30/50 the right fixed thresholds?
 5. **Viral calls.** Who can review the FMI HHV-4 and HPV-16 calls in prostate

@@ -14,7 +14,7 @@ const def: Definition = {
 const result = (over: Partial<CountResult> = {}): CountResult => ({
   cohort_id: "abc", patients: 8, reports: 9, denominator: 120, min_cell: 5,
   funnel: [{criterion: null, patients: 120}, {criterion: "c1", patients: 8}, {criterion: "c2", patients: null}],
-  loosen: [], by_year: [{year: 2023, patients: 6, complete: true}, {year: 2024, patients: null, complete: true}, {year: 2025, patients: 3, complete: false}],
+  loosen: [], loosen_offered: true, by_year: [{year: 2023, patients: 6, complete: true}, {year: 2024, patients: null, complete: true}, {year: 2025, patients: 3, complete: false}],
   breakdowns: {sex: [{value: "female", patients: 6, denominator: 70}, {value: "male", patients: null, denominator: null}]},
   notes: ["Stage and treatment are not in the data."],
   ...over,
@@ -31,7 +31,7 @@ describe("suppressed counts", () => {
     expect(html).toContain('<span class="suppressed"');
     expect(html).toContain("&lt;5");
     expect(html).not.toContain(">0<");
-    expect(html).toContain("fewer than 5 patients");
+    expect(html).toContain("patient count not shown");
   });
   test("zero renders 0 and a shown count is formatted", () => {
     const html = render(result({patients: 0, reports: 1234}));
@@ -92,6 +92,13 @@ describe("loosen", () => {
   });
   test("nothing to loosen says so", () => {
     expect(render(result({patients: null}))).toContain("No single criterion, dropped, brings this cohort to 5 or more.");
+  });
+  test("a definition with neighbours is not offered suggestions: it says why, once", () => {
+    const html = render(result({patients: null, loosen_offered: false}));
+    expect(html).toContain("Too few patients to show, or hidden so a small group cannot be worked out by subtraction.");
+    expect(html).not.toContain("No single criterion");
+    expect(html).not.toContain("Too few patients to show.");
+    expect(render(result({loosen_offered: false}))).not.toContain('class="loosen"');
   });
   test("no box for a shown cohort without suggestions", () => {
     expect(render(result())).not.toContain('class="loosen"');

@@ -114,3 +114,8 @@ table.grid th[scope="row"], table.grid thead th:first-child { text-align: left; 
   background-image: repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 6px);
 }
 td.hatched { background-image: repeating-linear-gradient(45deg, color-mix(in srgb, currentColor 25%, transparent) 0 2px, transparent 2px 6px); }
+.panel { padding: .6rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+.panel textarea { width: 100%; max-width: 60rem; }
+.criterion header select { margin-left: .5rem; }
+.sequence { display: grid; gap: .4rem; margin: .3rem 0; }
+.sequence h4 { margin: .2rem 0; }

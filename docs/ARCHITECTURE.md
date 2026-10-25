@@ -27,7 +27,7 @@ and the decisions behind it. Tracking issue: #23.
    count it returns has passed `suppress()`. Neither the browser nor a model ever sends SQL.
    The package is `mcp/src/uccc_genomics_mcp/cohort/` (#34).
 2. **Edits are operations.** `add_criterion`, `remove_criterion`, `set_mode`, `set_population`,
-   `set_breakdown`, … Clicks, MCP calls and chat turns all send operations; applying one makes a
+   `set_breakdown`, `set_scope`, … Clicks, MCP calls and chat turns all send operations; applying one makes a
    new immutable version. History, undo, reviewable assistant proposals and an audit of intent
    come from this.
 3. **A mart under the compiler.** `deid` builds `mart.report` and `mart.fact`

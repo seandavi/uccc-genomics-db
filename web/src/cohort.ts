@@ -1,5 +1,5 @@
 // Pure helpers: labels, formatting, vocabulary entry -> action, versions, share hash, combobox keys.
-import type { BreakdownDim, Criterion, Definition, Leaf, Option, Population } from "./types.ts";
+import type { BreakdownDim, CountResult, Criterion, Definition, Leaf, Mode, Option, Population, SeqMember } from "./types.ts";
 
 export interface Version { n: number; definition: Definition }
 export interface History { versions: Version[]; current: number }   // current indexes versions
@@ -73,7 +73,28 @@ function tierSuffix(tier: string[]): string {
   return ` (${tier.map((t) => TIER_NAMES[t]).join(", ")} only)`;
 }
 
-export function criterionLabel(c: Criterion | Leaf): string {
+export const DATA_LABELS: Record<string, string> = {
+  wts: "Has whole-transcriptome sequencing", liquid: "Has a liquid biopsy", tissue: "Has tissue testing",
+  both_vendors: "Tested by both Caris and FMI", serial: "Two or more reports",
+};
+/** `data` has values that are per report; the other two are per patient. */
+export const REPORT_DATA = ["wts", "liquid", "tissue"];
+
+export const DATA_ENTRIES: Option[] = Object.keys(DATA_LABELS).map((value) => ({field: "data.has", parent: null, value}));
+export const dataEntries = (q: string): Option[] =>
+  q.trim() === "" ? [] : DATA_ENTRIES.filter((e) => DATA_LABELS[e.value].toLowerCase().includes(q.trim().toLowerCase()));
+
+const VENDOR_NAMES = {caris: "Caris", fmi: "FMI"} as const;
+
+export function criterionLabel(c: Criterion | Leaf | SeqMember): string {
+  const vendor = "vendor" in c && c.vendor ? ` (${VENDOR_NAMES[c.vendor]})` : "";
+  const mode = "mode" in c ? c.mode : "include";
+  if (mode === "tested_negative" && c.kind === "alteration") return `${c.gene.join(" and ")} tested negative${vendor}`;
+  const label = baseLabel(c) + vendor;
+  return mode === "exclude" ? `no ${label}` : label;
+}
+
+function baseLabel(c: Criterion | Leaf | SeqMember): string {
   switch (c.kind) {
     case "alteration": {
       const genes = c.gene.join(" or ");
@@ -102,12 +123,26 @@ export function criterionLabel(c: Criterion | Leaf): string {
       return c.evidence.map((e) => EVIDENCE[e] ?? e).join(" or ");
     case "any_of":
       return c.of.map(criterionLabel).join(" or ");
+    case "data":
+      return DATA_LABELS[c.has] ?? c.has;
+    case "sequence":
+      return `${c.first.map(criterionLabel).join(" and ")}, then later ${c.then.map(criterionLabel).join(" and ")}`;
   }
+}
+
+/** The modes a criterion may take: tested negative needs an alteration without a protein change, of class mutation or any. */
+export function modesFor(c: Criterion): Mode[] {
+  if (c.kind === "sequence") return ["include"];
+  if (c.kind === "alteration" && c.aa.length === 0 && (c.class.length === 0 || (c.class.length === 1 && c.class[0] === "mutation"))) {
+    return ["include", "exclude", "tested_negative"];
+  }
+  return ["include", "exclude"];
 }
 
 const FIELD_LABELS: Record<string, string> = {
   "population.oncotree": "Tumor type (OncoTree)", "population.organ": "Organ system", "population.sex": "Sex",
   "population.age_band": "Age band", "population.vendor": "Vendor", "population.assay_class": "Assay class",
+  "data.has": "Data available",
   "biomarker.name": "Biomarker", "alteration.gene": "Gene", "ihc.marker": "IHC marker", "ihc.clone": "IHC clone", "expression.gene": "Expression (gene)",
   "specimen.site_type": "Specimen site type", "specimen.site": "Specimen site", "actionability.evidence": "Actionability",
 };
@@ -144,7 +179,7 @@ const AXIS_COLUMNS: Record<string, [string, string, string]> = {
 export function pivotAxes(d: Definition): {value: string; label: string}[] {
   const axes: {value: string; label: string}[] = DIM_AXES.map((a) => ({...a}));
   for (const c of d.criteria) {
-    if (!c.id || c.kind === "specimen" || (c.kind === "any_of" && c.of.some((m) => m.kind === "specimen"))) continue;
+    if (!c.id || c.mode !== "include" || c.kind === "data" || c.kind === "sequence" || c.kind === "specimen" || (c.kind === "any_of" && c.of.some((m) => m.kind === "specimen"))) continue;
     AXIS_COLUMNS[c.kind].forEach((col, i) => {
       if (col) axes.push({value: `${c.id}.${["key", "sub", "val"][i]}`, label: `${c.id} · ${criterionLabel(c)} · ${col}`});
     });
@@ -156,9 +191,11 @@ export function pivotAxes(d: Definition): {value: string; label: string}[] {
 
 /** A vocabulary entry as a new criterion (id left to add_criterion); null for population values. */
 export function newCriterion(e: Option): Criterion | null {
-  const base = {id: null, mode: "include"} as const;
+  const base = {id: null, mode: "include", vendor: null} as const;
   const parent = e.parent ?? "";
   switch (e.field) {
+    case "data.has":
+      return {...base, kind: "data", has: e.value as Extract<Criterion, {kind: "data"}>["has"]};
     case "alteration.gene":
       return {...base, kind: "alteration", gene: [e.value], aa: [], class: [], tier: []};
     case "alteration.aa":
@@ -235,4 +272,22 @@ export function comboKey(state: ComboState, key: string, count: number): ComboSt
     case "Escape": return {open: false, active: 0, pick: false};
     default: return s;
   }
+}
+
+// --- feasibility statement -----------------------------------------------------------------------
+
+/** One paragraph for a grant's feasibility section. Every number comes from the result, the window or the definition. */
+export function feasibility(d: Definition, r: CountResult, years: readonly [number, number] | null): string {
+  // A null count says nothing about its size: it is under min_cell or could be worked out by subtraction.
+  const n = (x: number | null | undefined, suppressed: string) => (x == null ? suppressed : fmtCount(x));
+  const window = years ? `Between ${years[0]} and ${years[1]},` : "To date,";
+  const pop = populationLabel(d.population);
+  const perYear = accrualPerYear(r.patients, years);
+  let text = `${window} the UCCC sequenced ${n(r.denominator, "a suppressed number of")} patients${pop === "All patients" ? "" : ` in ${pop}`}`;
+  if (d.criteria.length) text += `, of whom ${n(r.patients, "a suppressed number")} met: ${d.criteria.map(criterionLabel).join("; ")}`;
+  if (perYear != null) text += ` (about ${perYear.toFixed(1)} a year)`;
+  text += ".";
+  if (d.scope === "report") text += " Every criterion was met on the same report.";
+  text += ` Counts are distinct de-identified patients from Caris and FMI reports; counts under ${r.min_cell}, and counts that would let one be worked out by subtraction, are not shown. ${r.notes.join(" ")}`;
+  return text;
 }

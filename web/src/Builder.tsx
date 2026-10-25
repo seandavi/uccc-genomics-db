@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from "react";
 import {
-  EVIDENCE, POP_DIMS, addToPopulation, biomarkerEntries, comboKey, criterionLabel, fieldLabel, newCriterion,
-  type ComboState, type PopDim,
+  EVIDENCE, POP_DIMS, REPORT_DATA, addToPopulation, biomarkerEntries, comboKey, criterionLabel, dataEntries, fieldLabel,
+  modesFor, newCriterion, type ComboState, type PopDim,
 } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
-import type { Criterion, Definition, Leaf, Operation, Option, Options, Population } from "./types.ts";
+import type { Criterion, Definition, Leaf, Mode, Operation, Option, Options, Population, SeqMember } from "./types.ts";
 
 const DIM_LABELS: Record<PopDim, string> = {
   oncotree: "tumor type", organ: "organ", sex: "sex", age_band: "age", vendor: "vendor", assay_class: "assay",
@@ -202,7 +202,30 @@ function Editor({c, transport, options, onSave, onCancel}: {
   );
 }
 
+const VENDORS = [["", "any vendor"], ["caris", "Caris"], ["fmi", "FMI"]] as const;
+
+function VendorSelect({d, set}: {d: Exclude<Criterion, {kind: "any_of" | "sequence"}>; set: (c: Criterion) => void}) {
+  if (d.kind === "data" && !REPORT_DATA.includes(d.has)) return null;   // both_vendors and serial span vendors
+  return (
+    <label>Vendor{" "}
+      <select aria-label="Vendor" value={d.vendor ?? ""} onChange={(e) => set({...d, vendor: (e.target.value || null) as typeof d.vendor})}>
+        {VENDORS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function EditorBody({d, set, transport, cuts}: {d: Criterion; set: (c: Criterion) => void; transport: Transport; cuts: (k: string) => number[]}) {
+  if (d.kind === "any_of" || d.kind === "sequence") return null;
+  return (
+    <>
+      <KindEditor d={d} set={set} transport={transport} cuts={cuts} />
+      <VendorSelect d={d} set={set} />
+    </>
+  );
+}
+
+function KindEditor({d, set, transport, cuts}: {d: Exclude<Criterion, {kind: "any_of" | "sequence"}>; set: (c: Criterion) => void; transport: Transport; cuts: (k: string) => number[]}) {
   switch (d.kind) {
     case "alteration": return <AlterationEditor d={d} set={set} transport={transport} />;
     case "biomarker": return <BiomarkerEditor d={d} set={set} transport={transport} cuts={cuts} />;
@@ -212,7 +235,7 @@ function EditorBody({d, set, transport, cuts}: {d: Criterion; set: (c: Criterion
         onChange={(v) => set({...d, percentile_at_least: v})} />;
     case "specimen": return <SpecimenEditor d={d} set={set} transport={transport} cuts={cuts} />;
     case "actionability": return <ActionabilityEditor d={d} set={set} transport={transport} />;
-    case "any_of": return null;
+    case "data": return null;
   }
 }
 
@@ -300,47 +323,103 @@ function ActionabilityEditor({d, set, transport}: EditorProps<"actionability">) 
 // --- criterion cards -------------------------------------------------------------------------------
 
 const MAX_OR = 8;
-const leafOf = (c: Criterion): Leaf => { const {id: _id, ...rest} = c as Leaf; return {...rest, id: null} as Leaf; };
+const MAX_SEQ = 4;
+const MODE_LABELS: Record<Mode, string> = {include: "Include", exclude: "Exclude", tested_negative: "Tested negative"};
+const leafOf = (c: Criterion | SeqMember): Leaf => { const {id: _id, ...rest} = c as Leaf; return {...rest, id: null, mode: "include"} as Leaf; };
+const isReportData = (c: Criterion | SeqMember) => c.kind === "data" && REPORT_DATA.includes(c.has);
+/** An entry that can be a `sequence` member: a finding, or data held by one report. */
+const seqEntry = (e: Option) => !e.field.startsWith("population.") && (e.field !== "data.has" || REPORT_DATA.includes(e.value));
+const seqMember = (e: Option): SeqMember | null => {
+  const nc = newCriterion(e);
+  return nc && nc.kind !== "any_of" && nc.kind !== "sequence" ? (leafOf(nc) as SeqMember) : null;
+};
+
+/** An any_of without member i; the last member left stands in for it, keeping the any_of's mode (its members are always include). */
+export function withoutMember(c: Extract<Criterion, {kind: "any_of"}>, i: number): Criterion {
+  const rest = c.of.filter((_, j) => j !== i);
+  return rest.length === 1 ? {...rest[0], id: c.id, mode: c.mode} : {...c, of: rest};
+}
 
 function CriterionCard({c, transport, options, onOp}: {c: Criterion; transport: Transport; options: Options | null; onOp: (op: Operation) => void}) {
-  const [mode, setMode] = useState<"edit" | "or" | null>(null);
+  const [mode, setMode] = useState<"edit" | "or" | "then" | null>(null);
   const id = c.id ?? "";
   const update = (criterion: Criterion) => { setMode(null); onOp({op: "update_criterion", id, criterion}); };
   const orIn = (e: Option) => {
     const nc = newCriterion(e);
-    if (!nc || nc.kind === "any_of") return;
+    if (!nc || nc.kind === "any_of" || nc.kind === "sequence" || nc.kind === "data") return;
     setMode(null);
-    update(c.kind === "any_of" ? {...c, of: [...c.of, leafOf(nc)]} : {kind: "any_of", id, mode: "include", of: [leafOf(c), leafOf(nc)]});
+    update(c.kind === "any_of" ? {...c, of: [...c.of, leafOf(nc)]} : {kind: "any_of", id, mode: c.mode, of: [leafOf(c), leafOf(nc)]});
   };
-  const dropMember = (i: number) => {
-    if (c.kind !== "any_of") return;
-    const rest = c.of.filter((_, j) => j !== i);
-    update(rest.length === 1 ? {...rest[0], id} : {...c, of: rest});
+  const thenIn = (e: Option) => {
+    const member = seqMember(e);
+    if (member) update({kind: "sequence", id, mode: "include", first: [leafOf(c) as SeqMember], then: [member]});
   };
+  const dropMember = (i: number) => { if (c.kind === "any_of") update(withoutMember(c, i)); };
+  const editable = c.kind !== "any_of" && c.kind !== "sequence" && !(c.kind === "data" && !isReportData(c));
+  const canOr = c.kind !== "sequence" && c.kind !== "data" && c.mode !== "tested_negative";
+  const canThen = c.mode === "include" && c.kind !== "any_of" && c.kind !== "sequence" && (c.kind !== "data" || isReportData(c));
   return (
     <article className="criterion" aria-label={criterionLabel(c)}>
       <header>
-        <span className="cid">{id}</span> <span className="clabel">{criterionLabel(c)}</span>
+        <span className="cid">{id}</span> <span className="clabel">{criterionLabel(c)}</span>{" "}
+        <select aria-label={`Mode of ${id}`} value={c.mode}
+          onChange={(e) => onOp({op: "set_mode", id, mode: e.target.value as Mode})}>
+          {modesFor(c).map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
+        </select>
       </header>
       {c.kind === "any_of" && (
         <ul className="members">{c.of.map((m, i) => (
           <li key={i}>{criterionLabel(m)} <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${id}`} onClick={() => dropMember(i)}>×</button></li>
         ))}</ul>
       )}
+      {c.kind === "sequence" && <SequenceMembers c={c} transport={transport} onChange={update} />}
       <div className="row">
-        {c.kind !== "any_of" && <button type="button" aria-expanded={mode === "edit"} onClick={() => setMode(mode === "edit" ? null : "edit")}>Edit</button>}
-        <button type="button" aria-expanded={mode === "or"} disabled={c.kind === "any_of" && c.of.length >= MAX_OR}
-          onClick={() => setMode(mode === "or" ? null : "or")}>Or…</button>
+        {editable && <button type="button" aria-expanded={mode === "edit"} onClick={() => setMode(mode === "edit" ? null : "edit")}>Edit</button>}
+        {canOr && (
+          <button type="button" aria-expanded={mode === "or"} disabled={c.kind === "any_of" && c.of.length >= MAX_OR}
+            onClick={() => setMode(mode === "or" ? null : "or")}>Or…</button>
+        )}
+        {canThen && <button type="button" aria-expanded={mode === "then"} onClick={() => setMode(mode === "then" ? null : "then")}>Then…</button>}
         <button type="button" onClick={() => onOp({op: "remove_criterion", id})}>Remove</button>
       </div>
       {mode === "edit" && <Editor c={c} transport={transport} options={options} onSave={update} onCancel={() => setMode(null)} />}
-      {mode === "or" && <Typeahead label="Or any of" search={(q) => searchAll(transport, q).then((r) => r.filter((e) => !e.field.startsWith("population.")))} onPick={orIn} />}
+      {mode === "or" && <Typeahead label="Or any of" search={(q) => searchAll(transport, q).then((r) => r.filter((e) => !e.field.startsWith("population.") && e.field !== "data.has"))} onPick={orIn} />}
+      {mode === "then" && <Typeahead label="Then, on a later report" search={(q) => searchAll(transport, q).then((r) => r.filter(seqEntry))} onPick={thenIn} />}
     </article>
   );
 }
 
+/** A sequence criterion: the members of the first report and of a strictly later one (each side ANDed on one report). */
+function SequenceMembers({c, transport, onChange}: {c: Extract<Criterion, {kind: "sequence"}>; transport: Transport; onChange: (c: Criterion) => void}) {
+  const sides = [["first", "First report"], ["then", "Later report"]] as const;
+  return (
+    <div className="sequence">
+      {sides.map(([side, title]) => {
+        const members = c[side];
+        const set = (next: SeqMember[]) => onChange({...c, [side]: next});
+        return (
+          <div key={side}>
+            <h4>{title}</h4>
+            <ul className="members">{members.map((m, i) => (
+              <li key={i}>{criterionLabel(m)}{" "}
+                <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${title.toLowerCase()} of ${c.id}`}
+                  disabled={members.length === 1} onClick={() => set(members.filter((_, j) => j !== i))}>×</button>
+              </li>
+            ))}</ul>
+            {members.length < MAX_SEQ && (
+              <Typeahead label={`And on the same report… (${title.toLowerCase()})`}
+                search={(q) => searchAll(transport, q).then((r) => r.filter(seqEntry))}
+                onPick={(e) => { const m = seqMember(e); if (m) set([...members, m]); }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const searchAll = (transport: Transport, q: string): Promise<Option[]> =>
-  transport.options({q, limit: 20}).then((o) => [...biomarkerEntries(q), ...o.entries]);
+  transport.options({q, limit: 20}).then((o) => [...biomarkerEntries(q), ...dataEntries(q), ...o.entries]);
 
 // --- builder ---------------------------------------------------------------------------------------
 
@@ -362,6 +441,10 @@ export function Builder({definition: d, transport, options, onOp}: {
       </section>
       <section aria-labelledby="crit-h">
         <h2 id="crit-h">Criteria <small>(all must match)</small></h2>
+        <label>
+          <input type="checkbox" checked={d.scope === "report"}
+            onChange={(e) => onOp({op: "set_scope", scope: e.target.checked ? "report" : "patient"})} /> All criteria on the same report
+        </label>
         {d.criteria.map((c) => <CriterionCard key={c.id} c={c} transport={transport} options={options} onOp={onOp} />)}
         <Typeahead label="Add criterion" search={(q) => searchAll(transport, q)} onPick={add} />
       </section>

@@ -83,8 +83,14 @@ class Vocabulary(BaseModel):
                 raise DefinitionError(f"population.years: {list(d.population.years)} is outside the data's years "
                                       f"{list(self.years) if self.years else 'none'}")
         for c in d.criteria:
-            for j, m in enumerate(c.of if c.kind == "any_of" else [c]):
-                p = f"criteria.{c.id}" + (f".of.{j}" if c.kind == "any_of" else "")
+            if c.kind == "any_of":
+                members = [(f"criteria.{c.id}.of.{j}", m) for j, m in enumerate(c.of)]
+            elif c.kind == "sequence":
+                members = ([(f"criteria.{c.id}.first.{j}", m) for j, m in enumerate(c.first)]
+                           + [(f"criteria.{c.id}.then.{j}", m) for j, m in enumerate(c.then)])
+            else:
+                members = [(f"criteria.{c.id}", c)]
+            for p, m in members:
                 match m.kind:
                     case "alteration":
                         need(f"{p}.gene", "alteration.gene", m.gene)

@@ -265,14 +265,16 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** AddCriterion */
         AddCriterion: {
             /** Criterion */
-            criterion: components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["AnyOf"];
+            criterion: components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["Data"] | components["schemas"]["AnyOf"] | components["schemas"]["Sequence"];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -303,9 +305,9 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
             /**
              * Tier
              * @default [
@@ -314,6 +316,8 @@ export interface components {
              *     ]
              */
             tier: ("pathogenic" | "likely_pathogenic" | "vus" | "unclassified")[];
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** AnyOf */
         AnyOf: {
@@ -327,9 +331,9 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
             /** Of */
             of: (components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"])[];
         };
@@ -337,7 +341,7 @@ export interface components {
         ApplyRequest: {
             definition: components["schemas"]["Definition"];
             /** Op */
-            op: components["schemas"]["AddCriterion"] | components["schemas"]["RemoveCriterion"] | components["schemas"]["UpdateCriterion"] | components["schemas"]["SetPopulation"] | components["schemas"]["SetBreakdown"] | components["schemas"]["SetPivot"] | components["schemas"]["Rename"];
+            op: components["schemas"]["AddCriterion"] | components["schemas"]["RemoveCriterion"] | components["schemas"]["UpdateCriterion"] | components["schemas"]["SetMode"] | components["schemas"]["SetPopulation"] | components["schemas"]["SetBreakdown"] | components["schemas"]["SetPivot"] | components["schemas"]["SetScope"] | components["schemas"]["Rename"];
         };
         /** ApplyResult */
         ApplyResult: {
@@ -364,14 +368,16 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
             /**
              * Name
              * @enum {string}
              */
             name: "TMB" | "MSI" | "LOH";
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** BreakdownCell */
         BreakdownCell: {
@@ -405,6 +411,11 @@ export interface components {
             /** Loosen */
             loosen: components["schemas"]["Loosen"][];
             /**
+             * Loosen Offered
+             * @default true
+             */
+            loosen_offered: boolean;
+            /**
              * Min Cell
              * @default 5
              */
@@ -415,6 +426,29 @@ export interface components {
             patients: number | null;
             /** Reports */
             reports: number | null;
+        };
+        /** Data */
+        Data: {
+            /**
+             * Has
+             * @enum {string}
+             */
+            has: "wts" | "liquid" | "tissue" | "both_vendors" | "serial";
+            /** Id */
+            id?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "data";
+            /**
+             * Mode
+             * @default include
+             * @enum {string}
+             */
+            mode: "include" | "exclude" | "tested_negative";
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** Definition */
         Definition: {
@@ -427,7 +461,7 @@ export interface components {
              * Criteria
              * @default []
              */
-            criteria: (components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["AnyOf"])[];
+            criteria: (components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["Data"] | components["schemas"]["AnyOf"] | components["schemas"]["Sequence"])[];
             /**
              * Name
              * @default
@@ -448,9 +482,9 @@ export interface components {
             /**
              * Scope
              * @default patient
-             * @constant
+             * @enum {string}
              */
-            scope: "patient";
+            scope: "patient" | "report";
             /**
              * Version
              * @default 1
@@ -480,11 +514,13 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
             /** Percentile At Least */
             percentile_at_least?: number | null;
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** FunnelStep */
         FunnelStep: {
@@ -528,9 +564,11 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** Loosen */
         Loosen: {
@@ -694,7 +732,7 @@ export interface components {
         /** SavedApplyRequest */
         SavedApplyRequest: {
             /** Op */
-            op: components["schemas"]["AddCriterion"] | components["schemas"]["RemoveCriterion"] | components["schemas"]["UpdateCriterion"] | components["schemas"]["SetPopulation"] | components["schemas"]["SetBreakdown"] | components["schemas"]["SetPivot"] | components["schemas"]["Rename"];
+            op: components["schemas"]["AddCriterion"] | components["schemas"]["RemoveCriterion"] | components["schemas"]["UpdateCriterion"] | components["schemas"]["SetMode"] | components["schemas"]["SetPopulation"] | components["schemas"]["SetBreakdown"] | components["schemas"]["SetPivot"] | components["schemas"]["SetScope"] | components["schemas"]["Rename"];
         };
         /** SavedCohort */
         SavedCohort: {
@@ -739,6 +777,26 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** Sequence */
+        Sequence: {
+            /** First */
+            first: (components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["Data"])[];
+            /** Id */
+            id?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "sequence";
+            /**
+             * Mode
+             * @default include
+             * @enum {string}
+             */
+            mode: "include" | "exclude" | "tested_negative";
+            /** Then */
+            then: (components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["Data"])[];
+        };
         /** SetBreakdown */
         SetBreakdown: {
             /** Breakdown */
@@ -748,6 +806,21 @@ export interface components {
              * @enum {string}
              */
             op: "set_breakdown";
+        };
+        /** SetMode */
+        SetMode: {
+            /** Id */
+            id: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "include" | "exclude" | "tested_negative";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "set_mode";
         };
         /** SetPivot */
         SetPivot: {
@@ -766,6 +839,19 @@ export interface components {
              */
             op: "set_population";
             population: components["schemas"]["Population"];
+        };
+        /** SetScope */
+        SetScope: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "set_scope";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "patient" | "report";
         };
         /** Snapshot */
         Snapshot: {
@@ -806,9 +892,9 @@ export interface components {
             /**
              * Mode
              * @default include
-             * @constant
+             * @enum {string}
              */
-            mode: "include";
+            mode: "include" | "exclude" | "tested_negative";
             /** Purity At Least */
             purity_at_least?: number | null;
             /**
@@ -821,11 +907,13 @@ export interface components {
              * @default []
              */
             site_type: string[];
+            /** Vendor */
+            vendor?: ("caris" | "fmi") | null;
         };
         /** UpdateCriterion */
         UpdateCriterion: {
             /** Criterion */
-            criterion: components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["AnyOf"];
+            criterion: components["schemas"]["Alteration"] | components["schemas"]["Biomarker"] | components["schemas"]["Ihc"] | components["schemas"]["Expression"] | components["schemas"]["Specimen"] | components["schemas"]["Actionability"] | components["schemas"]["Data"] | components["schemas"]["AnyOf"] | components["schemas"]["Sequence"];
             /** Id */
             id: string;
             /**
