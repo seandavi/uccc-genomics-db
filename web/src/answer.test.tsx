@@ -79,7 +79,7 @@ describe("loosen", () => {
     expect(html).toContain("Drop ALK fusion → 6 patients");
     expect(html).toContain(">Drop</button>");
   });
-  test("labels come from the counted definition; Drop is disabled while stale, and the body is dimmed", () => {
+  test("labels come from the counted definition; Drop is disabled while stale", () => {
     const egfr = {...alk, gene: ["EGFR"], aa: [], class: ["mutation"]} as Criterion;
     const edited: Definition = {...def, criteria: [kras, egfr]};
     const counted: Counted = {d: def, r: result({patients: null, loosen: [{drop: "c2", patients: 6}]}), p: null};
@@ -87,7 +87,7 @@ describe("loosen", () => {
     expect(html).toContain("∧ ALK fusion");
     expect(html).not.toContain("EGFR");
     expect(html).toMatch(/<button type="button" disabled="">Drop<\/button>/);
-    expect(html).toContain('class="answer-body dim"');
+    expect(html).not.toContain("dim");   // stale, not busy
     expect(render(result())).not.toContain("dim");
   });
   test("nothing to loosen says so", () => {
@@ -137,6 +137,31 @@ describe("tabs", () => {
     expect(html).toContain("<caption>Tumor type (OncoTree) × Year of first qualifying report</caption>");
     expect(html).toContain('<th scope="col">Tumor type (OncoTree)</th>');
     expect(html).toContain('<th scope="col">2023</th>');
+    expect(html).toContain("0: no patients have that combination. &lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction.");
+    expect(html).not.toContain("Blank combinations");
+  });
+  test("breakdown: a stale answer shows the counted breakdown", () => {
+    const edited: Definition = {...def, breakdown: ["sex", "age_band"]};
+    const counted: Counted = {d: def, r: result(), p: null};
+    const html = renderToStaticMarkup(<Answer definition={edited} answer={counted} options={null} tab="Breakdown"
+      onTab={() => {}} onOp={() => {}} />);
+    expect(html).toContain('role="region" aria-label="Sex"');
+    expect(html).not.toContain('aria-label="Age band"');
+  });
+  test("pivot: a stale answer labels criterion axes from the counted definition", () => {
+    const egfr = {...alk, gene: ["EGFR"], aa: [], class: ["mutation"]} as Criterion;   // same id c2
+    const countedD: Definition = {...def, pivot: {rows: "c2.key", cols: "year"}};
+    const edited: Definition = {...countedD, criteria: [kras, egfr]};
+    const pivot: PivotResult = {
+      cohort_id: "abc", rows: "c2.key", cols: "year", patients: 8, min_cell: 5, notes: [],
+      cells: [{row: "ALK", col: "2023", patients: 6}],
+      row_totals: [{value: "ALK", patients: 6}], col_totals: [{value: "2023", patients: 6}],
+    };
+    const html = renderToStaticMarkup(<Answer definition={edited} answer={{d: countedD, r: result(), p: pivot}}
+      options={null} tab="Pivot" onTab={() => {}} onOp={() => {}} />);
+    expect(html).toContain("<caption>c2 · ALK fusion · gene × Year of first qualifying report</caption>");
+    expect(html).toContain('<th scope="col">c2 · ALK fusion · gene</th>');
+    expect(html).not.toMatch(/<caption>[^<]*EGFR/);
   });
   test("pivot before choosing", () => {
     expect(render(result(), "Pivot")).toContain("Choose rows and columns.");
@@ -158,6 +183,10 @@ describe("states", () => {
     expect(html).toContain("c9: no such criterion");
     expect(html).toContain(">Retry</button>");
     expect(render(result(), "Accrual", {error: "x"})).not.toContain("Retry");
+  });
+  test("the body is dimmed only while busy", () => {
+    expect(render(result(), "Accrual", {busy: true})).toContain('class="answer-body dim"');
+    expect(render(result(), "Accrual", {busy: false})).not.toContain("dim");
   });
   test("tablist roles", () => {
     const html = render(result());

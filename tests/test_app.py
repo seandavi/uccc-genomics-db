@@ -242,6 +242,7 @@ def test_tools_list(client):
     assert "definition" in tools["count"]["inputSchema"]["properties"]
     assert "definition" in tools["pivot"]["inputSchema"]["properties"]
     assert "patients" not in json.dumps(tools["search_vocabulary"]["outputSchema"])
+    assert all(f in tools["search_vocabulary"]["description"] for f in FIELDS)
 
 
 def test_openapi_names_the_models(client):
@@ -278,7 +279,8 @@ def test_instructions_say_how_cells_overlap():
     text = " ".join(app.INSTRUCTIONS.split())
     assert "a patient with reports from both vendors counts once" in text
     assert "cells need not add up to patients" in text
-    assert "reports counts reports" in text
+    assert "reports counts the cohort patients' in-population reports" in text
+    assert "it is not a patient count" in text
     assert "Counts are distinct patients." not in text
 
 

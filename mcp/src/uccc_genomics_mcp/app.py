@@ -38,19 +38,21 @@ from uccc_genomics_mcp.server import get_db
 Surface = Literal["rest", "mcp"]
 
 INSTRUCTIONS = (
-    "Build a cohort definition (its JSON Schema comes from describe_definition), edit it with apply_op, "
-    "map the user's words to vocabulary values with search_vocabulary, then count it, or pivot it once its "
-    "pivot is set. patients, denominator, the funnel and years count distinct patients across Caris and FMI "
-    "(a patient with reports from both vendors counts once). A breakdown or pivot cell counts the patients "
-    "with a report having that value, so one patient can be in several cells and cells need not add up to "
-    "patients. reports counts reports. null means suppressed (1-4, or recoverable by subtraction), never zero. "
+    "Build a cohort definition (its JSON Schema comes from describe_definition), edit it with apply_op, map "
+    "the user's words to vocabulary values with search_vocabulary, then count it, or pivot it once its pivot "
+    "is set. patients, denominator, the funnel and years count distinct patients across Caris and FMI (a "
+    "patient with reports from both vendors counts once). A breakdown or pivot cell counts the patients with "
+    "a report having that value, so one patient can be in several cells and cells need not add up to "
+    "patients. reports counts the cohort patients' in-population reports (Caris and FMI) that match at least "
+    "one criterion, or every population report when there are no criteria; it is not a patient count. null "
+    "means suppressed (1-4, or recoverable by subtraction), never zero. "
     "A criterion's mode is include (default), exclude or tested_negative; scope 'report' makes every criterion "
     "match on one report. A count can also be null because it differs by 1-4 from the same cohort without an "
     "exclusion or one population value (so a small group cannot be worked out by subtraction). "
-    "Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, "
-    "race or ethnicity. Saved cohorts belong to the logged-in user: save_cohort, then edit with apply_saved_op "
-    "(each edit is a new revision; revert_saved_cohort undoes). Saved cohorts hold no counts; count the head "
-    "definition. Snapshots store the suppressed count with its data date for grant text.")
+    "Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, race or ethnicity. Saved cohorts belong to the "
+    "logged-in user: save_cohort, then edit with apply_saved_op (each edit is a new revision; "
+    "revert_saved_cohort undoes). Saved cohorts hold no counts; count the head definition. Snapshots store "
+    "the suppressed count with its data date for grant text.")
 
 
 # --- auth ----------------------------------------------------------------------------------------
@@ -272,7 +274,9 @@ def count(definition: Definition, ctx: Context) -> CountResult:
     a cohort too small to show, which criterion to loosen. null means suppressed (under 5, or hidden so a
     small count cannot be worked out by subtraction), never zero.
     `denominator` is the patients in the population (in a breakdown cell: the population's patients
-    with that value), the base for a percentage; `reports` counts reports, not patients."""
+    with that value), the base for a percentage. `reports` counts the cohort patients' in-population
+    reports (Caris and FMI) that match at least one criterion, or every population report when there
+    are no criteria; it is not a patient count."""
     try:
         return run_count(_mcp_user(ctx), "mcp", definition)
     except TOOL_ERRORS as e:

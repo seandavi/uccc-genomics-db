@@ -168,8 +168,9 @@ static mount (404) or, without `--static`, to 404.
 - `` (`--auth access|password|none`) `` → `` (`--auth access|password|none`; `none`: no login,
   local dev only) ``.
 - After "`count` and `pivot` are limited to 60 a minute per user across both surfaces", add:
-  "(a count or pivot the cohort module rejects, such as an unknown value or a pivot with no
-  rows/cols, still uses the limit; a body that fails schema validation does not)".
+  "(a count or pivot the cohort module rejects, such as an unknown vocabulary value or a pivot
+  of a definition that has no pivot, still uses the limit; a body that fails schema validation
+  does not)".
 - After "(Streamable HTTP, stateless) at `/mcp`" add "(POST only; `GET /mcp` is 405, no SSE
   stream)".
 - The example comment `# http://<tailnet-addr>:8092/api/docs, ...` → `/api/openapi.json`.

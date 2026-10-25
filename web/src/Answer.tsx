@@ -229,7 +229,7 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
               </tr>
             </tbody>
           </GridTable>
-          <p className="legend">Blank combinations are 0 patients.</p>
+          <p className="legend">0: no patients have that combination. {`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>
           </>
         )}
     </div>
@@ -270,7 +270,7 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
       {!answer ? <p>{busy ? "Counting…" : "No result yet."}</p> : (() => {
         const {d: counted, r, p: pivot} = answer;
         return (
-          <div className={busy || stale ? "answer-body dim" : "answer-body"}>
+          <div className={busy ? "answer-body dim" : "answer-body"}>
             <p aria-live="polite" className="sr-only">
               {r.patients == null ? "patient count not shown" : `${fmtCount(r.patients)} patients`}
             </p>

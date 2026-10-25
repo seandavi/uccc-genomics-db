@@ -162,14 +162,15 @@ existence. Ids are random UUIDs."). Replace the bullet with:
 - **`cohort_id` is a cross-user existence oracle for definitions (accepted, #56).** `cohort_id` is
   an unkeyed sha256 of the selecting definition, and the code that computes it is public. Any
   logged-in user can compute the id of a candidate definition and call `GET
-  /api/versions/{cohort_id}` (or `get_cohort_version`). A 200 means some user has saved or
-  snapshotted that definition; a 404 means nobody has. The lookup is not rate-limited. It reveals
-  other users' research activity, not patient data: the response is the definition the caller
-  already had, with no counts and no `created_by`. Accepted because users are campus-only, nothing
-  about patients leaks, and a keyed `cohort_id` would add another key file to manage. Revisit if the
-  audience widens beyond campus. The fixes then are a share link that carries the selecting
-  definition itself (no server lookup), or a `cohort_id` computed with a server-side key (which
-  changes every id the cohort module returns, so it needs its own issue).
+  /api/versions/{cohort_id}` (or `get_cohort_version`). A 200 means some user has ever saved,
+  edited to or snapshotted that definition (version rows outlive deletion); a 404 means nobody
+  has. The lookup is not rate-limited. It reveals other users' research activity, not patient
+  data: the response is the definition the caller already had, with no counts and no `created_by`.
+  Accepted because users are campus-only, nothing about patients leaks, and a keyed `cohort_id`
+  would add another key file to manage. Revisit if the audience widens beyond campus. The fixes
+  then are a share link that carries the selecting definition itself (no server lookup), or a
+  `cohort_id` computed with a server-side key (which changes every id the cohort module returns,
+  so it needs its own issue).
 ```
 
 ### 4. `docs/ARCHITECTURE.md`, decision 7 (security-r0-1)
@@ -179,9 +180,9 @@ line on stdout for now; moving it to Postgres is a later issue." Between those t
 
 ```markdown
 The exception is `cohort_version`: any logged-in user can resolve a `cohort_id`, so the lookup
-shows whether anyone has saved a given definition (an existence oracle). That is accepted: users
-are campus-only and no patient data or counts are revealed, and a keyed `cohort_id` would mean
-another key file to manage. Revisit if the audience widens (#56).
+shows whether anyone has ever saved a given definition (an existence oracle). That is accepted:
+users are campus-only and no patient data or counts are revealed, and a keyed `cohort_id` would
+mean another key file to manage. Revisit if the audience widens (#56).
 ```
 
 Keep the paragraph's existing 3-space hanging indent and wrap at the file's usual width (about 100
