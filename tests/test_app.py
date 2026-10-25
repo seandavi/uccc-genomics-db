@@ -122,6 +122,9 @@ CASES = [
                                               {"kind": "ihc", "marker": "PD-L1", "measure": "CPS", "at_least": 10}]}]}),
     pivot_case({"pivot": {"rows": "oncotree", "cols": "year"}}),
     pivot_case({"population": STAD, "criteria": [ihc("c1", "CLDN18")], "pivot": {"rows": "c1.val", "cols": "vendor"}}),
+    count({"population": NSCLC, "criteria": [KRAS, alt("c2", ["ALK"], **{"class": ["fusion"]}, mode="exclude")]}),
+    count({"population": NSCLC, "scope": "report", "criteria": [KRAS, ihc("c2", "ER")]}),
+    count({"population": {"oncotree": ["NSCLC", "COADREAD"]}, "criteria": [KRAS]}),   # neighbours: loosen_offered false
     apply_case({"op": "add_criterion", "criterion": {"kind": "biomarker", "name": "MSI", "call": ["high"]}}),
     apply_case({"op": "remove_criterion", "id": "c1"}),
     apply_case({"op": "update_criterion", "id": "c1", "criterion": alt("c1", ["ALK"])}),
@@ -129,6 +132,8 @@ CASES = [
     apply_case({"op": "set_breakdown", "breakdown": ["sex", "vendor"]}),
     apply_case({"op": "set_pivot", "pivot": {"rows": "oncotree", "cols": "year"}}),
     apply_case({"op": "set_pivot", "pivot": None}, {"pivot": {"rows": "oncotree", "cols": "year"}}),
+    apply_case({"op": "set_mode", "id": "c1", "mode": "exclude"}),
+    apply_case({"op": "set_scope", "scope": "report"}),
     apply_case({"op": "rename", "name": "my cohort"}),
     options("kras"), options("her2"), options(""), options("r", limit=2),
     options("", field="population.sex"), options("", field="alteration.aa", parent="KRAS", limit=50),
@@ -157,6 +162,8 @@ def test_parity_cases_are_not_trivial(client):
     loosen = rest(client, *CASES[3][:3]).json()
     assert loosen["loosen"]
     assert rest(client, *CASES[5][:3]).json()["cells"]
+    assert rest(client, *CASES[9][:3]).json()["loosen_offered"] is False
+    assert rest(client, *CASES[8][:3]).json()["loosen_offered"] is True
 
 
 @pytest.mark.parametrize("case", CASES, ids=IDS)
@@ -195,6 +202,28 @@ def test_errors_agree(client, method, path, payload, tool, args, word):
     assert word in json.dumps(r.json()["detail"])
     assert m["isError"]
     assert word in m["content"][0]["text"].split(": ", 1)[1]   # after the SDK's "Error executing tool <name>: "
+
+
+def too_many_neighbours():
+    """3 exclusions (7 subsets), 8 oncotree + 8 organ + 4 age_band + 2 sex + 2 vendor values and a year range: 33."""
+    return {"population": {"oncotree": ["NSCLC", "COADREAD", "MEL", "BRCA", "OV", "STAD", "PAAD", "CHOL"],
+                           "organ": ["Lung", "Bowel", "Skin", "Breast", "Ovary", "Esophagus/Stomach", "Pancreas",
+                                     "Biliary Tract"],
+                           "age_band": ["<50", "50-64", "65-74", "unknown"], "sex": ["female", "male"],
+                           "vendor": ["caris", "fmi"], "years": [2022, 2025]},
+            "criteria": [alt(f"c{i}", ["KRAS"], mode="exclude") for i in (1, 2, 3)]}
+
+
+def test_too_many_neighbours_is_a_400_when_counted(client):
+    d = too_many_neighbours()
+    r = rest(client, "POST", "/api/cohort", d)
+    assert r.status_code == 400 and r.json()["detail"].startswith("population:")
+    m = mcp_call(client, "count", {"definition": d})
+    assert m["isError"] and "population:" in m["content"][0]["text"]
+    assert rest(client, "POST", "/api/pivot", d | {"pivot": {"rows": "year", "cols": "sex"}}).status_code == 400
+    # Parsing and editing a definition this large still work (saved cohorts re-validate on read).
+    r = rest(client, "POST", "/api/apply", {"definition": d, "op": {"op": "rename", "name": "x"}})
+    assert r.status_code == 200 and r.json()["definition"]["name"] == "x"
 
 
 def test_options_field_described(client):
