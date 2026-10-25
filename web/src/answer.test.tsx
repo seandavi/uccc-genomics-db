@@ -130,7 +130,7 @@ describe("tabs", () => {
     expect(html).toContain("<caption>Tumor type (OncoTree) × Year of first qualifying report</caption>");
     expect(html).toContain('<th scope="col">Tumor type (OncoTree)</th>');
     expect(html).toContain('<th scope="col">2023</th>');
-    expect(html).toContain("0 means no patients have that combination; &lt;5 means fewer than 5.");
+    expect(html).toContain("0: no patients have that combination. &lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction.");
     expect(html).not.toContain("Blank combinations");
   });
   test("breakdown: a stale answer shows the counted breakdown", () => {

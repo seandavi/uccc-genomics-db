@@ -224,7 +224,7 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
               </tr>
             </tbody>
           </GridTable>
-          <p className="legend">0 means no patients have that combination; &lt;{minCell} means fewer than {minCell}.</p>
+          <p className="legend">0: no patients have that combination. {`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>
           </>
         )}
     </div>

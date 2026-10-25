@@ -190,8 +190,8 @@ answer` and `const stale = answer.d !== definition`.
   className="bar" style={{width: "0%"}} />`; else the scaled bar as today. A step that is 0 when
   the top is greater than 0 keeps today's `Math.max(1, …)` sliver.
 - `PivotTab`: a `(row, col)` pair missing from `pivot.cells` renders `<td>0</td>`. Add one
-  sentence under the table: `<p className="legend">0 means no patients have that combination;
-  &lt;{minCell} means fewer than {minCell}.</p>` (#65). The test changes from `<td>–</td>` to `<td>0</td>`.
+  sentence under the table: `<p className="legend">0: no patients have that combination.
+  {`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>` (#65). The test changes from `<td>–</td>` to `<td>0</td>`.
 
 ### Search and value errors (ux-r0-2), `web/src/Builder.tsx`
 

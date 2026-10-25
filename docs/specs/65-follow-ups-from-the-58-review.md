@@ -13,7 +13,7 @@ From the issue body (#58 review):
 
 1. **code-r0-1 / ux-r0-1**: the pivot legend no longer talks about blank cells. An omitted
    `(row, col)` pair renders `<td>0</td>`, so the table has no blank cells. The legend says what `0`
-   and `<5` mean. Spec #58 changes to match.
+   and `<5` mean, using the `SUPPRESSED` wording (a `<5` can be a subtraction-hidden larger count). Spec #58 changes to match.
 2. **code-r0-2 / ux-r0-3**: already fixed on `main` (the `search_vocabulary` docstring lists every
    name in `FIELDS`). `test_tools_list` gains the optional assertion that pins it.
 3. **code-r0-3 / ux-r0-4**: the "`localStorage` versions" Risks bullet in spec #37 ends with a
@@ -87,12 +87,13 @@ not change.
 becomes
 
 ```tsx
-<p className="legend">0 means no patients have that combination; &lt;{minCell} means fewer than {minCell}.</p>
+<p className="legend">0: no patients have that combination. {`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>
 ```
 
 `minCell` is `PivotTab`'s existing prop (the result's `min_cell`), so the legend follows the
-floor the server applied. `renderToStaticMarkup` renders it as `0 means no patients have that
-combination; &lt;5 means fewer than 5.` for `min_cell: 5`.
+floor the server applied. `renderToStaticMarkup` renders it as `0: no patients have that combination. &lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction.` for `min_cell: 5`. The `<5` clause is the
+existing `SUPPRESSED` constant (as in the `Funnel` legend), not "fewer than 5": `suppress_pivot`
+also hides cells and margins to block subtraction, so a `<5` can stand for 5 or more patients.
 
 **Dimming (ux-r0-2).** In `Answer`, the body wrapper
 
@@ -116,7 +117,7 @@ So the stale state is still flagged, and the body keeps full contrast.
 All synthetic, reusing the file's `kras`, `alk`, `def`, `result()` and `render()`.
 
 - **"pivot: a null cell renders <5 in its td; an omitted cell is a known zero"**: add
-  `expect(html).toContain("0 means no patients have that combination; &lt;5 means fewer than 5.");`
+  `expect(html).toContain("0: no patients have that combination. &lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction.");`
   and `expect(html).not.toContain("Blank combinations");`.
 - **"labels come from the counted definition; Drop is disabled while stale, and the body is
   dimmed"** is renamed **"labels come from the counted definition; Drop is disabled while stale"**.
@@ -289,7 +290,7 @@ no pivot". Re-wrap the bullet at about 100 columns.
 ### 11. `docs/specs/58-follow-ups-from-the-37-review.md` (code-r0-1, code-r0-3, ux-r0-2)
 
 - "Known zeros", the `PivotTab` bullet: the legend sentence becomes
-  `` `<p className="legend">0 means no patients have that combination; &lt;{minCell} means fewer than {minCell}.</p>` `` (#65).
+  `` `<p className="legend">0: no patients have that combination. {`<${minCell}`}: {SUPPRESSED.toLowerCase()}.</p>` `` (#65).
 - Goal 5: "a result that is in flight or stale is dimmed" → "a result that is in flight is dimmed
   (#65: not while stale; the error alert flags that)".
 - "Dimming" bullet: the wrapper becomes `<div className={busy ? "answer-body dim" : "answer-body"}>`
@@ -319,8 +320,7 @@ text around counts that were already suppressed (`<{minCell}` for null cells). T
 ## Acceptance criteria
 
 - [ ] `grep -rn "Blank combinations" web/src docs/specs/58-follow-ups-from-the-37-review.md` finds
-      nothing. The pivot tab renders "0 means no patients have that combination; &lt;5 means fewer
-      than 5." for `min_cell: 5`.
+      nothing. The pivot tab renders "0: no patients have that combination. &lt;5: fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction." for `min_cell: 5`.
 - [ ] `Answer.tsx` dims the body with `busy` only: a stale, not-busy render has no `dim`; a busy
       render has `class="answer-body dim"`. Drop buttons are still disabled while stale.
 - [ ] `web/src/answer.test.tsx` has the two new stale tests (Breakdown, Pivot) and the busy-dim
