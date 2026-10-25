@@ -10,6 +10,7 @@ column is copied with
 Also builds `mart.*` (cohort report/fact tables) from `unified.*` (sql/mart.sql).
 Tables without the key column (e.g. load-error logs naming files) are not copied.
 Key in $DATA/.deid_key (mode 600); same key => same IDs on rebuild.
+Fails (assert) if any text column in the vendor or mart schemas still contains an ID_PATTERN token, in any case.
 """
 import os
 
@@ -31,6 +32,22 @@ DROP = {
 }
 HASH = {"specimen_id", "accession_id"}  # vendor ids that embed the accession; hashed to stay joinable
 ID_PATTERN = r"TN[0-9]{2}-[0-9]{5,}|ORD-[0-9]{6,}|TRF[0-9]{5,}|CRF[0-9]{5,}|QRF[0-9]{5,}|US[0-9]{6,}\.[0-9]{2}"
+
+
+def find_leaks(con, schemas):
+    """`schema.table.column: n` for every VARCHAR/JSON column in `schemas` of the current catalog
+    with a value containing an ID_PATTERN token, ignoring case (mart.sql lower()s some values)."""
+    leaks = []
+    for s in schemas:
+        for t, c in con.execute(
+                "SELECT table_name, column_name FROM information_schema.columns WHERE table_catalog=current_database() "
+                "AND table_schema=? AND data_type IN ('VARCHAR','JSON')", [s]).fetchall():
+            # regexp_matches is a substring match; DuckDB's `~` is a full match and would miss embedded ids
+            n = con.execute(f'SELECT count(*) FROM {s}."{t}" WHERE regexp_matches("{c}"::VARCHAR, ?, \'i\')',
+                            [ID_PATTERN]).fetchone()[0]
+            if n:
+                leaks.append(f"{s}.{t}.{c}: {n}")
+    return leaks
 
 
 def run():
@@ -98,14 +115,7 @@ def run():
         print(f"mart.{t:12s} {con.execute(f'SELECT count(*) FROM mart.{t}').fetchone()[0]:>12,}")
 
     # ponytail: leak check — no vendor accession / sample id may survive in any text column
-    leaks = []
-    for s in present:
-        for t, c in con.execute(
-                "SELECT table_name, column_name FROM information_schema.columns WHERE table_catalog=current_database() "
-                "AND table_schema=? AND data_type IN ('VARCHAR','JSON')", [s]).fetchall():
-            n = con.execute(f'SELECT count(*) FROM {s}."{t}" WHERE "{c}"::VARCHAR ~ ?', [ID_PATTERN]).fetchone()[0]
-            if n:
-                leaks.append(f"{s}.{t}.{c}: {n}")
+    leaks = find_leaks(con, [*present, "mart"])
     assert not leaks, "identifier-like tokens survived de-identification: " + "; ".join(leaks)
     con.close()
     print("wrote", DEID_DB)
