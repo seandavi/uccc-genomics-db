@@ -63,7 +63,7 @@ pivot and data notes, and share it by link; and CI runs the web checks.
 | `web/src/cohort.test.ts`, `web/src/transport.test.ts`, `web/src/answer.test.tsx`, `web/src/policy.test.ts` | **new**: `bun test` |
 | `mcp/src/uccc_genomics_mcp/cohort/vocabulary.py` | `Vocabulary.search` gains `field` and `parent` filters |
 | `mcp/src/uccc_genomics_mcp/app.py` | `run_options`, `GET /api/options` and the `search_vocabulary` tool pass `field` and `parent` through |
-| `tests/test_cohort.py` | extend `test_search` |
+| `tests/test_cohort.py` | add `test_search_field_and_parent` |
 | `tests/test_app.py` | parity cases for `field`/`parent`; `test_openapi_snapshot` |
 | `.github/workflows/ci.yml` | **new job** `web` |
 | `.pi/crucible.json` | add the `web` check |
@@ -123,8 +123,9 @@ committed. `web/src/api.gen.ts` is generated from it and committed. Two guards k
 - Web, `bun run typecheck`: `openapi-typescript ... --check` fails if `api.gen.ts` is stale
   against `openapi.json`, then `tsc --noEmit` type-checks the app against it.
 
-`openapi-typescript` (default flags) marks fields that have a default as required. That suits
-the app: it always holds full definitions the server returned, and new criteria are built by
+`openapi-typescript` (default flags) marks fields that have a non-null default as required.
+Fields whose default is `null` are optional (`id?`, `pivot?`, `at_least?`, `clone?`, `measure?`).
+That suits the app: it always holds full definitions the server returned, and new criteria are built by
 the constructors in `cohort.ts` with every field filled.
 
 `web/src/types.ts`:
@@ -161,7 +162,8 @@ export class TransportError extends Error {
   constructor(message: string, readonly status: number, readonly retryAfter: number | null = null)
 }
 
-export function fetchTransport(fetchImpl: typeof fetch = fetch): Transport
+export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export function fetchTransport(fetchImpl: FetchLike = fetch): Transport
 export function errorMessage(status: number, body: unknown): string
 ```
 
@@ -206,8 +208,8 @@ def search(self, q: str, limit: int = 20, field: str | None = None,
   query parameters; the MCP tool becomes
   `search_vocabulary(q: str, ctx: Context, limit: int = 20, field: str | None = None, parent: str | None = None)`
   with its docstring adding "Give `field` (e.g. `alteration.aa`) and optionally `parent` (e.g.
-  `KRAS`) to list one field's values; `q` may then be empty." An unknown field returns no entries
-  (no error).
+  `KRAS`) to list one field's values; `q` may then be empty." A field outside the vocabulary's
+  field set is a 400 / tool error naming `field` (#58).
 - Privacy: unchanged. Entries are the already-floored vocabulary (values held by fewer than 5
   patients are never present) and carry no counts. Listing a field returns nothing typing could
   not already enumerate, ranked as search already ranks.
@@ -257,9 +259,8 @@ context) reveals a read-only, pre-selected `<input>` holding the link. The fragm
 the server, so links do not enter access logs.
 
 **Deviation from the issue ("share link by `cohort_id`").** A `cohort_id` is a one-way hash; with
-no store until the Postgres issue, a link holding only the id could not be opened. The link
-carries the definition and the page shows the id beside it; `/c/<cohort_id>` comes with saved
-cohorts. Definitions hold no patient data, so the link is safe to send.
+no store a link holding only the id could not be opened. Saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts. The page shows the
+id beside the link. Definitions hold no patient data, so the link is safe to send.
 
 ### Pure helpers (`web/src/cohort.ts`)
 
@@ -533,7 +534,7 @@ The one backend change (`field` / `parent` on options) returns only floored voca
 - `dashboard/COHORT_DISCOVERY.md` §3.3: a "**Phase 1 (#37)**" paragraph after the opening one:
   the page is the React app in `web/` (ARCHITECTURE decision 6), not `dashboard/src/discover.md`
   on Observable Framework; versions are in local storage and the share link carries the
-  definition in the URL fragment (short links by `cohort_id` come with saved cohorts); the
+  definition in the URL fragment (saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts.); the
   include/exclude toggle, "same report" lock, drag-to-reorder, Compare, Feasibility statement and
   Request data are not built (phase 2 or no operation yet); the assistant column is empty. §3.5:
   one sentence that `GET /api/options` also takes `field` and `parent` to list one field's
@@ -579,11 +580,11 @@ Python (`uv run pytest -q`), synthetic only: the #34 mart in a temp dir via the 
 `test_cohort.build_mart`/`use_mart` fixtures; never `$DATA/raw`, the PHI file or the real de-id
 file.
 
-1. `tests/test_cohort.py::test_search` (extend): `v.search("", field="population.sex")` returns
+1. `tests/test_cohort.py::test_search_field_and_parent` (add): `v.search("", field="population.sex")` returns
    every `population.sex` entry of the synthetic mart; `v.search("", field="alteration.aa",
    parent="KRAS")` returns only `alteration.aa` entries with parent `KRAS` (contains `G12C`),
    ordered by patients; `v.search("g12", field="alteration.aa", parent="KRAS")` filters by value
-   too; `v.search("", field="no.such")` is `[]`; `v.search("")` is still `[]`.
+   too; `v.search("", field="no.such")` raises `DefinitionError` naming `field` (#58); `v.search("")` is still `[]`.
 2. `tests/test_app.py`: add to `CASES` `options("", field="population.sex")`,
    `options("", field="alteration.aa", parent="KRAS", limit=50)` and
    `options("", field="biomarker.call", parent="MSI")`. They run through `test_parity` (REST ==
@@ -633,9 +634,8 @@ Dashboard check: n/a.
   TypeScript 7, both move together.
 - **Share links hold the definition.** They are long-ish (a few hundred characters for ten
   criteria) and change when the definition changes; links break if a later schema version
-  rejects them (the load path then says so). Short links by `cohort_id` need saved cohorts.
-- **`localStorage` versions** are per browser and per origin, and vanish with site data. Saved
-  cohorts (Postgres) replace them.
+  rejects them (the load path then says so). Saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts.
+- **`localStorage` versions** are per browser and per origin, and vanish with site data. Saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts.
 - **Clipboard on plain HTTP.** The tailnet dev URL is not a secure context, so the copy falls back
   to a selected text field.
 - **One count per edit.** Each click is one `count` (plus `pivot` when that tab is open) against
