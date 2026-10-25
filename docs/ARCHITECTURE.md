@@ -43,7 +43,11 @@ and the decisions behind it. Tracking issue: #23.
    service. Its transport sits behind one `apply(op)` seam, so the MCP App reuses it.
 7. **Postgres** for saved cohorts, versions and the audit log: one database on the host's shared
    cluster, SQLAlchemy async + asyncpg. Definitions hold no patient data; counts are recomputed
-   against today's data, except grant snapshots, which store counts with the data date.
+   against today's data, except grant snapshots, which store counts with the data date. Tables
+   (#36, Alembic migrations, URL from `DATABASE_URL`): `cohort_version` (content-addressed),
+   `cohort`, `cohort_revision` (append-only chain; revert appends a copy) and `snapshot` (the
+   suppressed `CountResult`). Every read and write is scoped to the owner. The query audit log
+   stays one JSON line on stdout for now; moving it to Postgres is a later issue.
 8. **Auth behind `authen.user(request)`.** Backends today: `access` (Cloudflare Access JWT),
    `password` (one local account, while developing), `none`. Zitadel (OIDC, campus email
    required, checked again in the backend) becomes another backend; callers do not change.
