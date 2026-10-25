@@ -534,8 +534,9 @@ The one backend change (`field` / `parent` on options) returns only floored voca
 - `dashboard/COHORT_DISCOVERY.md` §3.3: a "**Phase 1 (#37)**" paragraph after the opening one:
   the page is the React app in `web/` (ARCHITECTURE decision 6), not `dashboard/src/discover.md`
   on Observable Framework; versions are in local storage and the share link carries the
-  definition in the URL fragment (saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts.); the
-  include/exclude toggle, "same report" lock, drag-to-reorder, Compare, Feasibility statement and
+  definition in the URL fragment (saved cohorts (#36) store only the cohorts a user saves;
+  Discover does not call `/api/saved*` yet, so a link carries the definition, and
+  `/c/<cohort_id>` comes when Discover uses saved cohorts); the include/exclude toggle, "same report" lock, drag-to-reorder, Compare, Feasibility statement and
   Request data are not built (phase 2 or no operation yet); the assistant column is empty. §3.5:
   one sentence that `GET /api/options` also takes `field` and `parent` to list one field's
   values.
@@ -634,8 +635,12 @@ Dashboard check: n/a.
   TypeScript 7, both move together.
 - **Share links hold the definition.** They are long-ish (a few hundred characters for ten
   criteria) and change when the definition changes; links break if a later schema version
-  rejects them (the load path then says so). Saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts.
-- **`localStorage` versions** are per browser and per origin, and vanish with site data. Saved cohorts (#36) store only the cohorts a user saves. Discover does not call `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover uses saved cohorts.
+  rejects them (the load path then says so). Saved cohorts (#36) store only the cohorts a user
+  saves. Discover does not call `/api/saved*` yet, so a link carries the definition;
+  `/c/<cohort_id>` comes when Discover uses saved cohorts.
+- **`localStorage` versions** are per browser and per origin, and vanish with site data. Saved
+  cohorts (#36) persist what a user saves; Discover does not call `/api/saved*` yet, so unsaved
+  versions stay in the browser.
 - **Clipboard on plain HTTP.** The tailnet dev URL is not a secure context, so the copy falls back
   to a selected text field.
 - **One count per edit.** Each click is one `count` (plus `pivot` when that tab is open) against

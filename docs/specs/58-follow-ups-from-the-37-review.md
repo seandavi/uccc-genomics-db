@@ -15,7 +15,8 @@ finding id from the issue.
 4. Search and value-list failures say they failed instead of looking like "no values"
    (ux-r0-2).
 5. An edit error shows next to the column whose control caused it (ux-r0-4). An answer error
-   has a Retry button, and a result that is in flight or stale is dimmed (ux-r0-8).
+   has a Retry button, and a result that is in flight is dimmed (#65: not while stale; the error
+   alert flags that) (ux-r0-8).
 6. Pivot captions, breakdown headers, the Share card and the scroll regions read correctly
    (ux-r0-5, ux-r0-9, ux-r1-2, ux-r2-1).
 7. `GET /api/options` and `search_vocabulary` reject a `field` outside the vocabulary's field set
@@ -142,7 +143,7 @@ answer` and `const stale = answer.d !== definition`.
   version, where that id may now be a different criterion (`add_criterion` reuses max+1). A
   disabled Drop button comes back once the refresh lands.
 - **Dimming.** Wrap everything after the error paragraphs (from the sr-only live region to the
-  tabpanel) in `<div className={busy || stale ? "answer-body dim" : "answer-body"}>`.
+  tabpanel) in `<div className={busy ? "answer-body dim" : "answer-body"}>` (#65).
   `styles.css`: `.dim { opacity: .55; transition: opacity .15s; }`.
 - **Errors.** In this order at the top of `<main>`:
   `{editError && <p role="alert" className="error">{editError}</p>}`, then
@@ -189,8 +190,8 @@ answer` and `const stale = answer.d !== definition`.
   className="bar" style={{width: "0%"}} />`; else the scaled bar as today. A step that is 0 when
   the top is greater than 0 keeps today's `Math.max(1, …)` sliver.
 - `PivotTab`: a `(row, col)` pair missing from `pivot.cells` renders `<td>0</td>`. Add one
-  sentence under the table: `<p className="legend">Blank combinations are 0 patients.</p>`. The
-  test changes from `<td>–</td>` to `<td>0</td>`.
+  sentence under the table: `<p className="legend">0 means no patients have that combination;
+  &lt;{minCell} means fewer than {minCell}.</p>` (#65). The test changes from `<td>–</td>` to `<td>0</td>`.
 
 ### Search and value errors (ux-r0-2), `web/src/Builder.tsx`
 
@@ -249,11 +250,13 @@ answer` and `const stale = answer.d !== definition`.
     `measure?`).
   - "An unknown field returns no entries (no error)" becomes "A field outside the vocabulary's
     field set is a 400 / tool error naming `field` (#58)".
-  - The "Deviation from the issue" paragraph, the §3.3 doc-update item, and the two Risks
-    bullets ("Share links hold the definition", "`localStorage` versions"): replace the stale
-    reason with "Saved cohorts (#36) store only the cohorts a user saves. Discover does not call
+  - The "Deviation from the issue" paragraph, the §3.3 doc-update item, and the Risks bullet
+    "Share links hold the definition": replace the stale reason with "Saved cohorts (#36) store only the cohorts a user saves. Discover does not call
     `/api/saved*` yet, so a link carries the definition; `/c/<cohort_id>` comes when Discover
     uses saved cohorts."
+  - The "`localStorage` versions" bullet ends with "Saved cohorts (#36) persist what a user
+    saves; Discover does not call `/api/saved*` yet, so unsaved versions stay in the browser."
+    (#65).
 - `dashboard/COHORT_DISCOVERY.md`: the "Phase 1 (#37)" paragraph's parenthesis gets the same
   rewording (code-r3-1). The §3.5 sentence on `field` and `parent` adds "a field outside the
   vocabulary's field set is a 400 naming `field`".
@@ -273,7 +276,7 @@ No design doc contradicts this change. ARCHITECTURE.md and COHORT_TOOL.md need n
       (`test_openapi_snapshot` and `bun run typecheck` pass).
 - [ ] Answer labels (funnel step, Loosen, Share card population, breakdown tables, pivot
       caption) come from `answer.d` when it differs from `definition`. Loosen's Drop buttons are
-      disabled and the body carries `dim` while stale or busy.
+      disabled and the body carries `dim` while busy (#65).
 - [ ] A funnel with `funnel[0].patients === 0` has no `bar hatched`. A null step is still
       hatched. An omitted pivot cell renders `<td>0</td>`. Every null still renders `<5` with
       `class="suppressed"`.
@@ -323,7 +326,7 @@ Web (`bun test`, `renderToStaticMarkup`):
    - stale labels: `answer.d = def` (c2 = ALK fusion) and `definition = {...def, criteria:
      [kras, egfr]}`, where `egfr` is a new alteration criterion (`gene: ["EGFR"]`) with
      `id: "c2"`. The HTML contains "∧ ALK fusion", not EGFR, the Drop
-     button has `disabled`, and the body has `dim`.
+     button has `disabled`, and the body has no `dim` (not busy; #65).
    - zero funnel: funnel all `0` → no `bar hatched`, and `width:0%` present.
    - Share card: `denominator: null` → `<span class="suppressed"` after "of ". An `EMPTY`
      population → "(all patients)".
