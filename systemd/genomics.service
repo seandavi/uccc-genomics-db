@@ -18,6 +18,8 @@ ExecStart=%h/.local/bin/uv run genomics all
 Environment=PATH=%h/.nvm/versions/node/v22.20.0/bin:%h/.local/bin:/usr/bin:/bin
 ExecStart=%h/.nvm/versions/node/v22.20.0/bin/npm --prefix %h/Documents/git/uccc-genomics-db/dashboard run build
 ExecStart=/bin/sh -c 'CLOUDFLARE_API_TOKEN=$$(gcloud secrets versions access latest --secret=cdsci-cloudflare-workers-token --project=cdsci-infra) npm --prefix %h/Documents/git/uccc-genomics-db/dashboard run deploy'
+# Last, so the day's rebuild and deploy still go out; non-zero (stale vendor data) fires ntfy (#75).
+ExecStart=%h/.local/bin/uv run genomics check
 # Full rebuild is ~20 min today (Caris TPM CSV read dominates); give headroom.
 TimeoutStartSec=7200
 Nice=10

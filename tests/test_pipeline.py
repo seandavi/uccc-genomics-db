@@ -2,7 +2,7 @@
 
 One patient (same MRN) tested by both vendors, one alteration of each kind, one wild-type /
 pertinent-negative gene, so every unified view has something to assert on. No real data,
-no network: `sync` is not exercised.
+no network: `sync` is not exercised except FMI's, which runs against a fake `ssh`.
 """
 import copy
 import csv
@@ -492,3 +492,77 @@ def test_mart_fact_actionability(db):
 def test_mart_fact_specimen(db):
     assert facts(db, "caris", "specimen", "key, val, num, unit") == {("site_type", "primary", None, None), ("site", "breast", None, None)}
     assert facts(db, "fmi", "specimen", "key, val, num, unit") == {("purity", None, 50.0, "%")}
+
+
+def fake_ssh(tmp_path):
+    """Write a fake `ssh` that drops its options and host and runs the remote command locally."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    ssh.write_text('#!/bin/sh\nwhile [ "$1" = "-o" ]; do shift 2; done\nshift\nsh -c "$1"; rc=$?\n'
+                   'exit "${FAKE_SSH_EXIT:-$rc}"\n')
+    ssh.chmod(0o755)
+    return str(bin_dir)
+
+
+def fmi_sync(data, src, bin_dir, **env):
+    return subprocess.run(["uv", "run", "genomics", "sync", "--vendor", "fmi"], cwd=ROOT, capture_output=True, text=True,
+                          env={**os.environ, "DATA": data, "FMI_SRC": f"fakehost:{src}",
+                               "PATH": f"{bin_dir}:{os.environ['PATH']}", **env})
+
+
+def test_fmi_sync_copies_xml(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "A.xml").write_text(FMI)
+    (src / "B.xml").write_text("<x/>")
+    r = fmi_sync(str(tmp_path / "data"), src, fake_ssh(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert (tmp_path / "data/raw/fmi/A.xml").read_text() == FMI
+    assert (tmp_path / "data/raw/fmi/B.xml").read_text() == "<x/>"
+
+
+def test_fmi_sync_fails_on_empty_source(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    mirror = tmp_path / "data/raw/fmi"
+    mirror.mkdir(parents=True)
+    (mirror / "old.xml").write_text("<old/>")
+    r = fmi_sync(str(tmp_path / "data"), src, fake_ssh(tmp_path))
+    assert r.returncode != 0
+    assert "no *.xml in " in r.stderr
+    assert (mirror / "old.xml").read_text() == "<old/>"
+
+
+def test_fmi_sync_fails_on_missing_source(tmp_path):
+    r = fmi_sync(str(tmp_path / "data"), tmp_path / "nope", fake_ssh(tmp_path))
+    assert r.returncode != 0
+
+
+def test_fmi_sync_fails_when_remote_fails(tmp_path):
+    # The archive streams fine, so only the ssh exit status catches it (#75).
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "A.xml").write_text("<x/>")
+    r = fmi_sync(str(tmp_path / "data"), src, fake_ssh(tmp_path), FAKE_SSH_EXIT="2")
+    assert r.returncode != 0
+
+
+def test_check_flags_stale_vendor(tmp_path):
+    pipeline(str(tmp_path), {"ORD-0001234-01.xml": FMI}).close()
+    fmi_age = (date.today() - date(2026, 1, 10)).days  # Caris received 3 days earlier
+
+    def check(stale_days, *args):
+        return subprocess.run(["uv", "run", "genomics", "check", *args], cwd=ROOT, capture_output=True, text=True,
+                              env={**os.environ, "DATA": str(tmp_path), "STALE_DAYS": stale_days})
+
+    r = check(str(fmi_age))
+    assert r.returncode != 0
+    assert r.stderr.splitlines()[-1] == f"stale vendor data: caris (newest received date older than {fmi_age} days)"
+    assert f"== check fmi: newest received date is {fmi_age} days old" in r.stderr
+    assert "2026-01" not in r.stderr
+    assert check(str(fmi_age + 3)).returncode == 0
+    assert check(str(fmi_age), "--vendor", "fmi").returncode == 0
+    r = check("")
+    assert r.returncode != 0
+    assert "(limit 21)" in r.stderr

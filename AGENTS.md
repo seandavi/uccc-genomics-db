@@ -34,7 +34,7 @@ Workers behind Cloudflare Access.
 
 ```
 src/uccc_genomics/
-  cli.py        genomics sync|load|deid|all [--vendor] | shell [--phi]
+  cli.py        genomics sync|load|deid|all|check [--vendor] | shell [--phi]
   config.py     $DATA paths, .env loading, key files, connect() (encrypted ATTACH)
   db.py         bulk_insert via temp JSONL + try_cast (executemany is ~100x slower)
   caris.py fmi.py   per-vendor sync() + load() -> caris.* / fmi.*
