@@ -146,6 +146,48 @@ FMI = f"""<?xml version="1.0"?>
 </ResultsReport>
 """
 
+def _gene(name, *alterations):
+    """Genes-block <Gene> for FMI_GENES_ONLY: each alteration is (Alteration/Name, [AlterationProperty attribute strings])."""
+    alts = "".join(
+        f"<Alteration><Name>{n}</Name><Include>true</Include>"
+        + (f"<AlterationProperties>{''.join(f'<AlterationProperty {p}/>' for p in props)}</AlterationProperties>" if props else "")
+        + "</Alteration>" for n, props in alterations)
+    return f"<Gene><Name>{name}</Name><Alterations>{alts}</Alterations></Gene>"
+
+
+# An older report (#76): variants only in the Genes block, an empty <short-variants/> and no CNA elements.
+FMI_GENES_ONLY = f"""<?xml version="1.0"?>
+<ResultsReport>
+ <FinalReport>
+  <ReportId>ORD-0009876-01</ReportId><SampleName>ORD-0009876-01</SampleName><Version>1</Version>
+  <Sample><TestType>FoundationOne</TestType><SpecFormat>FFPE</SpecFormat><ReceivedDate>2026-02-10</ReceivedDate></Sample>
+  <PMI><MRN>0000555555</MRN><DOB>1940-05-06</DOB><Gender>Male</Gender><FirstName>John</FirstName><LastName>Roe</LastName>
+       <FullName>John Roe</FullName><CollDate>2026-01-20</CollDate><SubmittedDiagnosis>Lung adenocarcinoma</SubmittedDiagnosis>
+       <OrderingMD>Dr Other</OrderingMD><OrderingMDId>888</OrderingMDId><MedFacilName>UCH</MedFacilName><SpecSite>Lung</SpecSite></PMI>
+  <Genes>
+   {_gene("TP53", ("R248Q", ['name="R248Q" dnaFraction="42.0" isEquivocal="false" isSubclonal="false"']))}
+   {_gene("PIK3CA", ("E545K, H1047R", ['name="E545K" dnaFraction="12"', 'name="H1047R" dnaFraction="0.5" isSubclonal="true"']))}
+   {_gene("KMT2C (MLL3)", ("R100*", []))}
+   {_gene("TERT", ("promoter -124C>T", ['name="promoter -124C>T" dnaFraction=""']))}
+   {_gene("RB1", ("splice site 2107-2A>G", []))}
+   {_gene("CDKN2A/B", ("p16INK4a R58* and p14ARF P72L", []), ("CDKN2B loss", []), ("loss", []))}
+   {_gene("ERBB2", ("amplification", ['name="amplification" isEquivocal="true"']))}
+   {_gene("PTEN", ("loss exons 6-9", []))}
+   {_gene("WT1", ("rearrangement intron 1", []))}
+   {_gene("KRAS", ("wildtype", []))}
+   {_gene("Tumor Mutation Burden", ("TMB-Low", []))}
+   {_gene("Microsatellite status", ("MS-Stable", []))}
+  </Genes>
+  <VariantProperties><VariantProperty geneName="PIK3CA" variantName="H1047R" isVUS="true"/></VariantProperties>
+ </FinalReport>
+ <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external"
+     disease="Lung" disease-ontology="Lung adenocarcinoma" gender="male" test-type="FoundationOne">
+  <samples><sample name="ORD-0009876-01" bait-set="F1" nucleic-acid-type="DNA" mean-exon-depth="500"/></samples>
+  <short-variants/>
+ </variant-report>
+</ResultsReport>
+"""
+
 # FoundationOne Monitor files have no FinalReport (no PMI, no VariantProperties), so is_vus is NULL.
 FMI_MONITOR = """<?xml version="1.0"?>
 <ResultsReport>
@@ -222,6 +264,12 @@ def db(tmp_path_factory):
     # broken.xml must fail to parse and land in fmi.load_error rather than abort the load.
     return pipeline(str(tmp_path_factory.mktemp("data")),
                     {"ORD-0001234-01.xml": FMI, "broken.xml": "<ResultsReport><nothing/></ResultsReport>"})
+
+
+@pytest.fixture(scope="module")
+def genes_db(tmp_path_factory):
+    return pipeline(str(tmp_path_factory.mktemp("genes")),
+                    {"ORD-0001234-01.xml": FMI, "ORD-0009876-01.xml": FMI_GENES_ONLY})
 
 
 @pytest.fixture(scope="module")
@@ -455,6 +503,93 @@ def test_mart_fact_alteration(db):
         assert one(db, f"SELECT count(*) FROM db.mart.fact WHERE vendor = '{v}' AND key = 'ERBB2' AND sub = 'amplification'") == (1,)
     assert set(db.execute("SELECT key, sub, val FROM db.mart.fact WHERE vendor = 'fmi' AND sub = 'fusion'").fetchall()) == {
         ("ALK", "fusion", "EML4"), ("EML4", "fusion", "ALK")}
+
+
+GENES_ONLY = "ORD-0009876-01"
+
+
+def test_genes_block_parsers():
+    from uccc_genomics.fmi import genes_block_cna, genes_block_short_variant as sv
+    cases = [  # (Gene/Name, part, short variant, copy-number call)
+        ("TP53", "R175H", ("TP53", None, "R175H"), None),
+        ("APC", "P72fs*9", ("APC", None, "P72fs*9"), None),
+        ("KMT2C (MLL3)", "R100*", ("KMT2C", None, "R100*"), None),
+        ("RB1", "splice site 2107-2A>G", ("RB1", "2107-2A>G", "splice site 2107-2A>G"), None),
+        ("TERT", "promoter -124C>T", ("TERT", "-124C>T", "promoter -124C>T"), None),
+        ("CDKN2A/B", "p16INK4a R58* and p14ARF P72L", ("CDKN2A", None, "R58*"), None),
+        ("CDKN2A/B", "CDKN2B loss", None, ("CDKN2B", "loss")),
+        ("CDKN2A/B", "loss", None, None),
+        ("CDKN2A/B", "p16INK4a loss and p14ARF loss exons 1-2", None, None),
+        ("ERBB2", "amplification", None, ("ERBB2", "amplification")),
+        ("PTEN", "loss exons 6-9", None, ("PTEN", "loss")),
+        ("STK11", "loss exon 2", None, ("STK11", "loss")),
+        ("LRP1B", "deletion exons 15-25", None, None),
+        ("WT1", "rearrangement intron 1", None, None),
+        ("TMPRSS2", "TMPRSS2-ERG fusion", None, None),
+        ("KRAS", "wildtype", None, None),
+        ("Tumor Mutation Burden", "TMB-Low", None, None),
+        ("Tumor Mutation Burden", "01", None, None),
+        ("Microsatellite status", "MS-Stable", None, None),
+        ("HRD signature", "HRDsig Negative", None, None),
+        (None, "R175H", None, None),
+    ]
+    for gene, part, want_sv, want_cna in cases:
+        assert sv(gene, part) == want_sv, (gene, part)
+        assert genes_block_cna(gene, part) == want_cna, (gene, part)
+
+
+def test_fmi_genes_block_short_variants(genes_db):
+    rows = genes_db.execute(
+        "SELECT gene, cds_effect, protein_effect, round(allele_fraction, 6), equivocal, subclonal, is_vus, status, depth, source "
+        "FROM phi.fmi.short_variant WHERE report_id = ?", [GENES_ONLY]).fetchall()
+    assert {r[:7] for r in rows} == {
+        ("TP53", None, "R248Q", 0.42, False, False, False),
+        ("PIK3CA", None, "E545K", 0.12, None, None, False),     # property has only dnaFraction
+        ("PIK3CA", None, "H1047R", 0.005, None, True, True),
+        ("KMT2C", None, "R100*", None, None, None, False),      # no property: NULLs, alias stripped
+        ("TERT", "-124C>T", "promoter -124C>T", None, None, None, False),   # empty dnaFraction
+        ("RB1", "2107-2A>G", "splice site 2107-2A>G", None, None, None, False),
+        ("CDKN2A", None, "R58*", None, None, None, False)}
+    assert len(rows) == 7
+    assert {r[7:] for r in rows} == {(None, None, "genes_block")}
+
+
+def test_fmi_genes_block_cna(genes_db):
+    assert set(genes_db.execute("SELECT gene, type, equivocal, source FROM phi.fmi.cna WHERE report_id = ?",
+                                [GENES_ONLY]).fetchall()) == {
+        ("ERBB2", "amplification", True, "genes_block"), ("CDKN2B", "loss", None, "genes_block"),
+        ("PTEN", "loss", None, "genes_block")}
+
+
+def test_fmi_genes_block_not_duplicated(genes_db):
+    """ORD-0001234-01 has the elements and also lists TP53 R175H / ERBB2 amplification in its Genes block."""
+    for table, n in (("short_variant", 4), ("cna", 1)):
+        assert genes_db.execute(f"SELECT count(*), count(*) FILTER (WHERE source = 'variant_report') "
+                                f"FROM phi.fmi.{table} WHERE report_id = 'ORD-0001234-01'").fetchone() == (n, n)
+    assert one(genes_db, "SELECT count(*) FROM phi.fmi.alteration WHERE report_id = 'ORD-0009876-01'") == (14,)
+
+
+def test_fmi_genes_block_tier(genes_db):
+    got = set(genes_db.execute("SELECT gene, hgvs_p, tier FROM db.unified.variant WHERE source = 'genes_block'").fetchall())
+    want = {(g, p, "likely_pathogenic") for g, p in (("TP53", "R248Q"), ("PIK3CA", "E545K"), ("KMT2C", "R100*"),
+            ("TERT", "promoter -124C>T"), ("RB1", "splice site 2107-2A>G"), ("CDKN2A", "R58*"))}
+    assert got == want | {("PIK3CA", "H1047R", "vus")}
+    assert set(genes_db.execute("SELECT gene, tier FROM db.unified.variant WHERE source = 'variant_report'").fetchall()) == {
+        ("TP53", "pathogenic"), ("PIK3CA", "vus"), ("BRAF", "likely_pathogenic"), ("ARID1A", "unclassified")}
+    assert one(genes_db, "SELECT count(*) FROM db.unified.variant WHERE vendor = 'caris' AND source IS NOT NULL") == (0,)
+    assert one(genes_db, "SELECT count(*) FROM db.unified.cna WHERE vendor = 'caris' AND source IS NOT NULL") == (0,)
+    assert one(genes_db, "SELECT count(*) FROM db.unified.cna WHERE source = 'genes_block'") == (3,)
+
+
+def test_mart_fact_genes_block(genes_db):
+    fact = set(genes_db.execute(
+        "SELECT key, sub, val, tier FROM db.mart.fact WHERE vendor = 'fmi' AND kind = 'alteration' "
+        "AND report_id IN (SELECT report_id FROM db.unified.cna WHERE source = 'genes_block')").fetchall())
+    assert ("TP53", "mutation", "R248Q", "likely_pathogenic") in fact
+    assert ("PIK3CA", "mutation", "H1047R", "vus") in fact
+    assert {k for k, sub, _, _ in fact if sub == "amplification"} == {"ERBB2"}
+    assert {k for k, sub, _, _ in fact if sub == "loss"} == {"PTEN", "CDKN2B"}
+    assert not {k for k, *_ in fact} & {"Tumor Mutation Burden", "Microsatellite status", "WT1", "KRAS"}
 
 
 def test_mart_fact_biomarker(db):
