@@ -22,6 +22,7 @@ DEID_DB_KEY = f"{DATA}/.db_key"         # AES key for genomics.duckdb (share wit
 
 CARIS_BUCKET = os.environ.get("CARIS_BUCKET", "")  # s3://bucket/ holding the Caris deliveries
 FMI_SRC = os.environ.get("FMI_SRC", "")            # host:dir holding the FMI XMLs
+STALE_DAYS = int(os.environ.get("STALE_DAYS") or 21)  # genomics check: max age (days) of a vendor's newest received date
 
 
 def sql(name: str) -> str:

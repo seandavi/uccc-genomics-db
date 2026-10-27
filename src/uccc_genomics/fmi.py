@@ -8,6 +8,7 @@ instead of being dropped silently. Idempotent full rebuild (~30 s).
 """
 import glob
 import os
+import shlex
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -23,8 +24,16 @@ def sync():
     # ponytail: full tar copy every run (rsync isn't on the FMI host); ~450 MB, fine daily
     host, path = FMI_SRC.split(":", 1)
     os.makedirs(RAW_FMI, exist_ok=True)
-    subprocess.run(f"ssh -o BatchMode=yes {host} 'cd {path} && tar cf - *.xml' | tar xf - -C {RAW_FMI}",
-                   shell=True, check=True)
+    # Both exit statuses are checked: in a shell pipeline only the local tar's counted, so an
+    # empty or unmounted source looked like success (#75).
+    remote = (f'cd {shlex.quote(path)} || exit 1; set -- *.xml; '
+              '[ -e "$1" ] || { echo "no *.xml in $PWD" >&2; exit 1; }; exec tar cf - -- "$@"')
+    ssh = subprocess.Popen(["ssh", "-o", "BatchMode=yes", host, remote], stdout=subprocess.PIPE)
+    untar = subprocess.Popen(["tar", "xf", "-", "-C", RAW_FMI], stdin=ssh.stdout)
+    ssh.stdout.close()  # so ssh gets SIGPIPE if the local tar dies first
+    untar_rc, ssh_rc = untar.wait(), ssh.wait()
+    if ssh_rc or untar_rc:
+        sys.exit(f"fmi sync failed: ssh/remote exit {ssh_rc}, local tar exit {untar_rc}")
 
 
 DDL = """

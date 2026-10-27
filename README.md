@@ -16,7 +16,7 @@ FMI CIFS share on FMI host ──tar|ssh──▶ $DATA/raw/fmi/*.xml
 
 `DATA` defaults to `/data/davsean/genomics`. `CARIS_BUCKET` (s3://bucket/) and
 `FMI_SRC` (host:dir) are site-specific and live in the gitignored `.env` at the
-repo root, which `config.py` reads (copy `.env.example`). Caris creds are the `[default]` AWS profile; FMI needs
+repo root, which `config.py` reads (copy `.env.example`); `STALE_DAYS` (default 21) is the limit for `genomics check`. Caris creds are the `[default]` AWS profile; FMI needs
 passwordless ssh to the FMI host.
 
 ## Run
@@ -27,6 +27,7 @@ uv run genomics all                 # sync + load both vendors, then deid (~20 m
 uv run genomics sync --vendor fmi   # or any single step / vendor
 uv run genomics load --vendor caris
 uv run genomics deid
+uv run genomics check            # fail if a vendor's newest received date is older than STALE_DAYS (21)
 ```
 
 Every load is a full drop-and-rebuild from the raw mirror; the mirror is the
@@ -66,11 +67,15 @@ ln -sf $PWD/systemd/genomics.service $PWD/systemd/genomics.timer ~/.config/syste
 systemctl --user daemon-reload && systemctl --user enable --now genomics.timer
 ```
 
+The unit runs `genomics check` last, so ntfy fires when either vendor's newest received date is older
+than `STALE_DAYS`, and the FMI sync fails (rather than reusing the old mirror) when the share is empty
+or unmounted.
+
 ## Layout
 
 ```
 src/uccc_genomics/
-  cli.py        genomics sync|load|deid|all [--vendor] | shell [--phi]
+  cli.py        genomics sync|load|deid|all|check [--vendor] | shell [--phi]
   config.py     paths ($DATA), bucket, FMI source, key files, connect() (encrypted ATTACH)
   db.py         bulk_insert: rows -> temp JSONL -> try_cast per column (executemany is ~100x slower)
   caris.py      sync() + load(): report JSON + gene TPM CSV -> caris.*
