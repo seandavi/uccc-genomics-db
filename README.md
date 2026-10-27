@@ -109,10 +109,12 @@ for liquid; `wildtype = true` means tested-negative), `cna`, `fusion`, `ihc`,
 
 **`fmi.*`** — `report` (one per XML; FoundationOne Monitor files have no
 FinalReport, so their id is the file name and they carry no patient block),
-`sample`, `short_variant` (with `is_vus`, `subclonal`), `cna`, `rearrangement`,
+`sample`, `short_variant` (with `is_vus`, `subclonal`, `source`), `cna` (with `source`), `rearrangement`,
 `biomarker` (TMB, MSI, LOH…), `non_human`, `pertinent_negative`, `alteration`
 (curated Genes block), `therapy`, `trial`, `amendment`, `load_error` (files that
 failed to parse — nothing is dropped silently). Views `tmb`, `msi`, `loh`.
+`source` is `variant_report`, or `genes_block` for rows derived from the curated Genes block on
+reports without `<short-variant>` / `<copy-number-alteration>` elements (older reports, #76).
 
 **`unified.*`** (de-identified file only) — `patient`, `report`, `variant`,
 `cna`, `fusion`, `biomarker` (long: TMB/MSI/LOH/PD-L1 and the other Caris IHC markers), `gene_tested`
@@ -122,7 +124,9 @@ detail stays in `caris.*` / `fmi.*` and joins back on `report_id`.
 `variant.tier` (`pathogenic`, `likely_pathogenic`, `vus`, `likely_benign_or_benign`,
 `unclassified`) is the one significance column to filter on, derived per vendor;
 `is_vus` and `vendor_call` stay as the vendor's own flags, and the cohort API's
-default "pathogenic" is the first two tiers. `variant.consequence` is lower case
+default "pathogenic" is the first two tiers. `variant.source` / `cna.source` carry the
+FMI provenance above (NULL for Caris); FMI `genes_block` short variants have tier
+`likely_pathogenic` unless VUS, an inference rather than a vendor call. `variant.consequence` is lower case
 (vendor terms are otherwise unchanged). `biomarker.call_norm` folds the Caris HER2
 IHC spellings (`HER2-Low`/`Low`, `HER2-Positive`/`Positive`, ...) while `call` keeps
 the raw string. `biomarker.clone` is the PD-L1 antibody clone (`22c3`, `sp142`), NULL on every other row. `report.collected_year_complete` is false while the date-shifted
@@ -349,6 +353,13 @@ Never `--delete` toward the bucket or share; mirrors are read-only from the sour
 
 FMI viral calls (`fmi.non_human`) are loaded but not offered as a cohort filter until
 someone with domain knowledge has reviewed them (`dashboard/COHORT_DISCOVERY.md` §1).
+
+FMI reports without `variant-report` results (older ones) get short variants and amplification/loss
+calls derived from the Genes block (#76), but not Genes-block rearrangement, truncation, deletion,
+duplication or fusion names, nor biomarker calls (TMB, MSI, HRD, tumor fraction). An ambiguous bare
+`loss` under `CDKN2A/B` and `p16INK4a loss and p14ARF loss …` names are skipped too. Derived
+protein-change rows have no position, depth or cds_effect (except splice/promoter names), and
+their tier is the inferred `likely_pathogenic`, pending confirmation.
 
 ## Not in scope
 
