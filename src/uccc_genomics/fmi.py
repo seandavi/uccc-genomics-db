@@ -8,6 +8,7 @@ instead of being dropped silently. A ReportId delivered in several files loads o
 content (fmi.duplicate_file lists the others). Idempotent full rebuild (~30 s).
 """
 import glob
+import itertools
 import os
 import re
 import shlex
@@ -48,7 +49,7 @@ CREATE TABLE report (
   disease VARCHAR, disease_ontology VARCHAR, pathology_diagnosis VARCHAR, tissue_of_origin VARCHAR,
   purity_estimate DOUBLE, percent_tumor_nuclei DOUBLE, pipeline_version VARCHAR, study VARCHAR,
   test_request VARCHAR, qc_status VARCHAR, alteration_count INT, sensitizing_count INT, resistive_count INT,
-  clinical_trial_count INT, n_amendments INT, pathologist_comment VARCHAR, source_file VARCHAR);
+  clinical_trial_count INT, n_amendments INT, pathologist_comment VARCHAR, source_file VARCHAR, mrn_source VARCHAR);
 CREATE TABLE sample (report_id VARCHAR, sample_name VARCHAR, bait_set VARCHAR, nucleic_acid_type VARCHAR, mean_exon_depth DOUBLE);
 CREATE TABLE short_variant (
   report_id VARCHAR, gene VARCHAR, cds_effect VARCHAR, protein_effect VARCHAR, position VARCHAR, transcript VARCHAR,
@@ -102,6 +103,11 @@ def b(x):
     return None if x is None else str(x).lower() == "true"
 
 
+def mrn_digits(x):
+    """Digits of an MRN text, else None (absent, empty, or no digits)."""
+    return ("".join(ch for ch in x if ch.isdigit()) or None) if x else None
+
+
 # Genes-block Alteration/Name parts that are short variants or copy-number calls (#76).
 SYMBOL = re.compile(r"[A-Z0-9][A-Za-z0-9-]*")              # a gene symbol, not "Tumor Mutation Burden"
 PROTEIN = re.compile(r"[A-Z*][0-9]+\S*")                    # R175H, Q61*, P72fs*9, A100_L104del
@@ -148,8 +154,11 @@ def rows_for(path):
     a = (lambda k: vr.get(k)) if vr is not None else (lambda k: None)
     qc = vr.find(f"{NS}quality-control") if vr is not None else None
     amend = fr.findall(".//Amendmends/Amendmend") if fr is not None else []
-    mrn = txt(pmi, "MRN")
-    mrn = "".join(ch for ch in mrn if ch.isdigit()) if mrn else None
+    # PMI MRN, else ResultsReport/CustomerInformation/MRN: Monitor files have no PMI but carry it
+    # there (namespaced rr: in real files, hence {*}), and some reports leave the PMI copy empty (#89).
+    # CustomerInformation has no name/DOB/dates.
+    pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("{*}CustomerInformation"), "{*}MRN"))
+    mrn, mrn_source = (pmi_mrn, "pmi") if pmi_mrn else (ci_mrn, "customer_information" if ci_mrn else None)
     report = (
         rid, txt(fr, "SampleName"), i(txt(fr, "Version")), txt(smp, "TestType") or a("test-type"), txt(smp, "SpecFormat"),
         txt(smp, "ReceivedDate") or txt(pmi, "ReceivedDate"), txt(pmi, "CollDate"), mrn, txt(pmi, "DOB"),
@@ -165,6 +174,7 @@ def rows_for(path):
         i(summ.get("resistiveCount")) if summ is not None else None,
         i(summ.get("clinicalTrialCount")) if summ is not None else None,
         len(amend), txt(fr, ".//comments/comment/text"), os.path.relpath(path, RAW),
+        mrn_source,
     )
     t = {k: [] for k in ("sample", "short_variant", "cna", "rearrangement", "biomarker", "non_human",
                          "pertinent_negative", "alteration", "therapy", "trial", "amendment")}
@@ -266,11 +276,27 @@ def choice_key(path, report, t):
 
 
 def patient_identity(report):
-    """deid.IDENTITY for one fmi.report row: MRN digits, else lower(last)|lower(first)|dob, else None."""
+    """deid.IDENTITY for one fmi.report row: MRN digits (PMI, else CustomerInformation), else
+    lower(last)|lower(first)|dob, else None."""
     mrn, dob, first, last = report[7], report[8], report[10], report[11]
     if mrn:
         return mrn
     return None if None in (last, first, dob) else f"{last.lower()}|{first.lower()}|{dob}"
+
+
+def same_patient(a, b):
+    """Two fmi.report rows of one ReportId are one patient. When both carry an MRN it decides, as in
+    deid.IDENTITY, so a corrected name or DOB in a re-delivery is not a conflict. Otherwise they are
+    one patient when both carry lower last|first|dob and it agrees, or when neither carries any
+    identity (as before #89). A copy may hold the MRN only in CustomerInformation while its twin has
+    only name and DOB (#89), so identities can differ in kind. Not transitive: callers must check
+    every pair."""
+    if a[7] and b[7]:
+        return a[7] == b[7]
+    na, nb = (None if None in (r[11], r[10], r[8]) else (r[11].lower(), r[10].lower(), r[8]) for r in (a, b))
+    if na and nb:
+        return na == nb
+    return patient_identity(a) is None and patient_identity(b) is None
 
 
 def load():
@@ -294,7 +320,7 @@ def load():
     reports, children, duplicates = [], {}, []
     for rid, cands in parsed.items():
         # Files of one ReportId must be one patient; otherwise load none (#81)
-        if len({patient_identity(c[1]) for c in cands}) > 1:
+        if not all(same_patient(x[1], y[1]) for x, y in itertools.combinations(cands, 2)):
             errors += [(os.path.relpath(c[0], RAW), f"ValueError: conflicting patient identity for report_id {rid}")
                        for c in cands]
             continue
@@ -303,6 +329,10 @@ def load():
         keys = [choice_key(*c) for c in cands]
         best = max(range(len(cands)), key=keys.__getitem__)
         path, report, t = cands[best]
+        if report[7] is None:  # chosen copy has no MRN anywhere: take it from a matching copy (#89)
+            donor = next((c[1] for c in cands if c[1][7]), None)
+            if donor:
+                report = report[:7] + (donor[7],) + report[8:-1] + ("duplicate_copy",)
         reports.append(report)
         for k, rows in t.items():
             children.setdefault(k, []).extend(rows)
