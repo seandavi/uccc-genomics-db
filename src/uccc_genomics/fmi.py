@@ -4,7 +4,8 @@ Covers what seandavi/foundation-medicine-xml-parser extracted (short variants,
 CNA, rearrangements, biomarkers, PMI) plus the blocks it skipped: curated
 alterations with therapies/trials, VUS flags, pertinent negatives, samples,
 QC, non-human reads, amendments. Files that fail land in fmi.load_error
-instead of being dropped silently. Idempotent full rebuild (~30 s).
+instead of being dropped silently. A ReportId delivered in several files loads one, chosen by
+content (fmi.duplicate_file lists the others). Idempotent full rebuild (~30 s).
 """
 import glob
 import os
@@ -74,6 +75,7 @@ CREATE TABLE trial (
   target VARCHAR, locations VARCHAR, include BOOLEAN);
 CREATE TABLE amendment (report_id VARCHAR, modified_at TIMESTAMP, type VARCHAR, is_signed BOOLEAN);
 CREATE TABLE load_error (file VARCHAR, error VARCHAR);
+CREATE TABLE duplicate_file (file VARCHAR, chosen_file VARCHAR, reason VARCHAR);
 """
 
 
@@ -166,9 +168,17 @@ def rows_for(path):
     )
     t = {k: [] for k in ("sample", "short_variant", "cna", "rearrangement", "biomarker", "non_human",
                          "pertinent_negative", "alteration", "therapy", "trial", "amendment")}
-    # VariantProperties lists only the VUS calls; absence => not VUS (when a FinalReport exists at all)
-    vus = {(vp.get("geneName"), vp.get("variantName")) for vp in fr.findall(".//VariantProperties/VariantProperty")
-           if b(vp.get("isVUS"))} if fr is not None else None
+    # VariantProperties lists only the VUS calls; absence => not VUS (when a FinalReport exists at all).
+    # Raw names plus the parsed (gene, protein_effect) the short_variant rows carry, so an aliased
+    # gene ("KMT2C (MLL3)") or a p16INK4a name matches its row on every path (#81).
+    vus = None
+    if fr is not None:
+        vus = set()
+        for vp in fr.findall(".//VariantProperties/VariantProperty"):
+            if b(vp.get("isVUS")):
+                vus.add((vp.get("geneName"), vp.get("variantName")))
+                if sv := genes_block_short_variant(vp.get("geneName"), vp.get("variantName") or ""):
+                    vus.add((sv[0], sv[2]))
     has_sv = vr is not None and vr.find(f".//{NS}short-variant") is not None
     has_cna = vr is not None and vr.find(f".//{NS}copy-number-alteration") is not None
     if fr is not None:
@@ -244,6 +254,25 @@ def rows_for(path):
     return report, t
 
 
+# Rank of a file among files sharing a ReportId (#81), compared in this order; the max is loaded.
+CHOICE = ("variant_elements", "version", "amendments", "mtime", "path")
+
+
+def choice_key(path, report, t):
+    """CHOICE tuple for one parsed file: has variant-report short variants, CNAs or rearrangements;
+    FinalReport Version (-1 if absent); amendment count; file mtime; path relative to RAW."""
+    return (bool(t["rearrangement"]) or any(r[-1] == "variant_report" for r in t["short_variant"] + t["cna"]),
+            -1 if report[2] is None else report[2], report[35], os.path.getmtime(path), os.path.relpath(path, RAW))
+
+
+def patient_identity(report):
+    """deid.IDENTITY for one fmi.report row: MRN digits, else lower(last)|lower(first)|dob, else None."""
+    mrn, dob, first, last = report[7], report[8], report[10], report[11]
+    if mrn:
+        return mrn
+    return None if None in (last, first, dob) else f"{last.lower()}|{first.lower()}|{dob}"
+
+
 def load():
     files = sorted(glob.glob(f"{RAW_FMI}/*.xml"))
     if not files:
@@ -251,28 +280,43 @@ def load():
     con = connect(phi=(PHI_DB, PHI_DB_KEY))
     con.execute("CREATE SCHEMA IF NOT EXISTS fmi; USE phi.fmi")
     for tname in ("report", "sample", "short_variant", "cna", "rearrangement", "biomarker", "non_human",
-                  "pertinent_negative", "alteration", "therapy", "trial", "amendment", "load_error"):
+                  "pertinent_negative", "alteration", "therapy", "trial", "amendment", "load_error", "duplicate_file"):
         con.execute(f"DROP TABLE IF EXISTS {tname}")
     con.execute(DDL)
-    reports, seen, errors = [], set(), []
-    children = {}
+    parsed, errors = {}, []
     for path in files:
         try:
             report, t = rows_for(path)
-            if report[0] in seen:
-                raise ValueError(f"duplicate report_id {report[0]}")
-            seen.add(report[0])
-            reports.append(report)
-            for k, rows in t.items():
-                children.setdefault(k, []).extend(rows)
         except Exception as e:  # noqa: BLE001 — logged to a table, never swallowed
             errors.append((os.path.relpath(path, RAW), f"{type(e).__name__}: {e}"[:300]))
+            continue
+        parsed.setdefault(report[0], []).append((path, report, t))
+    reports, children, duplicates = [], {}, []
+    for rid, cands in parsed.items():
+        # Files of one ReportId must be one patient; otherwise load none (#81)
+        if len({patient_identity(c[1]) for c in cands}) > 1:
+            errors += [(os.path.relpath(c[0], RAW), f"ValueError: conflicting patient identity for report_id {rid}")
+                       for c in cands]
+            continue
+        # FMI re-delivered some reports as a reduced copy without the variant report; the
+        # filename order picked that copy (#81). Choose by content; log the others.
+        keys = [choice_key(*c) for c in cands]
+        best = max(range(len(cands)), key=keys.__getitem__)
+        path, report, t = cands[best]
+        reports.append(report)
+        for k, rows in t.items():
+            children.setdefault(k, []).extend(rows)
+        for j, c in enumerate(cands):
+            if j != best:
+                reason = next(n for n, a, b_ in zip(CHOICE, keys[best], keys[j]) if a != b_)
+                duplicates.append((os.path.relpath(c[0], RAW), os.path.relpath(path, RAW), reason))
     bulk_insert(con, "report", reports)
     for k, rows in children.items():
         bulk_insert(con, k, rows)
     bulk_insert(con, "load_error", errors)
+    bulk_insert(con, "duplicate_file", duplicates)
     con.execute(sql("fmi_views.sql"))
     for tname in ("report", "short_variant", "cna", "rearrangement", "biomarker", "alteration", "therapy",
-                  "pertinent_negative", "load_error"):
+                  "pertinent_negative", "load_error", "duplicate_file"):
         print(f"fmi.{tname:18s} {con.execute(f'SELECT count(*) FROM {tname}').fetchone()[0]:>10,}")
     con.close()

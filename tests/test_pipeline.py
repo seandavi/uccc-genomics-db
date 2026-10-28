@@ -8,6 +8,7 @@ import copy
 import csv
 import json
 import os
+import re
 import subprocess
 from datetime import date, timedelta
 
@@ -180,6 +181,7 @@ FMI_GENES_ONLY = f"""<?xml version="1.0"?>
   </Genes>
   <VariantProperties>
    <VariantProperty geneName="PIK3CA" variantName="H1047R" isVUS="true"/>
+   <VariantProperty geneName="KMT2C (MLL3)" variantName="R100*" isVUS="true"/>
    <VariantProperty geneName="ARID1A" variantName="Q200*" isVUS="true"/>
    <VariantProperty geneName="KMT2D (MLL2)" variantName="R50fs*3" isVUS="true"/>
    <VariantProperty geneName="NF1" variantName="splice site 100+1G>A" isVUS="true"/>
@@ -215,6 +217,12 @@ FMI_MONITOR = """<?xml version="1.0"?>
  </variant-report>
 </ResultsReport>
 """
+
+
+def fmi_report(rid, mrn=MRN, full=True):
+    """FMI as report `rid` for patient `mrn`; full=False is the reduced copy (no <variant-report>)."""
+    xml = FMI.replace("ORD-0001234-01", rid).replace(f"<MRN>{MRN}</MRN>", f"<MRN>{mrn}</MRN>")
+    return xml if full else re.sub(r"\s*<variant-report.*</variant-report>", "", xml, flags=re.S)
 
 
 # (case id, specimenSite, gene TPM file assays, has a wtsExpression record, has_wts): one Caris case per
@@ -283,6 +291,21 @@ def db(tmp_path_factory):
 def genes_db(tmp_path_factory):
     return pipeline(str(tmp_path_factory.mktemp("genes")),
                     {"ORD-0001234-01.xml": FMI, "ORD-0009876-01.xml": FMI_GENES_ONLY})
+
+
+@pytest.fixture(scope="module")
+def dup_db(tmp_path_factory):
+    # A: reduced copy sorts first ("." < "_"), written last (newer mtime, as on the share)
+    # B: full file sorts first, written last (newer mtime)
+    # C: one ReportId, two patients
+    return pipeline(str(tmp_path_factory.mktemp("dup")), {
+        "ORD-0002222-01_v2.xml": fmi_report("ORD-0002222-01"),
+        "ORD-0002222-01.xml": fmi_report("ORD-0002222-01", full=False),
+        "ORD-0003333-01_v2.xml": fmi_report("ORD-0003333-01", full=False),
+        "ORD-0003333-01.xml": fmi_report("ORD-0003333-01"),
+        "ORD-0004444-01.xml": fmi_report("ORD-0004444-01"),
+        "ORD-0004444-01_v2.xml": fmi_report("ORD-0004444-01", mrn="0000777777"),
+        "broken.xml": "<ResultsReport><nothing/></ResultsReport>"})
 
 
 @pytest.fixture(scope="module")
@@ -559,7 +582,7 @@ def test_fmi_genes_block_short_variants(genes_db):
         ("TP53", None, "R248Q", 0.42, False, False, False),
         ("PIK3CA", None, "E545K", 0.12, None, None, False),     # property has only dnaFraction
         ("PIK3CA", None, "H1047R", 0.005, None, True, True),
-        ("KMT2C", None, "R100*", None, None, None, False),      # no property: NULLs, alias stripped
+        ("KMT2C", None, "R100*", None, None, None, True),       # VUS listed under the aliased gene
         ("TERT", "-124C>T", "promoter -124C>T", None, None, None, False),   # empty dnaFraction
         ("RB1", "2107-2A>G", "splice site 2107-2A>G", None, None, None, False),
         ("CDKN2A", None, "R58*", None, None, None, False)}
@@ -576,6 +599,8 @@ def test_fmi_variant_properties_vus(genes_db):
         ("ARID1A", None, "Q200*"), ("KMT2D", None, "R50fs*3"), ("NF1", "100+1G>A", "splice site 100+1G>A"),
         ("TERT", "-146C>T", "promoter -146C>T"), ("CDKN2A", None, "A57V")}
     assert len(rows) == 5
+    assert genes_db.execute("SELECT count(*), min(source) FROM phi.fmi.short_variant WHERE report_id = ? "
+                            "AND gene = 'KMT2C' AND protein_effect = 'R100*'", [GENES_ONLY]).fetchone() == (1, "genes_block")
     assert all(r[3] is True and r[4:] == (None,) * 10 for r in rows)
     assert genes_db.execute("SELECT count(*), min(source) FROM phi.fmi.short_variant WHERE report_id = ? "
                             "AND gene = 'PIK3CA' AND protein_effect = 'H1047R'", [GENES_ONLY]).fetchone() == (1, "genes_block")
@@ -628,9 +653,9 @@ def test_fmi_genes_block_rule_is_per_table(tmp_path):
 
 def test_fmi_genes_block_tier(genes_db):
     got = set(genes_db.execute("SELECT gene, hgvs_p, tier FROM db.unified.variant WHERE source = 'genes_block'").fetchall())
-    want = {(g, p, "likely_pathogenic") for g, p in (("TP53", "R248Q"), ("PIK3CA", "E545K"), ("KMT2C", "R100*"),
+    want = {(g, p, "likely_pathogenic") for g, p in (("TP53", "R248Q"), ("PIK3CA", "E545K"),
             ("TERT", "promoter -124C>T"), ("RB1", "splice site 2107-2A>G"), ("CDKN2A", "R58*"))}
-    assert got == want | {("PIK3CA", "H1047R", "vus")}
+    assert got == want | {("PIK3CA", "H1047R", "vus"), ("KMT2C", "R100*", "vus")}
     assert genes_db.execute("SELECT DISTINCT tier FROM db.unified.variant WHERE source = 'variant_properties'").fetchall() == [("vus",)]
     assert set(genes_db.execute("SELECT gene, tier FROM db.unified.variant WHERE source = 'variant_report'").fetchall()) == {
         ("TP53", "pathogenic"), ("PIK3CA", "vus"), ("BRAF", "likely_pathogenic"), ("ARID1A", "unclassified")}
@@ -761,3 +786,93 @@ def test_check_flags_stale_vendor(tmp_path):
     r = check("")
     assert r.returncode != 0
     assert "(limit 21)" in r.stderr
+
+
+def test_fmi_duplicate_report_loads_full_file(dup_db):
+    assert set(dup_db.execute("SELECT report_id, source_file FROM phi.fmi.report").fetchall()) == {
+        ("ORD-0002222-01", "fmi/ORD-0002222-01_v2.xml"), ("ORD-0003333-01", "fmi/ORD-0003333-01.xml")}
+    for rid in ("ORD-0002222-01", "ORD-0003333-01"):
+        for table, n in (("short_variant", 4), ("cna", 1)):
+            assert dup_db.execute(f"SELECT count(*), count(*) FILTER (WHERE source = 'variant_report') "
+                                  f"FROM phi.fmi.{table} WHERE report_id = ?", [rid]).fetchone() == (n, n)
+        for table, n in (("rearrangement", 1), ("alteration", 2), ("therapy", 4), ("trial", 2), ("pertinent_negative", 1)):
+            assert one(dup_db, f"SELECT count(*) FROM phi.fmi.{table} WHERE report_id = '{rid}'") == (n,)
+        assert dup_db.execute("SELECT count(*), bool_and(is_vus) FROM phi.fmi.short_variant WHERE report_id = ? "
+                              "AND gene = 'PIK3CA' AND protein_effect = 'E545K'", [rid]).fetchone() == (1, True)
+
+
+def test_fmi_duplicate_file_log(dup_db):
+    assert set(dup_db.execute("SELECT file, chosen_file, reason FROM phi.fmi.duplicate_file").fetchall()) == {
+        ("fmi/ORD-0002222-01.xml", "fmi/ORD-0002222-01_v2.xml", "variant_elements"),
+        ("fmi/ORD-0003333-01_v2.xml", "fmi/ORD-0003333-01.xml", "variant_elements")}
+    errors = dict(dup_db.execute("SELECT file, error FROM phi.fmi.load_error").fetchall())
+    conflict = "ValueError: conflicting patient identity for report_id ORD-0004444-01"
+    assert errors["fmi/ORD-0004444-01.xml"] == errors["fmi/ORD-0004444-01_v2.xml"] == conflict
+    assert "fmi/broken.xml" in errors and len(errors) == 3
+    assert not any("duplicate report_id" in e for e in errors.values())
+    for table in ("report", "short_variant"):
+        assert one(dup_db, f"SELECT count(*) FROM phi.fmi.{table} WHERE report_id = 'ORD-0004444-01'") == (0,)
+
+
+def test_fmi_duplicate_deid(dup_db):
+    tables = {r[0] for r in dup_db.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = 'db'").fetchall()}
+    assert not tables & {"duplicate_file", "load_error"}
+    ids = dup_db.execute("SELECT DISTINCT research_id FROM db.fmi.report").fetchall()
+    assert len(ids) == 1 and ids == dup_db.execute("SELECT DISTINCT research_id FROM db.caris.report").fetchall()
+
+
+def test_fmi_choice_tie_breaks(tmp_path):
+    from uccc_genomics.fmi import CHOICE, choice_key, rows_for
+
+    amendment = ("<Amendmends><Amendmend><ModifiedDts>2026-01-01T00:00:00</ModifiedDts><Type>Addendum</Type>"
+                 "<IsSigned>true</IsSigned></Amendmend></Amendmends>")
+
+    def key(name, xml, mtime):
+        path = tmp_path / name
+        path.write_text(xml)
+        os.utime(path, (mtime, mtime))
+        return choice_key(str(path), *rows_for(str(path)))
+
+    def first_diff(a, b):
+        assert a > b
+        return next(n for n, x, y in zip(CHOICE, a, b) if x != y)
+
+    reduced = fmi_report("ORD-0008888-01", full=False)
+    t0 = 1_700_000_000
+    for full_mtime in (t0, t0 + 200):  # full file older, then newer than the reduced copy
+        assert first_diff(key("full.xml", fmi_report("ORD-0008888-01"), full_mtime),
+                          key("reduced.xml", reduced, t0 + 100)) == "variant_elements"
+    assert first_diff(key("v2.xml", reduced.replace("<Version>1</Version>", "<Version>2</Version>"), t0),
+                      key("v1.xml", reduced, t0)) == "version"
+    assert first_diff(key("amended.xml", reduced.replace("</FinalReport>", f"{amendment}</FinalReport>"), t0),
+                      key("plain.xml", reduced, t0)) == "amendments"
+    assert first_diff(key("new.xml", reduced, t0 + 100), key("old.xml", reduced, t0)) == "mtime"
+    assert first_diff(key("b.xml", reduced, t0), key("a.xml", reduced, t0)) == "path"
+
+
+def test_fmi_vus_lookup_normalizes_names(tmp_path):
+    from uccc_genomics.fmi import rows_for
+    xml = """<?xml version="1.0"?>
+<ResultsReport>
+ <FinalReport>
+  <ReportId>ORD-0006666-01</ReportId><SampleName>ORD-0006666-01</SampleName><Version>1</Version>
+  <VariantProperties>
+   <VariantProperty geneName="KMT2C (MLL3)" variantName="R100*" isVUS="true"/>
+   <VariantProperty geneName="CDKN2A/B" variantName="p16INK4a A57V" isVUS="true"/>
+  </VariantProperties>
+ </FinalReport>
+ <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external">
+  <short-variants>
+   <short-variant gene="KMT2C" cds-effect="298C>T" protein-effect="R100*" status="unknown"/>
+   <short-variant gene="CDKN2A" cds-effect="170C>T" protein-effect="A57V" status="unknown"/>
+   <short-variant gene="TP53" cds-effect="524G>A" protein-effect="R175H" status="known"/>
+  </short-variants>
+ </variant-report>
+</ResultsReport>
+"""
+    path = tmp_path / "ORD-0006666-01.xml"
+    path.write_text(xml)
+    _, t = rows_for(str(path))
+    assert {(r[1], r[3], r[14]) for r in t["short_variant"]} == {
+        ("KMT2C", "R100*", True), ("CDKN2A", "A57V", True), ("TP53", "R175H", False)}
+    assert {r[-1] for r in t["short_variant"]} == {"variant_report"}
