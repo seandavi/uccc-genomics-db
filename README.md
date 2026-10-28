@@ -114,7 +114,9 @@ FinalReport, so their id is the file name and they carry no patient block),
 (curated Genes block), `therapy`, `trial`, `amendment`, `load_error` (files that
 failed to parse — nothing is dropped silently). Views `tmb`, `msi`, `loh`.
 `source` is `variant_report`, or `genes_block` for rows derived from the curated Genes block on
-reports without `<short-variant>` / `<copy-number-alteration>` elements (older reports, #76).
+reports without `<short-variant>` / `<copy-number-alteration>` elements (older reports, #76), or (short_variant
+only) `variant_properties` for VUS listed only in `VariantProperties` on reports without
+`<short-variant>` elements (#79).
 
 **`unified.*`** (de-identified file only) — `patient`, `report`, `variant`,
 `cna`, `fusion`, `biomarker` (long: TMB/MSI/LOH/PD-L1 and the other Caris IHC markers), `gene_tested`
@@ -126,7 +128,8 @@ detail stays in `caris.*` / `fmi.*` and joins back on `report_id`.
 `is_vus` and `vendor_call` stay as the vendor's own flags, and the cohort API's
 default "pathogenic" is the first two tiers. `variant.source` / `cna.source` carry the
 FMI provenance above (NULL for Caris); FMI `genes_block` short variants have tier
-`likely_pathogenic` unless VUS, an inference rather than a vendor call. `variant.consequence` is lower case
+`likely_pathogenic` unless VUS, an inference rather than a vendor call. FMI
+`variant_properties` rows are VUS (tier `vus`). `variant.consequence` is lower case
 (vendor terms are otherwise unchanged). `biomarker.call_norm` folds the Caris HER2
 IHC spellings (`HER2-Low`/`Low`, `HER2-Positive`/`Positive`, ...) while `call` keeps
 the raw string. `biomarker.clone` is the PD-L1 antibody clone (`22c3`, `sp142`), NULL on every other row. `report.collected_year_complete` is false while the date-shifted
@@ -359,7 +362,11 @@ calls derived from the Genes block (#76), but not Genes-block rearrangement, tru
 duplication or fusion names, nor biomarker calls (TMB, MSI, HRD, tumor fraction). An ambiguous bare
 `loss` under `CDKN2A/B` and `p16INK4a loss and p14ARF loss …` names are skipped too. Derived
 protein-change rows have no position, depth or cds_effect (except splice/promoter names), and
-their tier is the inferred `likely_pathogenic`, pending confirmation.
+their tier is the inferred `likely_pathogenic`, pending confirmation. VUS on these reports come from
+`VariantProperties` (#79) with gene and protein change only (no VAF, depth or position; cds_effect
+only for splice/promoter names). VUS named as copy-number, rearrangement, fusion or truncation calls,
+`p16INK4a … loss` names, and plain protein changes under a slash gene name (`CDKN2A/B` style) are
+not derived.
 
 ## Not in scope
 
