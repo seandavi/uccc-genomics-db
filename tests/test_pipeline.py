@@ -178,7 +178,20 @@ FMI_GENES_ONLY = f"""<?xml version="1.0"?>
    {_gene("Tumor Mutation Burden", ("TMB-Low", []))}
    {_gene("Microsatellite status", ("MS-Stable", []))}
   </Genes>
-  <VariantProperties><VariantProperty geneName="PIK3CA" variantName="H1047R" isVUS="true"/></VariantProperties>
+  <VariantProperties>
+   <VariantProperty geneName="PIK3CA" variantName="H1047R" isVUS="true"/>
+   <VariantProperty geneName="ARID1A" variantName="Q200*" isVUS="true"/>
+   <VariantProperty geneName="KMT2D (MLL2)" variantName="R50fs*3" isVUS="true"/>
+   <VariantProperty geneName="NF1" variantName="splice site 100+1G>A" isVUS="true"/>
+   <VariantProperty geneName="TERT" variantName="promoter -146C>T" isVUS="true"/>
+   <VariantProperty geneName="CDKN2A/B" variantName="p16INK4a A57V" isVUS="true"/>
+   <VariantProperty geneName="CDKN2A/B" variantName="P114L" isVUS="true"/>
+   <VariantProperty geneName="CDKN2A/B" variantName="p16INK4a loss and p14ARF loss exons 1-2" isVUS="true"/>
+   <VariantProperty geneName="MYC" variantName="amplification" isVUS="true"/>
+   <VariantProperty geneName="NOTCH1" variantName="rearrangement intron 2" isVUS="true"/>
+   <VariantProperty geneName="BRCA2" variantName="E100K" isVUS="false"/>
+   <VariantProperty geneName="BRCA1" variantName="D20N"/>
+  </VariantProperties>
  </FinalReport>
  <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external"
      disease="Lung" disease-ontology="Lung adenocarcinoma" gender="male" test-type="FoundationOne">
@@ -541,7 +554,7 @@ def test_genes_block_parsers():
 def test_fmi_genes_block_short_variants(genes_db):
     rows = genes_db.execute(
         "SELECT gene, cds_effect, protein_effect, round(allele_fraction, 6), equivocal, subclonal, is_vus, status, depth, source "
-        "FROM phi.fmi.short_variant WHERE report_id = ?", [GENES_ONLY]).fetchall()
+        "FROM phi.fmi.short_variant WHERE report_id = ? AND source = 'genes_block'", [GENES_ONLY]).fetchall()
     assert {r[:7] for r in rows} == {
         ("TP53", None, "R248Q", 0.42, False, False, False),
         ("PIK3CA", None, "E545K", 0.12, None, None, False),     # property has only dnaFraction
@@ -552,6 +565,25 @@ def test_fmi_genes_block_short_variants(genes_db):
         ("CDKN2A", None, "R58*", None, None, None, False)}
     assert len(rows) == 7
     assert {r[7:] for r in rows} == {(None, None, "genes_block")}
+
+
+def test_fmi_variant_properties_vus(genes_db):
+    rows = genes_db.execute(
+        "SELECT gene, cds_effect, protein_effect, is_vus, position, transcript, strand, allele_fraction, depth, "
+        "percent_reads, status, functional_effect, equivocal, subclonal "
+        "FROM phi.fmi.short_variant WHERE report_id = ? AND source = 'variant_properties'", [GENES_ONLY]).fetchall()
+    assert {r[:3] for r in rows} == {
+        ("ARID1A", None, "Q200*"), ("KMT2D", None, "R50fs*3"), ("NF1", "100+1G>A", "splice site 100+1G>A"),
+        ("TERT", "-146C>T", "promoter -146C>T"), ("CDKN2A", None, "A57V")}
+    assert len(rows) == 5
+    assert all(r[3] is True and r[4:] == (None,) * 10 for r in rows)
+    assert genes_db.execute("SELECT count(*), min(source) FROM phi.fmi.short_variant WHERE report_id = ? "
+                            "AND gene = 'PIK3CA' AND protein_effect = 'H1047R'", [GENES_ONLY]).fetchone() == (1, "genes_block")
+    assert genes_db.execute("SELECT count(*) FROM phi.fmi.short_variant WHERE report_id = ? AND (gene IN "
+                            "('BRCA1', 'BRCA2', 'MYC', 'NOTCH1') OR protein_effect = 'P114L')", [GENES_ONLY]).fetchone() == (0,)
+    assert genes_db.execute("SELECT count(*) FROM phi.fmi.cna WHERE report_id = ? AND gene = 'MYC'", [GENES_ONLY]).fetchone() == (0,)
+    assert one(genes_db, "SELECT count(*) FROM phi.fmi.short_variant WHERE report_id = 'ORD-0001234-01' "
+                         "AND source = 'variant_properties'") == (0,)
 
 
 def test_fmi_genes_block_cna(genes_db):
@@ -569,11 +601,37 @@ def test_fmi_genes_block_not_duplicated(genes_db):
     assert one(genes_db, "SELECT count(*) FROM phi.fmi.alteration WHERE report_id = 'ORD-0009876-01'") == (14,)
 
 
+def test_fmi_genes_block_rule_is_per_table(tmp_path):
+    """A report with <short-variant> but no <copy-number-alteration> gets Genes-block CNA only."""
+    from uccc_genomics.fmi import rows_for
+    xml = f"""<?xml version="1.0"?>
+<ResultsReport>
+ <FinalReport>
+  <ReportId>ORD-0007777-01</ReportId><SampleName>ORD-0007777-01</SampleName><Version>1</Version>
+  <Genes>
+   {_gene("TP53", ("R175H", []))}
+   {_gene("ERBB2", ("amplification", []))}
+  </Genes>
+  <VariantProperties><VariantProperty geneName="ARID1A" variantName="Q200*" isVUS="true"/></VariantProperties>
+ </FinalReport>
+ <variant-report xmlns="http://foundationmedicine.com/compbio/variant-report-external">
+  <short-variants><short-variant gene="TP53" cds-effect="524G>A" protein-effect="R175H" status="known"/></short-variants>
+ </variant-report>
+</ResultsReport>
+"""
+    path = tmp_path / "ORD-0007777-01.xml"
+    path.write_text(xml)
+    _, t = rows_for(str(path))
+    assert t["cna"] == [("ORD-0007777-01", "ERBB2", "amplification", None, None, None, None, None, None, "genes_block")]
+    assert [r[-1] for r in t["short_variant"]] == ["variant_report"]
+
+
 def test_fmi_genes_block_tier(genes_db):
     got = set(genes_db.execute("SELECT gene, hgvs_p, tier FROM db.unified.variant WHERE source = 'genes_block'").fetchall())
     want = {(g, p, "likely_pathogenic") for g, p in (("TP53", "R248Q"), ("PIK3CA", "E545K"), ("KMT2C", "R100*"),
             ("TERT", "promoter -124C>T"), ("RB1", "splice site 2107-2A>G"), ("CDKN2A", "R58*"))}
     assert got == want | {("PIK3CA", "H1047R", "vus")}
+    assert genes_db.execute("SELECT DISTINCT tier FROM db.unified.variant WHERE source = 'variant_properties'").fetchall() == [("vus",)]
     assert set(genes_db.execute("SELECT gene, tier FROM db.unified.variant WHERE source = 'variant_report'").fetchall()) == {
         ("TP53", "pathogenic"), ("PIK3CA", "vus"), ("BRAF", "likely_pathogenic"), ("ARID1A", "unclassified")}
     assert one(genes_db, "SELECT count(*) FROM db.unified.variant WHERE vendor = 'caris' AND source IS NOT NULL") == (0,)
@@ -587,6 +645,8 @@ def test_mart_fact_genes_block(genes_db):
         "AND report_id IN (SELECT report_id FROM db.unified.cna WHERE source = 'genes_block')").fetchall())
     assert ("TP53", "mutation", "R248Q", "likely_pathogenic") in fact
     assert ("PIK3CA", "mutation", "H1047R", "vus") in fact
+    assert ("ARID1A", "mutation", "Q200*", "vus") in fact
+    assert ("KMT2D", "mutation", "R50fs*3", "vus") in fact
     assert {k for k, sub, _, _ in fact if sub == "amplification"} == {"ERBB2"}
     assert {k for k, sub, _, _ in fact if sub == "loss"} == {"PTEN", "CDKN2B"}
     assert not {k for k, *_ in fact} & {"Tumor Mutation Burden", "Microsatellite status", "WT1", "KRAS"}

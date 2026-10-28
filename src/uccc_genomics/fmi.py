@@ -202,6 +202,15 @@ def rows_for(path):
                                                    (sg, prot) in vus or (sg, cds) in vus, "genes_block"))
                     elif not has_cna and (cn := genes_block_cna(gene, part)):
                         t["cna"].append((rid, *cn, None, None, None, None, None, eq, "genes_block"))
+        # Older reports list their VUS only in VariantProperties (#79). Same per-report rule as the
+        # Genes block; a VariantProperty carries only gene and name, so everything else is NULL.
+        if not has_sv:
+            derived = {(r[1], r[3]) for r in t["short_variant"]}  # (gene, protein_effect) from the Genes block
+            for vp in fr.findall(".//VariantProperties/VariantProperty"):
+                sv = genes_block_short_variant(vp.get("geneName"), vp.get("variantName") or "") if b(vp.get("isVUS")) else None
+                if sv and (sv[0], sv[2]) not in derived:
+                    derived.add((sv[0], sv[2]))
+                    t["short_variant"].append((rid, *sv, *[None] * 10, True, "variant_properties"))
         for tr in fr.findall(".//Trials/Trial"):
             t["trial"].append((rid, txt(tr, "Gene"), txt(tr, "Alteration"), txt(tr, "NCTID"), txt(tr, "Title"),
                                txt(tr, "StudyPhase"), txt(tr, "Target"), txt(tr, "Locations"), b(txt(tr, "Include"))))
