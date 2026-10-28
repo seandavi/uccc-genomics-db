@@ -44,7 +44,8 @@ For a report whose MRN exists only in `CustomerInformation` (mostly Monitor repo
 `research_id` moves from a per-report id (keyed hash of `'nopid:fmi' || report_id`, or of
 `last|first|dob` for a regular report that has those) to the patient's id (keyed hash of the MRN).
 Its date-shift offset moves with it (`deid` keys the shift on the same identity). Monitor reports
-carry no dates, so nothing visible shifts for them. This is a deliberate correction: the patient
+carry no dates, so nothing visible shifts for them; a regular report reached by the fallback does
+carry dates, so its shifted dates change too, becoming consistent with the patient's other reports (#90). This is a deliberate correction: the patient
 key changes only for reports that were wrongly unlinked. For every report with a PMI MRN, and
 for every report with no MRN anywhere, `research_id` is the same as before for the same key.
 `report_id` is unchanged for every report. `deid.py`'s hashing doesn't change.
@@ -275,3 +276,19 @@ Checks: `uv run pytest -q`. Dashboard `npm test` n/a (no dashboard change). Web 
   identifiers aren't loaded (the leak check with `TRF00001` in tests 2 and 3).
 - **PHI.** The fallback MRN lives only in `phi.fmi.report.mrn`, which `deid` already drops; it
   reaches the de-id file only as the keyed `research_id` hash.
+
+
+## Amendment after the real-data dry-run (orchestrator, 2026-10-28)
+
+1. **Namespace.** In FMI's real files `CustomerInformation` and its children are in the `rr:` namespace
+   (`http://integration.foundationmedicine.com/reporting`), unlike `FinalReport`/`PMI`. The first
+   implementation used a plain `find("CustomerInformation")`, which matched the un-namespaced test fixture
+   but nothing in the real files. Fixed with `{*}` wildcards; the fixture now uses the real namespaced
+   shape, and the old lookup fails four tests against it.
+2. **Duplicate-copy identity (#81 interaction).** One real duplicate pair has the MRN only in the reduced
+   copy's `CustomerInformation` and only name/DOB in the full copy. Comparing whole identities made that
+   a false conflict and loaded neither copy. `same_patient(a, b)` now compares only the fields both carry
+   (MRN; lower last|first|dob), requires at least one shared field, and fails if any shared field
+   differs; the chosen copy takes a missing MRN from a matching twin (`mrn_source = 'duplicate_copy'`).
+   Tested by `test_fmi_duplicate_mixed_identity` (same patient loads; a different last name still
+   conflicts).

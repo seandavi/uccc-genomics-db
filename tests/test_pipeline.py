@@ -221,9 +221,11 @@ FMI_MONITOR = """<?xml version="1.0"?>
 
 def with_customer_information(xml, mrn):
     """`xml` with a ResultsReport/CustomerInformation block (FMI's children, synthetic values) carrying `mrn` (#89)."""
-    return xml.replace("<ResultsReport>", "<ResultsReport>\n <CustomerInformation><CSN>9000001</CSN>"
-                       f"<MRN>{mrn}</MRN><NPI>1234567890</NPI><PhysicianId>999</PhysicianId>"
-                       "<ReferenceID>REF-1</ReferenceID><TRF>TRF00001</TRF></CustomerInformation>", 1)
+    # Namespaced as in FMI's real files (rr:), unlike FinalReport/PMI; a plain find() misses it.
+    return xml.replace("<ResultsReport>", '<ResultsReport>\n <rr:CustomerInformation '
+                       'xmlns:rr="http://integration.foundationmedicine.com/reporting"><rr:CSN>9000001</rr:CSN>'
+                       f"<rr:MRN>{mrn}</rr:MRN><rr:NPI>1234567890</rr:NPI><rr:PhysicianId>999</rr:PhysicianId>"
+                       "<rr:ReferenceID>REF-1</rr:ReferenceID><rr:TRF>TRF00001</rr:TRF></rr:CustomerInformation>", 1)
 
 
 def fmi_report(rid, mrn=MRN, full=True, ci_mrn=None):
@@ -317,6 +319,20 @@ def dup_db(tmp_path_factory):
         "ORD-0005555-01.xml": fmi_report("ORD-0005555-01"),
         "ORD-0005555-01_v2.xml": fmi_report("ORD-0005555-01", mrn="", full=False, ci_mrn=MRN),
         "broken.xml": "<ResultsReport><nothing/></ResultsReport>"})
+
+
+@pytest.fixture(scope="module")
+def dup_mixed_db(tmp_path_factory):
+    # The real shape (#89): the full copy has no MRN anywhere, the reduced copy has it only in
+    # CustomerInformation; both carry the same name and DOB. E: same patient. F: different last name.
+    other = fmi_report("ORD-0008888-01", mrn="", full=False, ci_mrn=MRN).replace(
+        "<LastName>Doe</LastName>", "<LastName>Roe</LastName>")
+    assert "<LastName>Roe</LastName>" in other
+    return pipeline(str(tmp_path_factory.mktemp("dup_mixed")), {
+        "ORD-0006666-01.xml": fmi_report("ORD-0006666-01", mrn=""),
+        "ORD-0006666-01_v2.xml": fmi_report("ORD-0006666-01", mrn="", full=False, ci_mrn=MRN),
+        "ORD-0008888-01.xml": fmi_report("ORD-0008888-01", mrn=""),
+        "ORD-0008888-01_v2.xml": other})
 
 
 @pytest.fixture(scope="module")
@@ -965,3 +981,16 @@ def test_fmi_vus_lookup_normalizes_names(tmp_path):
     assert {(r[1], r[3], r[14]) for r in t["short_variant"]} == {
         ("KMT2C", "R100*", True), ("CDKN2A", "A57V", True), ("TP53", "R175H", False)}
     assert {r[-1] for r in t["short_variant"]} == {"variant_report"}
+
+
+def test_fmi_duplicate_mixed_identity(dup_mixed_db):
+    """Name/DOB-only full copy + CustomerInformation-MRN-only reduced copy of one patient: not a
+    conflict; the full copy loads and takes the MRN from its twin (#89)."""
+    assert dup_mixed_db.execute("SELECT source_file, mrn, mrn_source FROM phi.fmi.report "
+                                "WHERE report_id = 'ORD-0006666-01'").fetchall() == [
+        ("fmi/ORD-0006666-01.xml", MRN, "duplicate_copy")]
+    assert one(dup_mixed_db, "SELECT count(*) FROM phi.fmi.short_variant WHERE report_id = 'ORD-0006666-01' "
+                             "AND source = 'variant_report'") == (4,)
+    errors = dict(dup_mixed_db.execute("SELECT file, error FROM phi.fmi.load_error").fetchall())
+    assert set(errors) == {"fmi/ORD-0008888-01.xml", "fmi/ORD-0008888-01_v2.xml"}   # names differ: conflict
+    assert all("conflicting patient identity" in e for e in errors.values())

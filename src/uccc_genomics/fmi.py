@@ -154,8 +154,9 @@ def rows_for(path):
     qc = vr.find(f"{NS}quality-control") if vr is not None else None
     amend = fr.findall(".//Amendmends/Amendmend") if fr is not None else []
     # PMI MRN, else ResultsReport/CustomerInformation/MRN: Monitor files have no PMI but carry it
+    # there (namespaced rr: in real files, hence {*}),
     # there, and some reports leave the PMI copy empty (#89). CustomerInformation has no name/DOB/dates.
-    pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("CustomerInformation"), "MRN"))
+    pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("{*}CustomerInformation"), "{*}MRN"))
     mrn, mrn_source = (pmi_mrn, "pmi") if pmi_mrn else (ci_mrn, "customer_information" if ci_mrn else None)
     report = (
         rid, txt(fr, "SampleName"), i(txt(fr, "Version")), txt(smp, "TestType") or a("test-type"), txt(smp, "SpecFormat"),
@@ -282,6 +283,23 @@ def patient_identity(report):
     return None if None in (last, first, dob) else f"{last.lower()}|{first.lower()}|{dob}"
 
 
+def same_patient(a, b):
+    """Two fmi.report rows of one ReportId are one patient when every identity field both carry
+    agrees (MRN; lower last|first|dob) and they share at least one. A copy may hold the MRN only in
+    CustomerInformation while its twin has only name and DOB (#89), so identities can differ in kind."""
+    shared = 0
+    if a[7] and b[7]:
+        if a[7] != b[7]:
+            return False
+        shared += 1
+    na, nb = (None if None in (r[11], r[10], r[8]) else (r[11].lower(), r[10].lower(), r[8]) for r in (a, b))
+    if na and nb:
+        if na != nb:
+            return False
+        shared += 1
+    return shared > 0
+
+
 def load():
     files = sorted(glob.glob(f"{RAW_FMI}/*.xml"))
     if not files:
@@ -303,7 +321,7 @@ def load():
     reports, children, duplicates = [], {}, []
     for rid, cands in parsed.items():
         # Files of one ReportId must be one patient; otherwise load none (#81)
-        if len({patient_identity(c[1]) for c in cands}) > 1:
+        if not all(same_patient(cands[0][1], c[1]) for c in cands[1:]):
             errors += [(os.path.relpath(c[0], RAW), f"ValueError: conflicting patient identity for report_id {rid}")
                        for c in cands]
             continue
@@ -312,6 +330,10 @@ def load():
         keys = [choice_key(*c) for c in cands]
         best = max(range(len(cands)), key=keys.__getitem__)
         path, report, t = cands[best]
+        if report[7] is None:  # chosen copy has no MRN anywhere: take it from a matching copy (#89)
+            donor = next((c[1] for c in cands if c[1][7]), None)
+            if donor:
+                report = report[:7] + (donor[7],) + report[8:-1] + ("duplicate_copy",)
         reports.append(report)
         for k, rows in t.items():
             children.setdefault(k, []).extend(rows)
