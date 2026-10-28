@@ -57,13 +57,15 @@ All tables share `research_id` (patient) and `report_id` (test accession).
 
 3. `unified.variant`:
    - Short variants (SNVs, indels, non-wildtype calls).
-   - Columns: vendor, report_id, research_id, gene, hgvs_c, hgvs_p, chrom, pos, ref, alt, transcript, vaf (0..1), depth, consequence, is_vus, is_subclonal, genome_build, vendor_call, tier
+   - Columns: vendor, report_id, research_id, gene, hgvs_c, hgvs_p, chrom, pos, ref, alt, transcript, vaf (0..1), depth, consequence, is_vus, is_subclonal, genome_build, vendor_call, source, tier
    - `tier` is the significance to filter on: pathogenic, likely_pathogenic, vus, likely_benign_or_benign, unclassified (derived per vendor; `vendor_call` keeps the vendor's own term). Benign tiers are not alterations.
+   - `source` (FMI only; NULL for Caris): `variant_report` (FMI's variant-report elements), `genes_block` (derived from the curated Genes block on older reports without those elements, #76: no vendor_call, inferred tier `likely_pathogenic` unless VUS) or `variant_properties` (VUS listed only in VariantProperties on those reports, #79: tier `vus`, gene and protein change only, no VAF, depth or position).
    - `consequence` is lower case.
 
 4. `unified.cna`:
    - Copy number alterations.
-   - Columns: vendor, report_id, research_id, gene, cn_type (amplification/loss), copy_number, ratio, coordinates, equivocal, genome_build, vendor_call
+   - Columns: vendor, report_id, research_id, gene, cn_type (amplification/loss), copy_number, ratio, coordinates, equivocal, genome_build, vendor_call, source
+   - `source` (FMI only; NULL for Caris): `variant_report`, or `genes_block` for amplification/loss calls derived from the Genes block on older reports (#76).
 
 5. `unified.fusion`:
    - Structural rearrangements and gene fusions.
