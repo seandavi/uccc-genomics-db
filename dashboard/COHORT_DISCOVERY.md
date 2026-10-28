@@ -491,7 +491,9 @@ definition it proposes must match a hand-written one.
 1. **Significance tiers.** Decided in #32: Caris "Mutated, Unclassified" and
    FMI status `unknown` with `is_vus = false` are `unclassified`, outside the
    default pathogenic filter and opt-in. This changes counts on every
-   alteration question.
+   alteration question. FMI Genes-block short variants (#76) carry no vendor
+   status and are `likely_pathogenic` unless VUS, inferred from reports that
+   have both blocks; for Sean to confirm.
 2. **Assistant and the DUAs.** May floored aggregate counts and researchers'
    prompts go to an external model provider? If not, the assistant needs a
    model hosted on campus, or it waits.

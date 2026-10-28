@@ -8,6 +8,7 @@ instead of being dropped silently. Idempotent full rebuild (~30 s).
 """
 import glob
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -51,10 +52,10 @@ CREATE TABLE sample (report_id VARCHAR, sample_name VARCHAR, bait_set VARCHAR, n
 CREATE TABLE short_variant (
   report_id VARCHAR, gene VARCHAR, cds_effect VARCHAR, protein_effect VARCHAR, position VARCHAR, transcript VARCHAR,
   strand VARCHAR, allele_fraction DOUBLE, depth INT, percent_reads DOUBLE, status VARCHAR, functional_effect VARCHAR,
-  equivocal BOOLEAN, subclonal BOOLEAN, is_vus BOOLEAN);
+  equivocal BOOLEAN, subclonal BOOLEAN, is_vus BOOLEAN, source VARCHAR);
 CREATE TABLE cna (
   report_id VARCHAR, gene VARCHAR, type VARCHAR, copy_number DOUBLE, ratio DOUBLE, number_of_exons VARCHAR,
-  position VARCHAR, status VARCHAR, equivocal BOOLEAN);
+  position VARCHAR, status VARCHAR, equivocal BOOLEAN, source VARCHAR);
 CREATE TABLE rearrangement (
   report_id VARCHAR, targeted_gene VARCHAR, other_gene VARCHAR, description VARCHAR, type VARCHAR, pos1 VARCHAR,
   pos2 VARCHAR, status VARCHAR, in_frame VARCHAR, allele_fraction DOUBLE, percent_reads DOUBLE,
@@ -99,6 +100,39 @@ def b(x):
     return None if x is None else str(x).lower() == "true"
 
 
+# Genes-block Alteration/Name parts that are short variants or copy-number calls (#76).
+SYMBOL = re.compile(r"[A-Z0-9][A-Za-z0-9-]*")              # a gene symbol, not "Tumor Mutation Burden"
+PROTEIN = re.compile(r"[A-Z*][0-9]+\S*")                    # R175H, Q61*, P72fs*9, A100_L104del
+CDS_PREFIXED = re.compile(r"(?:splice site|promoter) (\S+)")  # splice site 560-1G>C, promoter -124C>T
+P16 = re.compile(r"p16INK4a ([A-Z*][0-9]+\S*)(?: and p14ARF \S+)?")
+CNA_NAME = re.compile(r"(amplification|loss)(?: exons? [0-9]+(?:-[0-9]+)?)?")
+GENE_LOSS = re.compile(r"([A-Z0-9][A-Za-z0-9-]*) loss")      # "CDKN2B loss" under Gene/Name "CDKN2A/B"
+
+
+def genes_block_short_variant(gene, part):
+    """(gene, cds_effect, protein_effect) for one ", "-separated part of a Genes-block
+    Alteration/Name that is a short variant, else None. `gene` is Gene/Name ("KMT2C (MLL3)")."""
+    gene = gene.split(" (")[0] if gene else None
+    if m := P16.fullmatch(part):
+        return ("CDKN2A", None, m[1]) if gene in ("CDKN2A", "CDKN2A/B") else None
+    if not (gene and SYMBOL.fullmatch(gene)):
+        return None
+    if m := CDS_PREFIXED.fullmatch(part):
+        return gene, m[1], part
+    return (gene, None, part) if PROTEIN.fullmatch(part) else None
+
+
+def genes_block_cna(gene, part):
+    """(gene, type), type 'amplification' or 'loss', for a copy-number part of a Genes-block
+    Alteration/Name, else None."""
+    gene = gene.split(" (")[0] if gene else None
+    if m := GENE_LOSS.fullmatch(part):
+        return m[1], "loss"
+    if gene and SYMBOL.fullmatch(gene) and (m := CNA_NAME.fullmatch(part)):
+        return gene, m[1]
+    return None
+
+
 def rows_for(path):
     root = ET.parse(path).getroot()
     fr = root.find(".//FinalReport")
@@ -135,6 +169,8 @@ def rows_for(path):
     # VariantProperties lists only the VUS calls; absence => not VUS (when a FinalReport exists at all)
     vus = {(vp.get("geneName"), vp.get("variantName")) for vp in fr.findall(".//VariantProperties/VariantProperty")
            if b(vp.get("isVUS"))} if fr is not None else None
+    has_sv = vr is not None and vr.find(f".//{NS}short-variant") is not None
+    has_cna = vr is not None and vr.find(f".//{NS}copy-number-alteration") is not None
     if fr is not None:
         for pn in fr.findall(".//PertinentNegatives/PertinentNegative"):
             t["pertinent_negative"].append((rid, txt(pn, "Gene")))
@@ -151,6 +187,21 @@ def rows_for(path):
                 for th in al.findall("Therapies/Therapy"):
                     t["therapy"].append((rid, gene, name, txt(th, "Name"), txt(th, "GenericName"), b(txt(th, "FDAApproved")),
                                          txt(th, "Effect"), b(txt(th, "Include")), b(txt(th, "IncludeInSummary"))))
+                # Older reports list their variants only here, with no <short-variant> or
+                # <copy-number-alteration> elements: derive rows for those reports only (#76).
+                # dnaFraction is a percent; each ", "-joined part has its own AlterationProperty.
+                for part in (name or "").split(", "):
+                    p = props.get(part)
+                    eq = b(p.get("isEquivocal")) if p is not None else None
+                    if not has_sv and (sv := genes_block_short_variant(gene, part)):
+                        sg, cds, prot = sv
+                        af = f(p.get("dnaFraction")) if p is not None else None
+                        t["short_variant"].append((rid, sg, cds, prot, None, None, None,
+                                                   None if af is None else af / 100, None, None, None, None,
+                                                   eq, b(p.get("isSubclonal")) if p is not None else None,
+                                                   (sg, prot) in vus or (sg, cds) in vus, "genes_block"))
+                    elif not has_cna and (cn := genes_block_cna(gene, part)):
+                        t["cna"].append((rid, *cn, None, None, None, None, None, eq, "genes_block"))
         for tr in fr.findall(".//Trials/Trial"):
             t["trial"].append((rid, txt(tr, "Gene"), txt(tr, "Alteration"), txt(tr, "NCTID"), txt(tr, "Title"),
                                txt(tr, "StudyPhase"), txt(tr, "Target"), txt(tr, "Locations"), b(txt(tr, "Include"))))
@@ -165,10 +216,12 @@ def rows_for(path):
                                        v.get("transcript"), v.get("strand"), f(v.get("allele-fraction")), i(v.get("depth")),
                                        f(v.get("percent-reads")), v.get("status"), v.get("functional-effect"),
                                        b(v.get("equivocal")), b(v.get("subclonal")),
-                                       None if vus is None else ((g, v.get("protein-effect")) in vus or (g, v.get("cds-effect")) in vus)))
+                                       None if vus is None else ((g, v.get("protein-effect")) in vus or (g, v.get("cds-effect")) in vus),
+                                       "variant_report"))
         for c in vr.findall(f".//{NS}copy-number-alteration"):
             t["cna"].append((rid, c.get("gene"), c.get("type"), f(c.get("copy-number")), f(c.get("ratio")),
-                             c.get("number-of-exons"), c.get("position"), c.get("status"), b(c.get("equivocal"))))
+                             c.get("number-of-exons"), c.get("position"), c.get("status"), b(c.get("equivocal")),
+                             "variant_report"))
         for r in vr.findall(f".//{NS}rearrangement"):
             t["rearrangement"].append((rid, r.get("targeted-gene"), r.get("other-gene"), r.get("description"), r.get("type"),
                                        r.get("pos1"), r.get("pos2"), r.get("status"), r.get("in-frame"),

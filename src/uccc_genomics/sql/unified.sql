@@ -76,12 +76,14 @@ SELECT research_id, min(gender) AS gender, count(*) AS n_reports,
 FROM unified.report GROUP BY research_id;
 
 -- `tier` is what every filter uses; `is_vus` and `vendor_call` are kept as the vendor's own flags.
--- Vendor value -> tier mapping: docs/specs/32-data-readiness-significance-tier-her2.md.
+-- Vendor value -> tier mapping: docs/specs/32-data-readiness-significance-tier-her2.md and
+-- docs/specs/76-older-fmi-reports-variants-only-in-genes.md.
 CREATE OR REPLACE VIEW unified.variant AS
 SELECT 'caris' AS vendor, v.case_id AS report_id, r.research_id, v.gene, v.hgvs_c, v.hgvs_p,
        v.chrom, v.start_pos AS pos, v.ref, v.alt, v.transcript_id AS transcript,
        coalesce(v.vaf_pct, v.plasma_vaf_pct) / 100 AS vaf, v.read_depth AS depth,
        lower(v.consequence) AS consequence, (v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%') AS is_vus, NULL::BOOLEAN AS is_subclonal, v.genome_build, v.result AS vendor_call,
+       NULL::VARCHAR AS source,
        CASE WHEN lower(v.result) IN ('pathogenic variant', 'mutated, pathogenic') THEN 'pathogenic'
             WHEN lower(v.result) IN ('likely pathogenic variant', 'mutated, presumed pathogenic') THEN 'likely_pathogenic'
             WHEN v.vus OR v.result ILIKE '%uncertain significance%' OR v.result ILIKE '%unknown significance%' THEN 'vus'
@@ -94,10 +96,14 @@ SELECT 'fmi' AS vendor, v.report_id, r.research_id, v.gene, v.cds_effect AS hgvs
        split_part(v.position, ':', 1) AS chrom, try_cast(split_part(v.position, ':', 2) AS BIGINT) AS pos,
        NULL::VARCHAR AS ref, NULL::VARCHAR AS alt, v.transcript,
        v.allele_fraction AS vaf, v.depth, lower(v.functional_effect) AS consequence,
-       v.is_vus, v.subclonal AS is_subclonal, 'GRCh37/hg19' AS genome_build, v.status AS vendor_call,
+       v.is_vus, v.subclonal AS is_subclonal, 'GRCh37/hg19' AS genome_build, v.status AS vendor_call, v.source,
        CASE WHEN v.is_vus THEN 'vus'
             WHEN lower(v.status) = 'known' THEN 'pathogenic'
             WHEN lower(v.status) = 'likely' THEN 'likely_pathogenic'
+            -- Genes-block rows (#76) have no vendor status. On reports with both blocks every
+            -- Genes-block short variant is known or likely, so they take the lower of the two.
+            -- An inference, not a vendor call: docs/specs/76-older-fmi-reports-variants-only-in-genes.md.
+            WHEN v.source = 'genes_block' THEN 'likely_pathogenic'
             ELSE 'unclassified' END AS tier
 FROM fmi.short_variant v JOIN fmi.report r USING (report_id);
 
@@ -105,13 +111,13 @@ CREATE OR REPLACE VIEW unified.cna AS
 SELECT 'caris' AS vendor, c.case_id AS report_id, r.research_id, c.gene,
        CASE WHEN c.cn_type ILIKE 'amplif%' THEN 'amplification' WHEN c.cn_type ILIKE 'delet%' OR c.cn_type ILIKE 'loss%' THEN 'loss'
             ELSE lower(c.cn_type) END AS cn_type,
-       c.copy_number, c.cn_ratio AS ratio, c.coordinates, NULL::BOOLEAN AS equivocal, c.genome_build, c.result AS vendor_call
+       c.copy_number, c.cn_ratio AS ratio, c.coordinates, NULL::BOOLEAN AS equivocal, c.genome_build, c.result AS vendor_call, NULL::VARCHAR AS source
 FROM caris.cna c JOIN caris.report r USING (case_id) WHERE c.cn_type IS NOT NULL
 UNION ALL BY NAME
 SELECT 'fmi' AS vendor, c.report_id, r.research_id, c.gene,
        CASE WHEN c.type ILIKE 'amplif%' THEN 'amplification' WHEN c.type ILIKE 'loss%' OR c.type ILIKE 'delet%' THEN 'loss'
             ELSE lower(c.type) END AS cn_type,
-       c.copy_number, c.ratio, c.position AS coordinates, c.equivocal, 'GRCh37/hg19' AS genome_build, c.status AS vendor_call
+       c.copy_number, c.ratio, c.position AS coordinates, c.equivocal, 'GRCh37/hg19' AS genome_build, c.status AS vendor_call, c.source
 FROM fmi.cna c JOIN fmi.report r USING (report_id);
 
 CREATE OR REPLACE VIEW unified.fusion AS
