@@ -107,12 +107,15 @@ views over `result`: `variant` (`vaf_pct`, `read_depth`, plasma/buffy-coat VAF
 for liquid; `wildtype = true` means tested-negative), `cna`, `fusion`, `ihc`,
 `wts_expression`, `tmb`, `msi`, `loh`, `therapy`.
 
-**`fmi.*`** — `report` (one per XML; FoundationOne Monitor files have no
+**`fmi.*`** — `report` (one per ReportId; FoundationOne Monitor files have no
 FinalReport, so their id is the file name and they carry no patient block),
 `sample`, `short_variant` (with `is_vus`, `subclonal`, `source`), `cna` (with `source`), `rearrangement`,
 `biomarker` (TMB, MSI, LOH…), `non_human`, `pertinent_negative`, `alteration`
 (curated Genes block), `therapy`, `trial`, `amendment`, `load_error` (files that
-failed to parse — nothing is dropped silently). Views `tmb`, `msi`, `loh`.
+failed to parse, or files of one ReportId that disagree on the patient — nothing is dropped silently),
+`duplicate_file` (FMI delivered some reports in two files, a full one and a copy without the
+variant report: the file with variant-report variant elements loads, then higher `Version`, more
+amendments, newer mtime; the others are listed here with `chosen_file` and `reason`; PHI-side only). Views `tmb`, `msi`, `loh`.
 `source` is `variant_report`, or `genes_block` for rows derived from the curated Genes block on
 reports without `<short-variant>` / `<copy-number-alteration>` elements (older reports, #76), or (short_variant
 only) `variant_properties` for VUS listed only in `VariantProperties` on reports without
