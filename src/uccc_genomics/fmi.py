@@ -8,6 +8,7 @@ instead of being dropped silently. A ReportId delivered in several files loads o
 content (fmi.duplicate_file lists the others). Idempotent full rebuild (~30 s).
 """
 import glob
+import itertools
 import os
 import re
 import shlex
@@ -154,8 +155,8 @@ def rows_for(path):
     qc = vr.find(f"{NS}quality-control") if vr is not None else None
     amend = fr.findall(".//Amendmends/Amendmend") if fr is not None else []
     # PMI MRN, else ResultsReport/CustomerInformation/MRN: Monitor files have no PMI but carry it
-    # there (namespaced rr: in real files, hence {*}),
-    # there, and some reports leave the PMI copy empty (#89). CustomerInformation has no name/DOB/dates.
+    # there (namespaced rr: in real files, hence {*}), and some reports leave the PMI copy empty (#89).
+    # CustomerInformation has no name/DOB/dates.
     pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("{*}CustomerInformation"), "{*}MRN"))
     mrn, mrn_source = (pmi_mrn, "pmi") if pmi_mrn else (ci_mrn, "customer_information" if ci_mrn else None)
     report = (
@@ -286,7 +287,9 @@ def patient_identity(report):
 def same_patient(a, b):
     """Two fmi.report rows of one ReportId are one patient when every identity field both carry
     agrees (MRN; lower last|first|dob) and they share at least one. A copy may hold the MRN only in
-    CustomerInformation while its twin has only name and DOB (#89), so identities can differ in kind."""
+    CustomerInformation while its twin has only name and DOB (#89), so identities can differ in kind.
+    Two copies with no identity at all are not a conflict (as before #89). Not transitive: callers
+    must check every pair."""
     shared = 0
     if a[7] and b[7]:
         if a[7] != b[7]:
@@ -297,7 +300,7 @@ def same_patient(a, b):
         if na != nb:
             return False
         shared += 1
-    return shared > 0
+    return shared > 0 or (patient_identity(a) is None and patient_identity(b) is None)
 
 
 def load():
@@ -321,7 +324,7 @@ def load():
     reports, children, duplicates = [], {}, []
     for rid, cands in parsed.items():
         # Files of one ReportId must be one patient; otherwise load none (#81)
-        if not all(same_patient(cands[0][1], c[1]) for c in cands[1:]):
+        if not all(same_patient(x[1], y[1]) for x, y in itertools.combinations(cands, 2)):
             errors += [(os.path.relpath(c[0], RAW), f"ValueError: conflicting patient identity for report_id {rid}")
                        for c in cands]
             continue

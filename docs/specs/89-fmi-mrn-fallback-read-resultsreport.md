@@ -29,14 +29,22 @@ counts).
    `ResultsReport/CustomerInformation/MRN`, else NULL. Both use the same digit normalization. A
    value with no digits (e.g. `N/A`) counts as empty, so the fallback applies to it.
 2. A new PHI-side column `fmi.report.mrn_source` records which source was used: `'pmi'`,
-   `'customer_information'` or NULL when there's no MRN. `deid` drops it, so it never reaches
+   `'customer_information'`, `'duplicate_copy'` (the MRN came from a twin file of the same `ReportId`,
+   see Goal 4) or NULL when there's no MRN. `deid` drops it, so it never reaches
    `genomics.duckdb`.
 3. `research_id` follows from `mrn` as for every other report: `deid.IDENTITY["fmi"]` already
    reads `fmi.report.mrn`. A Monitor report with `CustomerInformation/MRN` gets the same
    `research_id` as that patient's other FMI and Caris reports.
-4. The #81 duplicate-`ReportId` identity check (`fmi.patient_identity`) uses the same identity,
-   including the fallback. It reads `report[7]`, the `mrn` field that Goal 1 now fills, so it
-   needs no code change. A test pins the behaviour.
+4. The #81 duplicate-`ReportId` check compares copies with `fmi.same_patient(a, b)`, which uses the
+   fallback MRN (`report[7]`). Two copies are one patient when every identity field both carry
+   agrees (MRN; lower last|first|dob) and they share at least one, or when neither carries any
+   identity (`patient_identity` is None for both, as before this change). A copy may hold the MRN
+   only in `CustomerInformation` while its twin has only name and DOB, so whole identities can
+   differ in kind. `same_patient` is not transitive (it skips fields one side lacks), so `load()`
+   checks **every pair** of copies of a `ReportId` (`itertools.combinations`); any failing pair sends
+   all the files to `load_error`. When all pairs agree, all MRN-bearing copies share one MRN. If the
+   chosen copy has no MRN, it takes it from a twin and `mrn_source` becomes `'duplicate_copy'`.
+   Tests pin each case.
 
 ### This changes `research_id` for the affected reports (a correction)
 
@@ -116,7 +124,7 @@ with
 ```python
     # PMI MRN, else ResultsReport/CustomerInformation/MRN: Monitor files have no PMI but carry it
     # there, and some reports leave the PMI copy empty (#89). CustomerInformation has no name/DOB/dates.
-    pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("CustomerInformation"), "MRN"))
+    pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("{*}CustomerInformation"), "{*}MRN"))
     mrn, mrn_source = (pmi_mrn, "pmi") if pmi_mrn else (ci_mrn, "customer_information" if ci_mrn else None)
 ```
 
@@ -124,15 +132,35 @@ and append `mrn_source` as the last element of the `report` tuple, after
 `os.path.relpath(path, RAW)`. The tuple then has 39 fields, matching the DDL; `bulk_insert`
 asserts the count.
 
+- `CustomerInformation` and its children are in the `rr:` namespace
+  (`http://integration.foundationmedicine.com/reporting`) in real files, unlike `FinalReport`/`PMI`,
+  hence the `{*}` wildcard on the element and on its `MRN` child. The test fixture uses
+  the real namespaced shape (an un-namespaced lookup matches only an un-namespaced fixture).
 - `txt(None, ...)` already returns None, so a file without `CustomerInformation` needs no special
   case.
 - Small behaviour change: a PMI MRN with no digits used to load as `''`. Now it is NULL (or the
   fallback). Both `deid.IDENTITY` (`nullif(..., '')`) and `patient_identity` (`if mrn:`) treat
   `''` and NULL the same, so no `research_id` changes from this for a report with no fallback.
 
-**`patient_identity`**: code unchanged. Docstring becomes
+**`patient_identity`**: code unchanged; docstring becomes
 `"""deid.IDENTITY for one fmi.report row: MRN digits (PMI, else CustomerInformation), else
-lower(last)|lower(first)|dob, else None."""`.
+lower(last)|lower(first)|dob, else None."""`. `load()` no longer compares these identities
+directly; `same_patient` calls it only to recognise a copy with no identity at all.
+
+**`same_patient(a, b)`** (new, Goal 4) and **`load()`**:
+
+```python
+if not all(same_patient(x[1], y[1]) for x, y in itertools.combinations(cands, 2)):
+    ...  # every file of the ReportId goes to load_error: conflicting patient identity
+...
+best = ...  # choice_key, unchanged
+if report[7] is None:  # chosen copy has no MRN anywhere: take it from a matching copy
+    donor = next((c[1] for c in cands if c[1][7]), None)
+    if donor:
+        report = report[:7] + (donor[7],) + report[8:-1] + ("duplicate_copy",)
+```
+
+The donor is unambiguous because the pairwise check guarantees all MRN-bearing copies agree.
 
 **Module docstring**: no change needed.
 
@@ -147,7 +175,7 @@ provenance, not research data.
 | column | source |
 |---|---|
 | `fmi.report.mrn` | `FinalReport/PMI/MRN`, else `ResultsReport/CustomerInformation/MRN`; digits only; NULL if neither has a digit (PHI file only, dropped by `deid`) |
-| `fmi.report.mrn_source` | `'pmi'` / `'customer_information'` / NULL: which of the two gave `mrn` (PHI file only, dropped by `deid`) |
+| `fmi.report.mrn_source` | `'pmi'` / `'customer_information'` / `'duplicate_copy'` / NULL: which source gave `mrn` (`'duplicate_copy'`: a twin file of the same `ReportId`) (PHI file only, dropped by `deid`) |
 
 PLAN.md's mapping row for `patient` (`report.mrn`) still holds and doesn't change.
 
@@ -185,7 +213,13 @@ and no de-id column changes.
 - [ ] `mrn_source` exists in `phi.fmi.report` and in no table of the de-id file; `deid`'s leak
       check passes with `CustomerInformation` identifiers (`TRF…`) present in the raw XML.
 - [ ] `deid.py` differs only by `"mrn_source"` in `DROP`; `unified.sql`, `mart.sql`,
-      `choice_key` and `patient_identity`'s code are unchanged.
+      `choice_key` and `patient_identity`'s code are unchanged (`load()` now calls `same_patient`,
+      which uses `patient_identity` only for the no-identity case).
+- [ ] Copies of one `ReportId` are checked pairwise: a name-only copy, a copy with MRN X and a copy
+      with MRN Y (one name) all go to `load_error`. A name-only full copy and an MRN-only
+      `CustomerInformation` twin of the same name/DOB load the full copy with `mrn_source =
+      'duplicate_copy'`; a different last name conflicts. Two copies with no MRN and no DOB load the
+      better copy, as before.
 - [ ] README updated as in Design §4.
 - [ ] `uv run pytest -q` passes. Dashboard and web checks n/a.
 
@@ -199,9 +233,10 @@ All in `tests/test_pipeline.py`, synthetic XML only, in `tmp_path` / a temp `DAT
 ```python
 def with_customer_information(xml, mrn):
     """`xml` with a ResultsReport/CustomerInformation block (FMI's children, synthetic values) carrying `mrn` (#89)."""
-    return xml.replace("<ResultsReport>", "<ResultsReport>\n <CustomerInformation><CSN>9000001</CSN>"
-                       f"<MRN>{mrn}</MRN><NPI>1234567890</NPI><PhysicianId>999</PhysicianId>"
-                       "<ReferenceID>REF-1</ReferenceID><TRF>TRF00001</TRF></CustomerInformation>", 1)
+    return xml.replace("<ResultsReport>", '<ResultsReport>\n <rr:CustomerInformation '
+                       'xmlns:rr="http://integration.foundationmedicine.com/reporting"><rr:CSN>9000001</rr:CSN>'
+                       f"<rr:MRN>{mrn}</rr:MRN><rr:NPI>1234567890</rr:NPI><rr:PhysicianId>999</rr:PhysicianId>"
+                       "<rr:ReferenceID>REF-1</rr:ReferenceID><rr:TRF>TRF00001</rr:TRF></rr:CustomerInformation>", 1)
 ```
 
 `fmi_report` gains `ci_mrn=None`: after building `xml` as today, return
@@ -250,9 +285,14 @@ reached a copied text column would fail the leak check.
      `("fmi/ORD-0005555-01_v2.xml", "fmi/ORD-0005555-01.xml", "variant_elements")`; `load_error`
      is still exactly 3 rows.
    - `test_fmi_duplicate_deid`: unchanged (still one distinct `research_id`, equal to Caris's).
-4. `test_phi_columns_are_gone_and_ids_are_hashed`: add `"mrn_source"` to the set of columns that
+4. `dup_mixed_db` fixture and `test_fmi_duplicate_mixed_identity`: ORD-0006666 (name/DOB-only full
+   copy + `CustomerInformation`-MRN-only reduced copy) loads the full copy with `mrn_source =
+   'duplicate_copy'`; ORD-0008888 (different last name) and ORD-0007777 (three copies: name-only,
+   MRN X, MRN Y, one name) go wholly to `load_error`; ORD-0009999 (two copies without MRN or DOB)
+   loads the full copy.
+5. `test_phi_columns_are_gone_and_ids_are_hashed`: add `"mrn_source"` to the set of columns that
    must be absent from the de-id `caris` / `fmi` schemas.
-5. Existing tests pass otherwise unchanged. `monitor_db` / `wts_db` use `FMI_MONITOR` without
+6. Existing tests pass otherwise unchanged. `monitor_db` / `wts_db` use `FMI_MONITOR` without
    `CustomerInformation`, so their Monitor report stays unlinked; `test_fmi_patient_identity`'s
    `mrn="N/A"` case still falls to the name branch.
 
@@ -268,7 +308,7 @@ Checks: `uv run pytest -q`. Dashboard `npm test` n/a (no dashboard change). Web 
   records it, and the PR text must say it.
 - **Wrong MRN in `CustomerInformation`.** If FMI ever put a different patient's MRN there, a report
   would join the wrong patient. PMI wins whenever it has digits, so that can only happen where PMI
-  is empty. #81's check would catch a disagreement between files of one `ReportId`. No other
+  is empty. The pairwise #81 check catches a disagreement between files of one `ReportId`, but only where both copies carry the field that differs. No other
   cross-check exists, and none exists for the PMI MRN either.
 - **Seam.** `fmi.py` feeds every FMI consumer, and `deid.DROP` is the PHI column list. For a report
   with a PMI MRN, every loaded value is unchanged apart from the new `mrn_source = 'pmi'`.
@@ -278,17 +318,9 @@ Checks: `uv run pytest -q`. Dashboard `npm test` n/a (no dashboard change). Web 
   reaches the de-id file only as the keyed `research_id` hash.
 
 
-## Amendment after the real-data dry-run (orchestrator, 2026-10-28)
+## History
 
-1. **Namespace.** In FMI's real files `CustomerInformation` and its children are in the `rr:` namespace
-   (`http://integration.foundationmedicine.com/reporting`), unlike `FinalReport`/`PMI`. The first
-   implementation used a plain `find("CustomerInformation")`, which matched the un-namespaced test fixture
-   but nothing in the real files. Fixed with `{*}` wildcards; the fixture now uses the real namespaced
-   shape, and the old lookup fails four tests against it.
-2. **Duplicate-copy identity (#81 interaction).** One real duplicate pair has the MRN only in the reduced
-   copy's `CustomerInformation` and only name/DOB in the full copy. Comparing whole identities made that
-   a false conflict and loaded neither copy. `same_patient(a, b)` now compares only the fields both carry
-   (MRN; lower last|first|dob), requires at least one shared field, and fails if any shared field
-   differs; the chosen copy takes a missing MRN from a matching twin (`mrn_source = 'duplicate_copy'`).
-   Tested by `test_fmi_duplicate_mixed_identity` (same patient loads; a different last name still
-   conflicts).
+Folded into the body above after the real-data dry-run (2026-10-28): the `{*}` namespace lookup for
+`CustomerInformation`, `same_patient` with the `'duplicate_copy'` donor step (a real duplicate pair
+had the MRN only in the reduced copy's `CustomerInformation`), and, in review round 1, the pairwise
+check and the no-identity rule.
