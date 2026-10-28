@@ -863,7 +863,9 @@ def test_fmi_patient_identity(tmp_path):
     dob = "<DOB>1930-02-03</DOB>"
     # Literal value pins the order and the indices of last, first and DOB in the report tuple
     assert ident(no_mrn) == "doe|jane|1930-02-03"
-    assert ident(no_mrn.replace(names, "<FirstName>JANE</FirstName><LastName>DOE</LastName>")) == "doe|jane|1930-02-03"
+    upper = no_mrn.replace(names, "<FirstName>JANE</FirstName><LastName>DOE</LastName>")
+    assert upper != no_mrn                       # the replace hit, so the case check below is not vacuous
+    assert ident(upper) == "doe|jane|1930-02-03"
     assert ident(fmi_report("ORD-0007777-01", mrn="N/A")) == "doe|jane|1930-02-03"  # no digits: no MRN
     # Each fallback field separates two MRN-less patients
     for other in (no_mrn.replace("<LastName>Doe<", "<LastName>Roe<"),
