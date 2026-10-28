@@ -850,6 +850,34 @@ def test_fmi_choice_tie_breaks(tmp_path):
     assert first_diff(key("b.xml", reduced, t0), key("a.xml", reduced, t0)) == "path"
 
 
+def test_fmi_patient_identity(tmp_path):
+    from uccc_genomics.fmi import patient_identity, rows_for
+
+    def ident(xml):
+        path = tmp_path / "r.xml"
+        path.write_text(xml)
+        return patient_identity(rows_for(str(path))[0])
+
+    no_mrn = fmi_report("ORD-0007777-01", mrn="")
+    names = "<FirstName>Jane</FirstName><LastName>Doe</LastName>"
+    dob = "<DOB>1930-02-03</DOB>"
+    # Literal value pins the order and the indices of last, first and DOB in the report tuple
+    assert ident(no_mrn) == "doe|jane|1930-02-03"
+    assert ident(no_mrn.replace(names, "<FirstName>JANE</FirstName><LastName>DOE</LastName>")) == "doe|jane|1930-02-03"
+    assert ident(fmi_report("ORD-0007777-01", mrn="N/A")) == "doe|jane|1930-02-03"  # no digits: no MRN
+    # Each fallback field separates two MRN-less patients
+    for other in (no_mrn.replace("<LastName>Doe<", "<LastName>Roe<"),
+                  no_mrn.replace("<FirstName>Jane<", "<FirstName>Joan<"),
+                  no_mrn.replace(dob, "<DOB>1931-02-03</DOB>")):
+        assert ident(other) not in (None, ident(no_mrn))
+    # MRN on one file, absent on the other: different identities
+    assert ident(fmi_report("ORD-0007777-01")) == MRN != ident(no_mrn)
+    # Any fallback field missing: None
+    for missing in (no_mrn.replace(dob, ""), no_mrn.replace("<LastName>Doe</LastName>", ""),
+                    no_mrn.replace("<FirstName>Jane</FirstName>", "")):
+        assert ident(missing) is None
+
+
 def test_fmi_vus_lookup_normalizes_names(tmp_path):
     from uccc_genomics.fmi import rows_for
     xml = """<?xml version="1.0"?>
