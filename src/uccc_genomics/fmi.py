@@ -285,22 +285,18 @@ def patient_identity(report):
 
 
 def same_patient(a, b):
-    """Two fmi.report rows of one ReportId are one patient when every identity field both carry
-    agrees (MRN; lower last|first|dob) and they share at least one. A copy may hold the MRN only in
-    CustomerInformation while its twin has only name and DOB (#89), so identities can differ in kind.
-    Two copies with no identity at all are not a conflict (as before #89). Not transitive: callers
-    must check every pair."""
-    shared = 0
+    """Two fmi.report rows of one ReportId are one patient. When both carry an MRN it decides, as in
+    deid.IDENTITY, so a corrected name or DOB in a re-delivery is not a conflict. Otherwise they are
+    one patient when both carry lower last|first|dob and it agrees, or when neither carries any
+    identity (as before #89). A copy may hold the MRN only in CustomerInformation while its twin has
+    only name and DOB (#89), so identities can differ in kind. Not transitive: callers must check
+    every pair."""
     if a[7] and b[7]:
-        if a[7] != b[7]:
-            return False
-        shared += 1
+        return a[7] == b[7]
     na, nb = (None if None in (r[11], r[10], r[8]) else (r[11].lower(), r[10].lower(), r[8]) for r in (a, b))
     if na and nb:
-        if na != nb:
-            return False
-        shared += 1
-    return shared > 0 or (patient_identity(a) is None and patient_identity(b) is None)
+        return na == nb
+    return patient_identity(a) is None and patient_identity(b) is None
 
 
 def load():

@@ -329,6 +329,7 @@ def dup_mixed_db(tmp_path_factory):
         "<LastName>Doe</LastName>", "<LastName>Roe</LastName>")
     assert "<LastName>Roe</LastName>" in other
     # G (ORD-0007777): name-only copy, MRN copy and a different-MRN copy, one name: not transitive, so a conflict.
+    # I (ORD-0010101): same MRN in both copies, one last name corrected: the MRN decides, the full copy loads.
     # H (ORD-0009999): two copies with no MRN and no DOB anywhere: not a conflict, the full copy loads.
     def anonymous(**kw):
         return fmi_report("ORD-0009999-01", mrn="", **kw).replace("<DOB>1930-02-03</DOB>", "")
@@ -341,7 +342,10 @@ def dup_mixed_db(tmp_path_factory):
         "ORD-0007777-01_v2.xml": fmi_report("ORD-0007777-01", mrn="", full=False, ci_mrn=MRN),
         "ORD-0007777-01_v3.xml": fmi_report("ORD-0007777-01", mrn="", full=False, ci_mrn="0000777777"),
         "ORD-0009999-01.xml": anonymous(),
-        "ORD-0009999-01_v2.xml": anonymous(full=False)})
+        "ORD-0009999-01_v2.xml": anonymous(full=False),
+        "ORD-0010101-01.xml": fmi_report("ORD-0010101-01"),
+        "ORD-0010101-01_v2.xml": fmi_report("ORD-0010101-01", full=False).replace(
+            "<LastName>Doe</LastName>", "<LastName>Dow</LastName>")})
 
 
 @pytest.fixture(scope="module")
@@ -1006,3 +1010,5 @@ def test_fmi_duplicate_mixed_identity(dup_mixed_db):
     assert dup_mixed_db.execute("SELECT source_file, mrn_source FROM phi.fmi.report "
                                 "WHERE report_id = 'ORD-0009999-01'").fetchall() == [("fmi/ORD-0009999-01.xml", None)]
     assert all("conflicting patient identity" in e for e in errors.values())
+    assert dup_mixed_db.execute("SELECT source_file, mrn_source FROM phi.fmi.report "
+                                "WHERE report_id = 'ORD-0010101-01'").fetchall() == [("fmi/ORD-0010101-01.xml", "pmi")]

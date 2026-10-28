@@ -36,13 +36,15 @@ counts).
    reads `fmi.report.mrn`. A Monitor report with `CustomerInformation/MRN` gets the same
    `research_id` as that patient's other FMI and Caris reports.
 4. The #81 duplicate-`ReportId` check compares copies with `fmi.same_patient(a, b)`, which uses the
-   fallback MRN (`report[7]`). Two copies are one patient when every identity field both carry
-   agrees (MRN; lower last|first|dob) and they share at least one, or when neither carries any
+   fallback MRN (`report[7]`). When both copies carry an MRN it decides, as in `deid.IDENTITY`: equal
+   MRNs are one patient even if last name, first name or DOB differ (a re-delivery correcting a
+   typo, as before this change), different MRNs are a conflict. Otherwise two copies are one patient
+   when both carry last|first|dob (lower-cased names) and it agrees, or when neither carries any
    identity (`patient_identity` is None for both, as before this change). A copy may hold the MRN
    only in `CustomerInformation` while its twin has only name and DOB, so whole identities can
    differ in kind. `same_patient` is not transitive (it skips fields one side lacks), so `load()`
    checks **every pair** of copies of a `ReportId` (`itertools.combinations`); any failing pair sends
-   all the files to `load_error`. When all pairs agree, all MRN-bearing copies share one MRN. If the
+   all the files to `load_error`. When all pairs agree, all MRN-bearing copies share one MRN (any two of them must agree). If the
    chosen copy has no MRN, it takes it from a twin and `mrn_source` becomes `'duplicate_copy'`.
    Tests pin each case.
 
@@ -289,7 +291,8 @@ reached a copied text column would fail the leak check.
    copy + `CustomerInformation`-MRN-only reduced copy) loads the full copy with `mrn_source =
    'duplicate_copy'`; ORD-0008888 (different last name) and ORD-0007777 (three copies: name-only,
    MRN X, MRN Y, one name) go wholly to `load_error`; ORD-0009999 (two copies without MRN or DOB)
-   loads the full copy.
+   loads the full copy; ORD-0010101 (two copies, same MRN, one last name corrected) loads the full
+   copy with `mrn_source = 'pmi'` because the MRN decides.
 5. `test_phi_columns_are_gone_and_ids_are_hashed`: add `"mrn_source"` to the set of columns that
    must be absent from the de-id `caris` / `fmi` schemas.
 6. Existing tests pass otherwise unchanged. `monitor_db` / `wts_db` use `FMI_MONITOR` without
