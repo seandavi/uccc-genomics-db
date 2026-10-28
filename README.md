@@ -108,7 +108,9 @@ for liquid; `wildtype = true` means tested-negative), `cna`, `fusion`, `ihc`,
 `wts_expression`, `tmb`, `msi`, `loh`, `therapy`.
 
 **`fmi.*`** — `report` (one per ReportId; FoundationOne Monitor files have no
-FinalReport, so their id is the file name and they carry no patient block),
+FinalReport, so their id is the file name and they carry no name, DOB or dates. Their MRN comes from
+`ResultsReport/CustomerInformation`, as does the MRN of a report whose PMI MRN is empty; `mrn_source`
+says which, PHI-side only),
 `sample`, `short_variant` (with `is_vus`, `subclonal`, `source`), `cna` (with `source`), `rearrangement`,
 `biomarker` (TMB, MSI, LOH…), `non_human`, `pertinent_negative`, `alteration`
 (curated Genes block), `therapy`, `trial`, `amendment`, `load_error` (files that
@@ -186,6 +188,10 @@ WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%';
 - `report_id` → keyed hash of the vendor accession. `research_id` → keyed hash
   of normalized MRN, or of `last|first|dob` when the vendor left MRN empty
   (FMI does on ~20% of reports). Same patient ⇒ same `research_id` across vendors.
+  FMI's MRN is the PMI copy, else `ResultsReport/CustomerInformation/MRN` (#89). That fallback
+  changed `research_id` for the reports it reaches, mostly FoundationOne Monitor, from a per-report
+  id to the patient's. It was a correction: patient counts dropped, and a downstream list holding an
+  affected report's old `research_id` no longer finds it.
 - Every DATE/TIMESTAMP shifted per patient by a stable offset in ±182 days;
   intervals survive. Ages capped at 89.
 - Key in `$DATA/.deid_key` (mode 600). Same key ⇒ same IDs on rebuild.

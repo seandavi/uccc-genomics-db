@@ -219,10 +219,19 @@ FMI_MONITOR = """<?xml version="1.0"?>
 """
 
 
-def fmi_report(rid, mrn=MRN, full=True):
-    """FMI as report `rid` for patient `mrn`; full=False is the reduced copy (no <variant-report>)."""
+def with_customer_information(xml, mrn):
+    """`xml` with a ResultsReport/CustomerInformation block (FMI's children, synthetic values) carrying `mrn` (#89)."""
+    return xml.replace("<ResultsReport>", "<ResultsReport>\n <CustomerInformation><CSN>9000001</CSN>"
+                       f"<MRN>{mrn}</MRN><NPI>1234567890</NPI><PhysicianId>999</PhysicianId>"
+                       "<ReferenceID>REF-1</ReferenceID><TRF>TRF00001</TRF></CustomerInformation>", 1)
+
+
+def fmi_report(rid, mrn=MRN, full=True, ci_mrn=None):
+    """FMI as report `rid` for patient `mrn`; full=False is the reduced copy (no <variant-report>);
+    ci_mrn adds a CustomerInformation block carrying that MRN."""
     xml = FMI.replace("ORD-0001234-01", rid).replace(f"<MRN>{MRN}</MRN>", f"<MRN>{mrn}</MRN>")
-    return xml if full else re.sub(r"\s*<variant-report.*</variant-report>", "", xml, flags=re.S)
+    xml = xml if full else re.sub(r"\s*<variant-report.*</variant-report>", "", xml, flags=re.S)
+    return xml if ci_mrn is None else with_customer_information(xml, ci_mrn)
 
 
 # (case id, specimenSite, gene TPM file assays, has a wtsExpression record, has_wts): one Caris case per
@@ -305,7 +314,17 @@ def dup_db(tmp_path_factory):
         "ORD-0003333-01.xml": fmi_report("ORD-0003333-01"),
         "ORD-0004444-01.xml": fmi_report("ORD-0004444-01"),
         "ORD-0004444-01_v2.xml": fmi_report("ORD-0004444-01", mrn="0000777777"),
+        "ORD-0005555-01.xml": fmi_report("ORD-0005555-01"),
+        "ORD-0005555-01_v2.xml": fmi_report("ORD-0005555-01", mrn="", full=False, ci_mrn=MRN),
         "broken.xml": "<ResultsReport><nothing/></ResultsReport>"})
+
+
+@pytest.fixture(scope="module")
+def monitor_mrn_db(tmp_path_factory):
+    return pipeline(str(tmp_path_factory.mktemp("monitor_mrn")), {
+        "ORD-0001234-01.xml": FMI,
+        "ORD-0005678-01.xml": with_customer_information(FMI_MONITOR, "000-123456"),
+        "ORD-0005679-01.xml": FMI_MONITOR})
 
 
 @pytest.fixture(scope="module")
@@ -376,7 +395,7 @@ def test_same_mrn_is_one_patient_across_vendors(db):
 def test_phi_columns_are_gone_and_ids_are_hashed(db):
     cols = {r[0] for r in db.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_catalog='db' AND table_schema IN ('caris','fmi')").fetchall()}
-    assert not cols & {"mrn", "dob", "first_name", "last_name", "patient", "physician", "ordering_md", "source_file", "pathologist_comment"}
+    assert not cols & {"mrn", "dob", "first_name", "last_name", "patient", "physician", "ordering_md", "source_file", "pathologist_comment", "mrn_source"}
     assert one(db, "SELECT case_id FROM db.caris.report")[0] != "TN26-123456"
     assert one(db, "SELECT report_id FROM db.fmi.report")[0] != "ORD-0001234-01"
     assert one(db, "SELECT count(*) FROM information_schema.tables WHERE table_catalog='db' AND table_name='load_error'") == (0,)
@@ -790,8 +809,9 @@ def test_check_flags_stale_vendor(tmp_path):
 
 def test_fmi_duplicate_report_loads_full_file(dup_db):
     assert set(dup_db.execute("SELECT report_id, source_file FROM phi.fmi.report").fetchall()) == {
-        ("ORD-0002222-01", "fmi/ORD-0002222-01_v2.xml"), ("ORD-0003333-01", "fmi/ORD-0003333-01.xml")}
-    for rid in ("ORD-0002222-01", "ORD-0003333-01"):
+        ("ORD-0002222-01", "fmi/ORD-0002222-01_v2.xml"), ("ORD-0003333-01", "fmi/ORD-0003333-01.xml"),
+        ("ORD-0005555-01", "fmi/ORD-0005555-01.xml")}
+    for rid in ("ORD-0002222-01", "ORD-0003333-01", "ORD-0005555-01"):
         for table, n in (("short_variant", 4), ("cna", 1)):
             assert dup_db.execute(f"SELECT count(*), count(*) FILTER (WHERE source = 'variant_report') "
                                   f"FROM phi.fmi.{table} WHERE report_id = ?", [rid]).fetchone() == (n, n)
@@ -804,7 +824,8 @@ def test_fmi_duplicate_report_loads_full_file(dup_db):
 def test_fmi_duplicate_file_log(dup_db):
     assert set(dup_db.execute("SELECT file, chosen_file, reason FROM phi.fmi.duplicate_file").fetchall()) == {
         ("fmi/ORD-0002222-01.xml", "fmi/ORD-0002222-01_v2.xml", "variant_elements"),
-        ("fmi/ORD-0003333-01_v2.xml", "fmi/ORD-0003333-01.xml", "variant_elements")}
+        ("fmi/ORD-0003333-01_v2.xml", "fmi/ORD-0003333-01.xml", "variant_elements"),
+        ("fmi/ORD-0005555-01_v2.xml", "fmi/ORD-0005555-01.xml", "variant_elements")}
     errors = dict(dup_db.execute("SELECT file, error FROM phi.fmi.load_error").fetchall())
     conflict = "ValueError: conflicting patient identity for report_id ORD-0004444-01"
     assert errors["fmi/ORD-0004444-01.xml"] == errors["fmi/ORD-0004444-01_v2.xml"] == conflict
@@ -878,6 +899,44 @@ def test_fmi_patient_identity(tmp_path):
     for missing in (no_mrn.replace(dob, ""), no_mrn.replace("<LastName>Doe</LastName>", ""),
                     no_mrn.replace("<FirstName>Jane</FirstName>", "")):
         assert ident(missing) is None
+
+
+def test_fmi_mrn_fallback(tmp_path):
+    from uccc_genomics.fmi import patient_identity, rows_for
+
+    def parsed(xml):
+        path = tmp_path / "r.xml"
+        path.write_text(xml)
+        return rows_for(str(path))[0]
+
+    rid = "ORD-0007001-01"
+    ci = "000-123456"
+    for xml, want in (
+            (fmi_report(rid, ci_mrn="0000999999"), (MRN, "pmi")),                      # PMI wins
+            (fmi_report(rid, mrn="", ci_mrn=ci), (MRN, "customer_information")),
+            (fmi_report(rid, mrn="N/A", ci_mrn=MRN), (MRN, "customer_information")),   # no digits: empty
+            (with_customer_information(FMI_MONITOR, ci), (MRN, "customer_information")),
+            (FMI_MONITOR, (None, None)),
+            (with_customer_information(FMI_MONITOR, ""), (None, None)),
+            (with_customer_information(FMI_MONITOR, "N/A"), (None, None)),
+            (fmi_report(rid, mrn="", ci_mrn=""), (None, None)),
+            (fmi_report(rid, mrn="N/A"), (None, None))):
+        report = parsed(xml)
+        assert (report[7], report[-1]) == want
+    assert len(parsed(FMI_MONITOR)) == 39                                              # mrn_source is last
+    assert patient_identity(parsed(fmi_report(rid, mrn="", ci_mrn=MRN))) == MRN
+
+
+def test_fmi_monitor_links_by_customer_information_mrn(monitor_mrn_db):
+    db = monitor_mrn_db
+    assert set(db.execute("SELECT report_id, mrn, mrn_source FROM phi.fmi.report").fetchall()) == {
+        ("ORD-0001234-01", MRN, "pmi"), ("ORD-0005678-01", MRN, "customer_information"),
+        ("ORD-0005679-01", None, None)}
+    assert sorted(n for _, n in db.execute("SELECT research_id, count(*) FROM db.unified.report GROUP BY 1").fetchall()) == [1, 3]
+    assert one(db, "SELECT count(*) FROM db.unified.patient") == (2,)
+    for catalog, n in (("db", 0), ("phi", 1)):
+        assert one(db, "SELECT count(*) FROM information_schema.columns "
+                       f"WHERE table_catalog = '{catalog}' AND column_name = 'mrn_source'") == (n,)
 
 
 def test_fmi_vus_lookup_normalizes_names(tmp_path):

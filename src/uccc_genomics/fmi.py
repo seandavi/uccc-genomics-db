@@ -48,7 +48,7 @@ CREATE TABLE report (
   disease VARCHAR, disease_ontology VARCHAR, pathology_diagnosis VARCHAR, tissue_of_origin VARCHAR,
   purity_estimate DOUBLE, percent_tumor_nuclei DOUBLE, pipeline_version VARCHAR, study VARCHAR,
   test_request VARCHAR, qc_status VARCHAR, alteration_count INT, sensitizing_count INT, resistive_count INT,
-  clinical_trial_count INT, n_amendments INT, pathologist_comment VARCHAR, source_file VARCHAR);
+  clinical_trial_count INT, n_amendments INT, pathologist_comment VARCHAR, source_file VARCHAR, mrn_source VARCHAR);
 CREATE TABLE sample (report_id VARCHAR, sample_name VARCHAR, bait_set VARCHAR, nucleic_acid_type VARCHAR, mean_exon_depth DOUBLE);
 CREATE TABLE short_variant (
   report_id VARCHAR, gene VARCHAR, cds_effect VARCHAR, protein_effect VARCHAR, position VARCHAR, transcript VARCHAR,
@@ -102,6 +102,11 @@ def b(x):
     return None if x is None else str(x).lower() == "true"
 
 
+def mrn_digits(x):
+    """Digits of an MRN text, else None (absent, empty, or no digits)."""
+    return ("".join(ch for ch in x if ch.isdigit()) or None) if x else None
+
+
 # Genes-block Alteration/Name parts that are short variants or copy-number calls (#76).
 SYMBOL = re.compile(r"[A-Z0-9][A-Za-z0-9-]*")              # a gene symbol, not "Tumor Mutation Burden"
 PROTEIN = re.compile(r"[A-Z*][0-9]+\S*")                    # R175H, Q61*, P72fs*9, A100_L104del
@@ -148,8 +153,10 @@ def rows_for(path):
     a = (lambda k: vr.get(k)) if vr is not None else (lambda k: None)
     qc = vr.find(f"{NS}quality-control") if vr is not None else None
     amend = fr.findall(".//Amendmends/Amendmend") if fr is not None else []
-    mrn = txt(pmi, "MRN")
-    mrn = "".join(ch for ch in mrn if ch.isdigit()) if mrn else None
+    # PMI MRN, else ResultsReport/CustomerInformation/MRN: Monitor files have no PMI but carry it
+    # there, and some reports leave the PMI copy empty (#89). CustomerInformation has no name/DOB/dates.
+    pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("CustomerInformation"), "MRN"))
+    mrn, mrn_source = (pmi_mrn, "pmi") if pmi_mrn else (ci_mrn, "customer_information" if ci_mrn else None)
     report = (
         rid, txt(fr, "SampleName"), i(txt(fr, "Version")), txt(smp, "TestType") or a("test-type"), txt(smp, "SpecFormat"),
         txt(smp, "ReceivedDate") or txt(pmi, "ReceivedDate"), txt(pmi, "CollDate"), mrn, txt(pmi, "DOB"),
@@ -165,6 +172,7 @@ def rows_for(path):
         i(summ.get("resistiveCount")) if summ is not None else None,
         i(summ.get("clinicalTrialCount")) if summ is not None else None,
         len(amend), txt(fr, ".//comments/comment/text"), os.path.relpath(path, RAW),
+        mrn_source,
     )
     t = {k: [] for k in ("sample", "short_variant", "cna", "rearrangement", "biomarker", "non_human",
                          "pertinent_negative", "alteration", "therapy", "trial", "amendment")}
@@ -266,7 +274,8 @@ def choice_key(path, report, t):
 
 
 def patient_identity(report):
-    """deid.IDENTITY for one fmi.report row: MRN digits, else lower(last)|lower(first)|dob, else None."""
+    """deid.IDENTITY for one fmi.report row: MRN digits (PMI, else CustomerInformation), else
+    lower(last)|lower(first)|dob, else None."""
     mrn, dob, first, last = report[7], report[8], report[10], report[11]
     if mrn:
         return mrn

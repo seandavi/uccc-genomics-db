@@ -30,7 +30,7 @@ DROP = {
     "mrn", "dob", "patient", "physician", "pathologist", "organization", "pathologic_diagnosis",
     "first_name", "last_name", "full_name", "ordering_md", "ordering_md_id", "medical_facility_name",
     "medical_facility_id", "pathologist_comment", "copied_physician", "source_file", "sample_name",
-    "specimen_ref", "npi", "extra", "test_request",
+    "specimen_ref", "npi", "extra", "test_request", "mrn_source",
 }
 HASH = {"specimen_id", "accession_id"}  # vendor ids that embed the accession; hashed to stay joinable
 ID_PATTERN = r"TN[0-9]{2}-[0-9]{5,}|ORD-[0-9]{6,}|TRF[0-9]{5,}|CRF[0-9]{5,}|QRF[0-9]{5,}|US[0-9]{6,}\.[0-9]{2}"
