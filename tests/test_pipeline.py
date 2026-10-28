@@ -922,7 +922,8 @@ def test_fmi_patient_identity(tmp_path):
                   no_mrn.replace("<FirstName>Jane<", "<FirstName>Joan<"),
                   no_mrn.replace(dob, "<DOB>1931-02-03</DOB>")):
         assert ident(other) not in (None, ident(no_mrn))
-    # MRN on one file, absent on the other: different identities
+    # MRN on one file, absent on the other: the identities differ in kind. load() compares copies
+    # with same_patient, which can still pair them (test_fmi_duplicate_mixed_identity).
     assert ident(fmi_report("ORD-0007777-01")) == MRN != ident(no_mrn)
     # Any fallback field missing: None
     for missing in (no_mrn.replace(dob, ""), no_mrn.replace("<LastName>Doe</LastName>", ""),

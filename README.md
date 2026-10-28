@@ -193,9 +193,10 @@ WHERE v.gene = 'KRAS' AND v.hgvs_p ILIKE '%G12C%';
   id to the patient's. It was a correction: patient counts dropped, and a downstream list holding an
   affected report's old `research_id` no longer finds it. A regular report reached this way also gets
   new shifted dates (the offset follows the patient), now consistent with that patient's other reports.
-  When two copies of one FMI report differ only in which identity fields they carry (one has only the
-  CustomerInformation MRN, the other only name and DOB), they are one patient if every field both carry
-  agrees; the chosen copy then takes the MRN from its twin (`mrn_source = 'duplicate_copy'`).
+  Two copies of one FMI report are compared pairwise. When both carry an MRN, it decides. Otherwise
+  they are one patient when both carry last|first|dob and it agrees, or when neither carries any
+  identity; any other pair sends every copy to `fmi.load_error`. If the chosen copy has no MRN, it
+  takes it from a twin (`mrn_source = 'duplicate_copy'`).
 - Every DATE/TIMESTAMP shifted per patient by a stable offset in ±182 days;
   intervals survive. Ages capped at 89.
 - Key in `$DATA/.deid_key` (mode 600). Same key ⇒ same IDs on rebuild.

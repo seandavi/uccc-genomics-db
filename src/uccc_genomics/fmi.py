@@ -154,8 +154,8 @@ def rows_for(path):
     a = (lambda k: vr.get(k)) if vr is not None else (lambda k: None)
     qc = vr.find(f"{NS}quality-control") if vr is not None else None
     amend = fr.findall(".//Amendmends/Amendmend") if fr is not None else []
-    # PMI MRN, else ResultsReport/CustomerInformation/MRN: Monitor files have no PMI but carry it
-    # there (namespaced rr: in real files, hence {*}), and some reports leave the PMI copy empty (#89).
+    # PMI MRN, else ResultsReport/CustomerInformation/MRN (namespaced rr: in real files, hence {*}):
+    # Monitor files have no PMI but carry it there, and some reports leave the PMI copy empty (#89).
     # CustomerInformation has no name/DOB/dates.
     pmi_mrn, ci_mrn = mrn_digits(txt(pmi, "MRN")), mrn_digits(txt(root.find("{*}CustomerInformation"), "{*}MRN"))
     mrn, mrn_source = (pmi_mrn, "pmi") if pmi_mrn else (ci_mrn, "customer_information" if ci_mrn else None)

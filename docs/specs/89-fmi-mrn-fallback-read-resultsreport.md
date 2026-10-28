@@ -315,7 +315,7 @@ Checks: `uv run pytest -q`. Dashboard `npm test` n/a (no dashboard change). Web 
   cross-check exists, and none exists for the PMI MRN either.
 - **Seam.** `fmi.py` feeds every FMI consumer, and `deid.DROP` is the PHI column list. For a report
   with a PMI MRN, every loaded value is unchanged apart from the new `mrn_source = 'pmi'`.
-  `report_id` can't change. `mrn_source` is dropped (test 4), and the `CustomerInformation`
+  `report_id` can't change. `mrn_source` is dropped (tests 2 and 5), and the `CustomerInformation`
   identifiers aren't loaded (the leak check with `TRF00001` in tests 2 and 3).
 - **PHI.** The fallback MRN lives only in `phi.fmi.report.mrn`, which `deid` already drops; it
   reaches the de-id file only as the keyed `research_id` hash.
@@ -325,5 +325,5 @@ Checks: `uv run pytest -q`. Dashboard `npm test` n/a (no dashboard change). Web 
 
 Folded into the body above after the real-data dry-run (2026-10-28): the `{*}` namespace lookup for
 `CustomerInformation`, `same_patient` with the `'duplicate_copy'` donor step (a real duplicate pair
-had the MRN only in the reduced copy's `CustomerInformation`), and, in review round 1, the pairwise
+can have the MRN only in the reduced copy's `CustomerInformation` and only name and DOB in the full copy), and, in review round 1, the pairwise
 check and the no-identity rule.
