@@ -70,6 +70,7 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
   .more { display: inline-flex; align-items: center; justify-content: center; }
   .history { order: 1; flex-basis: 100%; }
   .actions { display: none; }
+  .requests .actions { display: flex; }   /* My requests has no ⋯ toggle: its two links stay */
   .actions.open {
     display: flex; flex-direction: column; align-items: stretch; position: absolute; top: 100%; right: var(--s4); z-index: 20;
     margin: 0; padding: var(--s2); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / .12);

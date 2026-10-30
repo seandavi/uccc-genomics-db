@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EMPTY, shareHash } from "./cohort.ts";
 import { IntakeForm, RequestList, RequestView, SubmitBlock } from "./Requests.tsx";
-import { STATUS_LABEL, STATUS_TEXT, editable, toDraft } from "./requests.ts";
+import { STATUS_LABEL, STATUS_TEXT, editable, exactIrb, toDraft } from "./requests.ts";
 import type { IrbStatus, MyRequestDetail, Requests } from "./types.ts";
 
 const IRB: IrbStatus = {irb_number: "TEST-0100", version: 1, status: "active", expiration_date: "2099-01-01",
@@ -167,5 +167,16 @@ describe("toDraft", () => {
     const d = toDraft(DETAIL);
     d.recipients[0].name = "changed";
     expect(DETAIL.recipients[0].name).toBe("R Example");
+  });
+});
+
+describe("exactIrb", () => {
+  const options = [IRB, {...IRB, irb_number: "TEST-0200"}];
+  test("a pasted or late-arriving number matches its suggestion, spaces ignored", () => {
+    expect(exactIrb(options, " TEST-0200 ")?.irb_number).toBe("TEST-0200");
+  });
+  test("a prefix or an unknown number matches nothing", () => {
+    expect(exactIrb(options, "TEST-02")).toBeUndefined();
+    expect(exactIrb([], "TEST-0100")).toBeUndefined();
   });
 });

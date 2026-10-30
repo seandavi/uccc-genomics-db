@@ -324,8 +324,10 @@ Semantics:
   own; the broker_* tools are for the honest broker group only." The MCP tools themselves don't change. Only
   `get_my_request`'s output schema changes, through `MyRequestDetail`.
 - The static pages: replace the single `/discover` route with a loop over `("discover", "requests")`. Each
-  page adds `GET /{page}` → `FileResponse(<static>/{page}.html)` when the file exists (bind the path with a
-  default argument), with the same comment.
+  page adds `GET /{page}` → `FileResponse(<static>/{page}.html)` when the file exists (bind the path in a closure
+  that takes no parameters: FastAPI exposes any parameter of the endpoint, even a defaulted one such as
+  `html=html`, as a query parameter, which would be a file read by query string; a test pins it), with the
+  same comment.
 - `cd web && bun run gen` regenerates `web/openapi.json` and `web/src/api.gen.ts`, and both are committed.
 
 **What leaves, and the small-cell rule.** None of these routes query the de-id file or return a count. They
@@ -396,9 +398,11 @@ in `src/requests.ts`:
   submitted → "The honest broker is reviewing this request."), `FIELD_LABEL: Record<RequestField, string>`,
   `IDENTIFIER_LABEL`, `DOC_LABEL`, `toDraft(d: MyRequestDetail): RequestDraft`, and `editable(status)`.
 - `RequestsPage({api, account})`: header with "My requests", a link back to `/discover`, and `Who`. The
-  selected request comes from `location.hash` (`#<uuid>`, with a `hashchange` listener). With no
+  header's links stay visible on a phone
+  (there is no ⋯ toggle here). The selected request comes from `location.hash` (`#<uuid>`, with a `hashchange` listener). With no
   selection it shows `RequestList`. With one it shows `RequestView`, and a "← All requests" link (`href="#"`).
-  Errors go in `role="alert"` with `describeError`. The intro paragraph: "Discover shows counts only.
+  Errors go in `role="alert"` with `describeError`; the form scrolls its alert into view, because the buttons
+  that fail are far below it. The intro paragraph: "Discover shows counts only.
   Identified data (MRNs, true dates, report ids) comes only from the honest broker, for an active IRB
   approval, delivered to restricted storage."
 - `RequestList({requests})`: a table with Cohort (`definition.name` or "Untitled cohort", linked to `#id`),
@@ -415,7 +419,9 @@ in `src/requests.ts`:
 - `IntakeForm({detail, api, onChange})` holds its form state from `toDraft(detail)` and tracks a `dirty`
   flag:
   - **IRB:** a text input `aria-label="IRB number"` with a `<datalist>` filled from `lookupIrb` (debounced
-    250 ms, not called for an empty value). Picking a number sets `irb_number` and `irb_version` from the
+    250 ms, not called for an empty value). A number in the box that exactly matches a suggestion is chosen
+    whether it was typed, pasted or the lookup returned late (`exactIrb`); when the lookup for the current
+    value has no match, a hint says no such IRB is on file and offers registering it. Choosing sets `irb_number` and `irb_version` from the
     lookup's latest version and shows that version's status, expiry and document checklist (✓ or "missing"
     per type). A "Register a new IRB version" toggle opens fields for PI, approval date, expiration date,
     HIPAA pathway and approved population. Its "Register" button calls `registerIrb` and selects the result.

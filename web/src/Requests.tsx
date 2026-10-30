@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Who } from "./App.tsx";
 import { shareHash } from "./cohort.ts";
 import {
-  DOC_LABEL, FIELD_LABEL, IDENTIFIER_LABEL, STATUS_LABEL, STATUS_TEXT, editable, toDraft,
+  DOC_LABEL, FIELD_LABEL, exactIrb, IDENTIFIER_LABEL, STATUS_LABEL, STATUS_TEXT, editable, toDraft,
 } from "./requests.ts";
 import { TransportError, describeError, type Account, type RequestsApi } from "./transport.ts";
 import type {
@@ -109,9 +109,13 @@ export function IntakeForm({detail, api, onChange}: {
   const [irb, setIrb] = useState<IrbStatus | null>(detail.irb ?? null);
   const [query, setQuery] = useState(detail.irb_number ?? "");
   const [options, setOptions] = useState<IrbStatus[]>([]);
+  const [looked, setLooked] = useState<string | null>(null);   // the number the suggestions were fetched for
+  const alertRef = useRef<HTMLParagraphElement>(null);
   const [registering, setRegistering] = useState(false);
   const [reg, setReg] = useState(BLANK_IRB);
   const [doc, setDoc] = useState(BLANK_DOC);
+
+  useEffect(() => { if (error) alertRef.current?.scrollIntoView?.({block: "center"}); }, [error]);   // the buttons are far below
 
   const edit = (patch: Partial<RequestDraft>) => { setDraft((d) => ({...d, ...patch})); setDirty(true); };
   const select = (s: IrbStatus | null) => {
@@ -121,18 +125,24 @@ export function IntakeForm({detail, api, onChange}: {
 
   useEffect(() => {   // the number box's suggestions
     const q = query.trim();
-    if (q === "") { setOptions([]); return; }
+    if (q === "") { setOptions([]); setLooked(null); return; }
+    let live = true;
     const t = setTimeout(() => {
-      api.lookupIrb(q).then((r) => setOptions(r.authorizations), () => setOptions([]));
+      api.lookupIrb(q).then((r) => { if (live) { setOptions(r.authorizations); setLooked(q); } },
+                            () => { if (live) setOptions([]); });
     }, 250);
-    return () => clearTimeout(t);
+    return () => { live = false; clearTimeout(t); };
   }, [query, api]);
+
+  // An exact number is chosen whenever the suggestions and the box agree, however it got there (typed, pasted, late lookup).
+  const match = exactIrb(options, query);
+  useEffect(() => {
+    if (match && draft.irb_number !== match.irb_number) select(match);
+  }, [match]);
 
   const typed = (value: string) => {
     setQuery(value);
-    const match = options.find((o) => o.irb_number === value.trim());
-    if (match) select(match);
-    else if (draft.irb_number !== null && draft.irb_number !== value.trim()) select(null);
+    if (draft.irb_number !== null && draft.irb_number !== value.trim()) select(null);
   };
 
   const run = async (what: () => Promise<void>) => {
@@ -191,7 +201,7 @@ export function IntakeForm({detail, api, onChange}: {
 
   return (
     <form className="intake" onSubmit={(e) => e.preventDefault()}>
-      {error && <p role="alert" className="error">{error}</p>}
+      {error && <p ref={alertRef} role="alert" className="error">{error}</p>}
       <fieldset>
         <legend>IRB authorization</legend>
         <label>IRB number{" "}
@@ -200,6 +210,9 @@ export function IntakeForm({detail, api, onChange}: {
         <datalist id="irb-options">{options.map((o) => <option key={o.irb_number} value={o.irb_number} />)}</datalist>
         <button type="button" className="btn-tertiary" aria-expanded={registering} onClick={() => { setRegistering(!registering); setReg({...BLANK_IRB, irb_number: query.trim()}); }}>
           Register a new IRB version</button>
+        {!irb && looked === query.trim() && !match && (
+          <p className="hint">No IRB {looked} on file. Register it below if it is new.</p>
+        )}
         {irb && <Checklist irb={irb} />}
         {registering && (
           <div className="editor">

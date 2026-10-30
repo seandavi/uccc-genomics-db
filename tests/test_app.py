@@ -296,6 +296,13 @@ def test_public_paths_open(client):
     assert client.get("/requests", auth=AUTH).text == "<p>requests</p>"
 
 
+@pytest.mark.parametrize("page, body", [("discover", "<p>discover</p>"), ("requests", "<p>requests</p>")])
+def test_static_page_takes_no_path_from_the_query(client, tmp_path, page, body):
+    secret = tmp_path / "static" / "index.html"
+    r = client.get(f"/{page}", params={"html": str(secret), "path": str(secret)}, auth=AUTH)
+    assert r.text == body
+
+
 @pytest.mark.parametrize("path, expected", [
     ("/", True), ("/api/health", True), ("/api/public/summary", True), ("/assets/x.js", True),
     ("/index.html", False), ("/discover", False), ("/assets/../discover.html", False), ("//assets/x", False),

@@ -767,10 +767,15 @@ def app(static_dir: str | None = None) -> FastAPI:
         application.add_api_route("/auth/logout", authen.logout, methods=["POST"], include_in_schema=False,
                                   response_model=None)
     if static_dir:   # last, so lowest precedence
+        def page_route(html: str):
+            """A no-argument endpoint: FastAPI turns any parameter of the callable into a request parameter,
+            and a path there would be a file read by query string."""
+            return lambda: FileResponse(html)
+
         for page in ("discover", "requests"):
             html = os.path.join(static_dir, f"{page}.html")
             if os.path.isfile(html):   # not a {page}/ directory: StaticFiles would redirect to an absolute http:// URL
-                application.add_api_route(f"/{page}", lambda html=html: FileResponse(html), methods=["GET"],
+                application.add_api_route(f"/{page}", page_route(html), methods=["GET"],
                                           include_in_schema=False, response_model=None)
         application.mount("/", StaticFiles(directory=static_dir, html=True))
     application.add_middleware(RequireUser)

@@ -1,4 +1,4 @@
-import type { DocType, Identifier, MyRequestDetail, RequestDraft, RequestField, RequestStatus } from "./types.ts";
+import type { DocType, Identifier, IrbStatus, MyRequestDetail, RequestDraft, RequestField, RequestStatus } from "./types.ts";
 
 export const STATUS_LABEL: Record<RequestStatus, string> = {
   draft: "Draft", submitted: "Submitted", returned: "Returned", approved: "Approved", denied: "Denied",
@@ -42,3 +42,7 @@ export function toDraft(d: MyRequestDetail): RequestDraft {
     retention_end: d.retention_end ?? null,
   };
 }
+
+/** The suggestion that is exactly the number in the box (ignoring surrounding spaces), if any. */
+export const exactIrb = (options: IrbStatus[], query: string): IrbStatus | undefined =>
+  options.find((o) => o.irb_number === query.trim());
