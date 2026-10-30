@@ -43,6 +43,6 @@ export function toDraft(d: MyRequestDetail): RequestDraft {
   };
 }
 
-/** The suggestion that is exactly the number in the box (ignoring surrounding spaces), if any. */
+/** The suggestion that is the number in the box (ignoring surrounding spaces and case), if any. */
 export const exactIrb = (options: IrbStatus[], query: string): IrbStatus | undefined =>
-  options.find((o) => o.irb_number === query.trim());
+  options.find((o) => o.irb_number.toLowerCase() === query.trim().toLowerCase());

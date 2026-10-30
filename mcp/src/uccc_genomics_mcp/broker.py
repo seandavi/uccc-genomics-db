@@ -151,7 +151,7 @@ RequestStatus = Literal["draft", "submitted", "returned", "approved", "denied", 
 
 
 IRB_NUMBER = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-IrbNumber = Annotated[str, StringConstraints(strip_whitespace=True, pattern=IRB_NUMBER)]
+IrbNumber = Annotated[str, StringConstraints(strip_whitespace=True, to_upper=True, pattern=IRB_NUMBER)]
 Email = Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True, max_length=254,
                                          pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
 DocType = Literal["approval_letter", "personnel_list", "protocol_excerpt", "consent_form"]

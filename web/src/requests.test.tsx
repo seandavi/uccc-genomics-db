@@ -175,6 +175,9 @@ describe("exactIrb", () => {
   test("a pasted or late-arriving number matches its suggestion, spaces ignored", () => {
     expect(exactIrb(options, " TEST-0200 ")?.irb_number).toBe("TEST-0200");
   });
+  test("case is ignored, the suggestion keeps its canonical case", () => {
+    expect(exactIrb(options, "test-0200")?.irb_number).toBe("TEST-0200");
+  });
   test("a prefix or an unknown number matches nothing", () => {
     expect(exactIrb(options, "TEST-02")).toBeUndefined();
     expect(exactIrb([], "TEST-0100")).toBeUndefined();

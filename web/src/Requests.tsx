@@ -138,11 +138,12 @@ export function IntakeForm({detail, api, onChange}: {
   const match = exactIrb(options, query);
   useEffect(() => {
     if (match && draft.irb_number !== match.irb_number) select(match);
+    if (match && query !== match.irb_number) setQuery(match.irb_number);   // show the canonical case
   }, [match]);
 
   const typed = (value: string) => {
     setQuery(value);
-    if (draft.irb_number !== null && draft.irb_number !== value.trim()) select(null);
+    if (draft.irb_number && draft.irb_number.toLowerCase() !== value.trim().toLowerCase()) select(null);
   };
 
   const run = async (what: () => Promise<void>) => {

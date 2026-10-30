@@ -123,7 +123,9 @@ def free_text(min_length: int, max_length: int):
 `config` and the stdlib. Every string a requester types goes through `free_text`. The exceptions are the
 emails (`Email`) and the IRB number (`IrbNumber`), which have their own patterns. A refusal is a pydantic
 `ValueError`, so FastAPI answers 422. `StringConstraints` and `AfterValidator` are pydantic 2.13 (installed).
-Checked: `strip_whitespace` runs before `pattern`, and `../x` fails `IRB_NUMBER`.
+`IrbNumber` also upper-cases (`to_upper`), so `test-1` and `TEST-1` are one number and the next version of it
+(the lookup is case-insensitive, so the number must not be case-sensitive anywhere else). Checked:
+`strip_whitespace` runs before `pattern`, and `../x` fails `IRB_NUMBER`.
 
 The #132 response models become stricter in place, so each concept keeps one model:
 
@@ -419,7 +421,7 @@ in `src/requests.ts`:
 - `IntakeForm({detail, api, onChange})` holds its form state from `toDraft(detail)` and tracks a `dirty`
   flag:
   - **IRB:** a text input `aria-label="IRB number"` with a `<datalist>` filled from `lookupIrb` (debounced
-    250 ms, not called for an empty value). A number in the box that exactly matches a suggestion is chosen
+    250 ms, not called for an empty value). A number in the box that matches a suggestion (ignoring case; the box then shows the suggestion's case) is chosen
     whether it was typed, pasted or the lookup returned late (`exactIrb`); when the lookup for the current
     value has no match, a hint says no such IRB is on file and offers registering it. Choosing sets `irb_number` and `irb_version` from the
     lookup's latest version and shows that version's status, expiry and document checklist (✓ or "missing"

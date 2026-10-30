@@ -538,6 +538,8 @@ def test_register_irb_versions_and_cap(bclient):
     assert a.lookup("TEST")[1]["authorizations"][0]["registered_by_you"] is False       # latest is B's
     assert a.register(IRB | {"expiration_date": "2025-01-01"})[0] == 422                 # before approval
     assert a.register(IRB | {"irb_number": " TEST-0100 "})[1]["version"] == 3             # stripped
+    code, body = a.register(IRB | {"irb_number": "test-0100"})                            # upper-cased, never a second number
+    assert code == 200 and body["irb_number"] == "TEST-0100" and body["version"] == 4
     assert sql("SELECT status, created_by FROM irb_authorization WHERE version = 2") == [
         {"status": "active", "created_by": B}]
     sql("INSERT INTO irb_authorization (irb_number, version, pi, approval_date, hipaa_pathway, approved_population,"
