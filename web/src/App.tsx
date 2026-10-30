@@ -47,6 +47,13 @@ export function SharePanel({link, copied, cohortId, onClose}: {
   );
 }
 
+/** Scrolls to the answer heading and moves focus there (it is always mounted, so it outlives whatever was focused). */
+function jumpToAnswer() {
+  const h = document.getElementById("answer-h");
+  h?.scrollIntoView();
+  h?.focus();
+}
+
 /** The patient count, tier and a jump to the answer: shown only at 600px and below (CSS). */
 export function SummaryBar({answer, options}: {answer: Counted | null; options: Options | null}) {
   if (!answer) return null;
@@ -54,9 +61,7 @@ export function SummaryBar({answer, options}: {answer: Counted | null; options: 
   const perYear = accrualPerYear(r.patients, d.population.years ?? options?.years ?? null);
   const view = (e: React.MouseEvent) => {
     e.preventDefault();   // a #answer-h fragment would replace the share hash in the address bar
-    const h = document.getElementById("answer-h");
-    h?.scrollIntoView();
-    h?.focus();
+    jumpToAnswer();
   };
   return (
     <div className="summary-bar" role="region" aria-label="Cohort summary">
@@ -182,6 +187,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
       setHist(await applyDefinition(d, () => histRef.current, transport));
       setEditError(null);
       refresh();
+      jumpToAnswer();   // "Use →" unmounts the landing that held focus
     } catch (e) {
       setEditError({at: "answer", message: `This example could not be used: ${describeError(e)}`});
     }

@@ -28,7 +28,8 @@ answer column replaces the answer body with a guided start:
 
 "Use →" applies the example through the same path a share link takes: `transport.apply(example,
 {op: "rename", name})`, then `pushVersion`, then `setHist` (which writes the share hash), then
-`refresh()`. If the server rejects the example (a term not in the vocabulary), the answer column
+`refresh()`, then moves focus to the answer heading (`#answer-h`, always mounted) because the
+landing that held the focused button unmounts. If the server rejects the example (a term not in the vocabulary), the answer column
 shows "This example could not be used: {server message}" and no version is added.
 
 ## Non-goals
@@ -294,7 +295,7 @@ COHORT_TOOL.md are unchanged.
 - [ ] (b) "Use →" on an example adds version n+1 holding the server's normal form of that
       definition, counts it, and writes its share hash. This is pinned by the `applyDefinition`
       unit tests and an `App.tsx` source check that `applyExample` goes through
-      `applyDefinition`, `setHist` and `refresh`. The orchestrator verifies it end to end on the dev
+      `applyDefinition`, `setHist`, `refresh` and the focus call (`jumpToAnswer`). The orchestrator verifies it end to end on the dev
       server.
 - [ ] (c) A test renders `Start` and asserts that each example card's text, with 4-digit years
       removed, contains no digit. A `cohort.test.ts` test asserts the same for every `EXAMPLES` name
