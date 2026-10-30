@@ -41,7 +41,7 @@ test("every token used is defined, and every colour token has a dark value", () 
 test("text pairs meet 4.5:1 in both themes", () => {
   const pairs = [
     ["--fg", "--bg"], ["--fg", "--surface"], ["--muted", "--bg"], ["--muted", "--surface"],
-    ["--muted", "--surface-2"], ["--muted", "--suppressed-bg"], ["--accent-fg", "--accent"], ["--accent", "--bg"],
+    ["--muted", "--surface-2"], ["--fg", "--surface-2"], ["--muted", "--suppressed-bg"], ["--accent-fg", "--accent"], ["--accent", "--bg"],
     ["--high", "--high-bg"], ["--moderate", "--moderate-bg"], ["--low", "--low-bg"], ["--danger", "--bg"],
   ];
   for (const [name, theme] of Object.entries(themes))
@@ -114,4 +114,14 @@ test("mobile shell: actions behind the more button, history on its own row, stic
   expect(inMobile(".summary-bar")).toContain("bottom: 0");
   expect(css.replace(/@media \(max-width: 600px\)\s*\{[\s\S]*?\n\}/, "")).toContain(".summary-bar { display: none; }");
   expect(css.match(/([^{}]*)\{[^}]*suppressed-stripe\) 35%/)?.[1]).toContain(".summary-count.hatched");
+});
+
+test("builder: dashed adders, mode stripes, 24px chip buttons, no retired rules", () => {
+  expect(rule(".adder")).toContain("dashed");
+  expect(rule(".criterion.mode-include")).toContain("var(--high)");
+  expect(rule(".criterion.mode-exclude")).toContain("var(--low)");
+  expect(rule(".chip button")).toContain("min-height: 24px");
+  expect(rule(".chip button")).toContain("min-width: 24px");
+  expect(css).not.toContain(".cid");
+  expect(css).not.toContain(".typeahead .field");
 });

@@ -298,8 +298,9 @@ definition, and `/c/<cohort_id>` comes when Discover uses saved cohorts). Drag-t
 there is no assistant column: it was removed until chat ships (owner decision 2026-10-30, #98). The header holds History (↶/↷ and "Edit n"), Share, Compare and Feasibility statement; at 600 px and below they sit behind a ⋯ menu, and a sticky bar at the bottom shows the patient count.
 
 **Phase 2 (#38).** Discover gains the include / exclude / tested-negative select on each card, one
-"All criteria on the same report" switch for the definition (not a lock per card), `data` entries
-in the typeahead, a vendor select, "Then…" and the sequence card, **Compare** and the
+"Match all criteria on the same report" switch for the definition (not a lock per card; since
+#101 it sits below the cards and shows once there are two criteria or any exclude or tested-negative criterion), `data` entries in the
+typeahead, a vendor select, "+ Later report" (first called "Then…") and the sequence card, **Compare** and the
 **Feasibility statement**. Compare picks 2-4 versions from the local history (Discover does not call
 `/api/saved*`), not saved cohorts. Loosen suggestions are offered only for a definition with no
 neighbours (§3.6): a suggestion is itself a count, and for a definition with neighbours it would

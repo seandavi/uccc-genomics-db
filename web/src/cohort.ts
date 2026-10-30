@@ -180,6 +180,34 @@ export function fieldLabel(e: Option): string {
   return FIELD_LABELS[e.field] ?? e.field;
 }
 
+/** The plain-language kind badge that leads a typeahead option row. */
+export const KIND_LABELS: Record<string, string> = {
+  "population.oncotree": "Tumor type", "population.organ": "Organ system", "population.sex": "Sex",
+  "population.age_band": "Age band", "population.vendor": "Vendor", "population.assay_class": "Assay",
+  "data.has": "Data available", "biomarker.name": "Biomarker", "biomarker.call": "Biomarker",
+  "alteration.gene": "Gene alteration", "alteration.aa": "Gene alteration",
+  "ihc.marker": "IHC", "ihc.call": "IHC", "ihc.clone": "IHC", "expression.gene": "RNA expression",
+  "specimen.site_type": "Specimen", "specimen.site": "Specimen", "actionability.evidence": "Actionability",
+};
+
+export const kindLabel = (e: Option): string => KIND_LABELS[e.field] ?? e.field;
+
+/** An option's value as its row reads it: with its parent where the value alone is ambiguous, and plain words for codes. */
+export function optionText(e: Option): string {
+  const p = e.parent ? `${e.parent} ` : "";
+  switch (e.field) {
+    case "alteration.aa": case "biomarker.call": case "ihc.call": return `${p}${e.value}`;
+    case "ihc.clone": return `${p}clone ${e.value}`;
+    case "actionability.evidence": return EVIDENCE[e.value] ?? e.value;
+    case "data.has": return capitalise(DATA_LABELS[e.value] ?? e.value);
+    default: return e.value;
+  }
+}
+
+/** A card's heading: criterionLabel without the "no" of an exclusion (the mode badge says Exclude), capitalised. */
+export const cardLabel = (c: Criterion): string =>
+  capitalise(criterionLabel(c.mode === "exclude" ? ({...c, mode: "include"} as Criterion) : c));
+
 /** Static "Biomarker TMB/MSI/LOH" typeahead entries: the vocabulary holds calls, not biomarker names. */
 export const BIOMARKERS = ["TMB", "MSI", "LOH"] as const;
 export const biomarkerEntries = (q: string): Option[] =>

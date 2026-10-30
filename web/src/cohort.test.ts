@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DATA_ENTRIES, EMPTY, MAX_VERSIONS, accrualPerYear, addToPopulation, capitalise, comboKey, criterionLabel, dataEntries,
-  feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, modesFor, newCriterion, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
+  DATA_ENTRIES, EMPTY, KIND_LABELS, MAX_VERSIONS, accrualPerYear, addToPopulation, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
+  feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
   type History,
 } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, Option, Population } from "./types.ts";
@@ -276,5 +276,38 @@ describe("comboKey", () => {
     expect(comboKey(closed, "Enter", 3).pick).toBe(false);
     expect(comboKey({open: true, active: 1}, "Escape", 3).open).toBe(false);
     expect(comboKey({open: true, active: 0}, "Enter", 0).pick).toBe(false);
+  });
+});
+
+describe("option rows and card labels", () => {
+  test("kindLabel and optionText", () => {
+    const rows: [Option, string, string][] = [
+      [opt("alteration.gene", "KRAS"), "Gene alteration", "KRAS"],
+      [opt("expression.gene", "KRAS"), "RNA expression", "KRAS"],
+      [opt("alteration.aa", "G12C", "KRAS"), "Gene alteration", "KRAS G12C"],
+      [opt("biomarker.call", "high", "MSI"), "Biomarker", "MSI high"],
+      [opt("ihc.clone", "22C3", "PD-L1"), "IHC", "PD-L1 clone 22C3"],
+      [opt("population.oncotree", "NSCLC"), "Tumor type", "NSCLC"],
+      [opt("data.has", "wts"), "Data available", "Whole-transcriptome sequencing"],
+      [opt("actionability.evidence", "fmi_trial"), "Actionability", "FMI trial match"],
+      [opt("x.unknown", "v"), "x.unknown", "v"],
+    ];
+    for (const [o, kind, text] of rows) expect([kindLabel(o), optionText(o)]).toEqual([kind, text]);
+  });
+  test("KIND_LABELS covers every vocabulary field and the two static ones", () => {
+    const fields = [
+      "population.oncotree", "population.organ", "population.sex", "population.age_band", "population.vendor", "population.assay_class",
+      "alteration.gene", "alteration.aa", "biomarker.call", "ihc.marker", "ihc.clone", "ihc.call", "expression.gene",
+      "specimen.site_type", "specimen.site", "actionability.evidence", "biomarker.name", "data.has",
+    ];
+    expect(Object.keys(KIND_LABELS).sort()).toEqual([...fields].sort());
+  });
+  test("cardLabel drops the no of an exclusion, criterionLabel keeps it", () => {
+    const ex = alt({mode: "exclude", gene: ["KEAP1", "STK11"]});
+    expect(cardLabel(ex)).toBe("KEAP1 or STK11 alteration");
+    expect(criterionLabel(ex)).toBe("no KEAP1 or STK11 alteration");
+    expect(cardLabel(alt({mode: "tested_negative"}))).toBe("KRAS tested negative");
+    expect(cardLabel({kind: "data", id: "c1", mode: "exclude", vendor: null, has: "both_vendors"} as Criterion)).toBe("Testing by both Caris and FMI");
+    expect(cardLabel(alt({class: ["mutation"], tier: []}))).toBe("KRAS mutation");
   });
 });

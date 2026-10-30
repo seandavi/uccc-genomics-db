@@ -1,25 +1,26 @@
 import { useEffect, useId, useState } from "react";
 import {
-  EVIDENCE, POP_DIMS, REPORT_DATA, addToPopulation, biomarkerEntries, capitalise, comboKey, criterionLabel, dataEntries,
-  fieldLabel, forScope, modesFor, newCriterion, type ComboState, type PopDim,
+  EVIDENCE, POP_DIMS, REPORT_DATA, addToPopulation, biomarkerEntries, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
+  fieldLabel, forScope, kindLabel, modesFor, newCriterion, optionText, type ComboState, type PopDim,
 } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
 import type { Criterion, Definition, Leaf, Mode, Operation, Option, Options, Population, SeqMember } from "./types.ts";
 
 const DIM_LABELS: Record<PopDim, string> = {
-  oncotree: "tumor type", organ: "organ", sex: "sex", age_band: "age", vendor: "vendor", assay_class: "assay",
+  oncotree: "Tumor type", organ: "Organ", sex: "Sex", age_band: "Age", vendor: "Vendor", assay_class: "Assay",
 };
 
 // --- typeahead (WAI-ARIA combobox) -----------------------------------------------------------------
 
 interface TypeaheadProps {
   label: string;
+  placeholder: string;
   search: (q: string) => Promise<Option[]>;
   onPick: (e: Option) => void;
   minChars?: number;
 }
 
-export function Typeahead({label, search, onPick, minChars = 1}: TypeaheadProps) {
+export function Typeahead({label, placeholder, search, onPick, minChars = 1}: TypeaheadProps) {
   const id = useId();
   const [q, setQ] = useState("");
   const [items, setItems] = useState<Option[] | null>(null);
@@ -44,7 +45,7 @@ export function Typeahead({label, search, onPick, minChars = 1}: TypeaheadProps)
       <label htmlFor={`${id}-in`}>{label}</label>
       <input id={`${id}-in`} role="combobox" aria-expanded={!!shown} aria-controls={`${id}-list`}
         aria-activedescendant={shown?.length ? `${id}-o${st.active}` : undefined} aria-autocomplete="list"
-        autoComplete="off" value={q}
+        autoComplete="off" placeholder={placeholder} value={q}
         onChange={(e) => { setQ(e.target.value); setSt((s) => ({...s, open: true})); }}
         onFocus={() => setSt((s) => ({...s, open: true}))}
         onBlur={() => setSt((s) => ({...s, open: false}))}
@@ -57,8 +58,8 @@ export function Typeahead({label, search, onPick, minChars = 1}: TypeaheadProps)
       <ul role="listbox" id={`${id}-list`} hidden={!shown}>
         {shown?.map((o, i) => (
           <li key={`${o.field}|${o.parent}|${o.value}`} role="option" id={`${id}-o${i}`} aria-selected={i === st.active}
-            onMouseDown={(e) => { e.preventDefault(); pick(o); }}>
-            <span>{o.value}</span> <span className="field">{fieldLabel(o)}</span>
+            title={fieldLabel(o)} onMouseDown={(e) => { e.preventDefault(); pick(o); }}>
+            <span className="kind">{kindLabel(o)}</span><span aria-hidden="true"> · </span><span>{optionText(o)}</span>
           </li>
         ))}
       </ul>
@@ -125,13 +126,13 @@ function PopulationChips({p, onOp}: {p: Population; onOp: (op: Operation) => voi
       {POP_DIMS.flatMap((d) => p[d].map((v) => (
         <li key={`${d}:${v}`} className="chip">
           <span>{v}</span>
-          <button type="button" aria-label={`Remove ${v}`} onClick={() => set({...p, [d]: p[d].filter((x) => x !== v)})}>×</button>
+          <button type="button" aria-label={`Remove ${v}`} onClick={() => set({...p, [d]: p[d].filter((x) => x !== v)})}>✕</button>
         </li>
       )))}
       {p.years && (
         <li className="chip">
           <span>{p.years[0]}–{p.years[1]}</span>
-          <button type="button" aria-label="Remove years" onClick={() => set({...p, years: null})}>×</button>
+          <button type="button" aria-label="Remove years" onClick={() => set({...p, years: null})}>✕</button>
         </li>
       )}
     </ul>
@@ -140,6 +141,7 @@ function PopulationChips({p, onOp}: {p: Population; onOp: (op: Operation) => voi
 
 function PopulationAdders({transport, p, options, onOp}: {transport: Transport; p: Population; options: Options | null; onOp: (op: Operation) => void}) {
   const [open, setOpen] = useState<PopDim | null>(null);
+  const yid = useId();
   const set = (population: Population) => onOp({op: "set_population", population});
   const years = options?.years ? Array.from({length: options.years[1] - options.years[0] + 1}, (_, i) => options.years![0] + i) : [];
   const setYears = (from: string, to: string) => {
@@ -150,27 +152,26 @@ function PopulationAdders({transport, p, options, onOp}: {transport: Transport; 
     <div>
       <div className="adders">
         {POP_DIMS.map((d) => (
-          <button key={d} type="button" aria-expanded={open === d} onClick={() => setOpen(open === d ? null : d)}>+ {DIM_LABELS[d]}</button>
+          <button key={d} type="button" className="adder" aria-expanded={open === d} onClick={() => setOpen(open === d ? null : d)}>+ {DIM_LABELS[d]}</button>
         ))}
       </div>
       {open && (open === "oncotree" || open === "organ"
-        ? <Typeahead label={`Add ${DIM_LABELS[open]}`} minChars={0}
+        ? <Typeahead label={`Add ${DIM_LABELS[open].toLowerCase()}`} minChars={0}
+            placeholder={open === "oncotree" ? "Search tumor types… e.g. NSCLC" : "Search organ systems… e.g. Lung"}
             search={(q) => transport.options({q, field: `population.${open}`, limit: 20}).then((o) => o.entries)}
             onPick={(e) => { const next = addToPopulation(p, e); if (next && next !== p) set(next); setOpen(null); }} />
         : <PopulationChecks transport={transport} dim={open} p={p} set={set} />)}
-      <div className="years">
-        <label>From{" "}
-          <select value={p.years?.[0] ?? ""} onChange={(e) => setYears(e.target.value, String(p.years?.[1] ?? years.at(-1) ?? ""))}>
-            <option value="">All years</option>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </label>
-        <label>To{" "}
-          <select value={p.years?.[1] ?? ""} onChange={(e) => setYears(String(p.years?.[0] ?? years[0] ?? ""), e.target.value)}>
-            <option value="">All years</option>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </label>
+      <div className="years" role="group" aria-labelledby={`${yid}-years`}>
+        <span id={`${yid}-years`}>Years</span>
+        <select aria-label="From year" value={p.years?.[0] ?? ""} onChange={(e) => setYears(e.target.value, String(p.years?.[1] ?? years.at(-1) ?? ""))}>
+          <option value="">Any</option>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <span aria-hidden="true">–</span>
+        <select aria-label="To year" value={p.years?.[1] ?? ""} onChange={(e) => setYears(String(p.years?.[0] ?? years[0] ?? ""), e.target.value)}>
+          <option value="">Any</option>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
     </div>
   );
@@ -178,7 +179,7 @@ function PopulationAdders({transport, p, options, onOp}: {transport: Transport; 
 
 function PopulationChecks({transport, dim, p, set}: {transport: Transport; dim: PopDim; p: Population; set: (p: Population) => void}) {
   const {values, error} = useValues(transport, `population.${dim}`);
-  return <Checks legend={`Limit to ${DIM_LABELS[dim]}`} values={values} error={error} selected={p[dim]} onChange={(v) => set({...p, [dim]: v})} />;
+  return <Checks legend={`Limit to ${DIM_LABELS[dim].toLowerCase()}`} values={values} error={error} selected={p[dim]} onChange={(v) => set({...p, [dim]: v})} />;
 }
 
 // --- criterion editors -----------------------------------------------------------------------------
@@ -364,33 +365,39 @@ function CriterionCard({c, scope, transport, options, onOp}: {
   const editable = c.kind !== "any_of" && c.kind !== "sequence" && !(c.kind === "data" && !isReportData(c));
   const canOr = c.kind !== "sequence" && c.kind !== "data" && c.mode !== "tested_negative";
   const canThen = c.mode === "include" && c.kind !== "any_of" && c.kind !== "sequence" && (c.kind !== "data" || isReportData(c)) && scope !== "report";
+  const label = cardLabel(c);
+  const actions = [
+    editable && <button key="edit" type="button" className="btn-tertiary" aria-expanded={mode === "edit"}
+      title="Change this criterion's details" onClick={() => setMode(mode === "edit" ? null : "edit")}>Edit</button>,
+    canOr && <button key="or" type="button" className="btn-tertiary" aria-expanded={mode === "or"}
+      disabled={c.kind === "any_of" && c.of.length >= MAX_OR}
+      title="Match this or another finding (either one counts)" onClick={() => setMode(mode === "or" ? null : "or")}>+ Or another</button>,
+    canThen && <button key="then" type="button" className="btn-tertiary" aria-expanded={mode === "then"}
+      title="Also require a finding on a report later than this one" onClick={() => setMode(mode === "then" ? null : "then")}>+ Later report</button>,
+  ].filter(Boolean).flatMap((a, i) => (i ? [<span key={`sep${i}`} className="sep" aria-hidden="true">·</span>, a] : [a]));
   return (
-    <article className="criterion" aria-label={capitalise(criterionLabel(c))}>
+    <article className={`criterion mode-${c.mode}`} aria-label={capitalise(criterionLabel(c))}>
       <header>
-        <span className="cid">{id}</span> <span className="clabel">{capitalise(criterionLabel(c))}</span>{" "}
-        <select aria-label={`Mode of ${id}`} value={c.mode}
+        <select className="mode" aria-label={`Mode of ${id}`} value={c.mode}
           onChange={(e) => onOp({op: "set_mode", id, mode: e.target.value as Mode})}>
           {modesFor(c).map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
         </select>
+        <span aria-hidden="true"> · </span><span className="clabel">{label}</span>
       </header>
       {c.kind === "any_of" && (
         <ul className="members">{c.of.map((m, i) => (
-          <li key={i}>{capitalise(criterionLabel(m))} <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${id}`} onClick={() => dropMember(i)}>×</button></li>
+          <li key={i}>{capitalise(criterionLabel(m))} <button type="button" className="btn-icon" aria-label={`Remove ${criterionLabel(m)} from ${id}`} onClick={() => dropMember(i)}>✕</button></li>
         ))}</ul>
       )}
       {c.kind === "sequence" && <SequenceMembers c={c} transport={transport} onChange={update} />}
-      <div className="row">
-        {editable && <button type="button" aria-expanded={mode === "edit"} onClick={() => setMode(mode === "edit" ? null : "edit")}>Edit</button>}
-        {canOr && (
-          <button type="button" aria-expanded={mode === "or"} disabled={c.kind === "any_of" && c.of.length >= MAX_OR}
-            onClick={() => setMode(mode === "or" ? null : "or")}>Or…</button>
-        )}
-        {canThen && <button type="button" aria-expanded={mode === "then"} onClick={() => setMode(mode === "then" ? null : "then")}>Then…</button>}
-        <button type="button" onClick={() => onOp({op: "remove_criterion", id})}>Remove</button>
+      <div className="row card-actions">
+        {actions}
+        <button type="button" className="btn-icon remove" aria-label={`Remove ${label}`} title="Remove this criterion"
+          onClick={() => onOp({op: "remove_criterion", id})}>✕</button>
       </div>
       {mode === "edit" && <Editor c={c} transport={transport} options={options} onSave={update} onCancel={() => setMode(null)} />}
-      {mode === "or" && <Typeahead label="Or any of" search={(q) => searchAll(transport, q).then((r) => r.filter((e) => !e.field.startsWith("population.") && e.field !== "data.has"))} onPick={orIn} />}
-      {mode === "then" && <Typeahead label="Then, on a later report" search={(q) => searchAll(transport, q).then((r) => r.filter(seqEntry))} onPick={thenIn} />}
+      {mode === "or" && <Typeahead label="Or any of" placeholder="Search another finding… e.g. NRAS" search={(q) => searchAll(transport, q).then((r) => r.filter((e) => !e.field.startsWith("population.") && e.field !== "data.has"))} onPick={orIn} />}
+      {mode === "then" && <Typeahead label="Then, on a later report" placeholder="Search a finding on the later report… e.g. liquid biopsy" search={(q) => searchAll(transport, q).then((r) => r.filter(seqEntry))} onPick={thenIn} />}
     </article>
   );
 }
@@ -408,12 +415,12 @@ function SequenceMembers({c, transport, onChange}: {c: Extract<Criterion, {kind:
             <h4>{title}</h4>
             <ul className="members">{members.map((m, i) => (
               <li key={i}>{capitalise(criterionLabel(m))}{" "}
-                <button type="button" aria-label={`Remove ${criterionLabel(m)} from ${title.toLowerCase()} of ${c.id}`}
-                  disabled={members.length === 1} onClick={() => set(members.filter((_, j) => j !== i))}>×</button>
+                <button type="button" className="btn-icon" aria-label={`Remove ${criterionLabel(m)} from ${title.toLowerCase()} of ${c.id}`}
+                  disabled={members.length === 1} onClick={() => set(members.filter((_, j) => j !== i))}>✕</button>
               </li>
             ))}</ul>
             {members.length < MAX_SEQ && (
-              <Typeahead label={`And on the same report… (${title.toLowerCase()})`}
+              <Typeahead label={`And on the same report… (${title.toLowerCase()})`} placeholder="Search a finding… e.g. KRAS"
                 search={(q) => searchAll(transport, q).then((r) => r.filter(seqEntry))}
                 onPick={(e) => { const m = seqMember(e); if (m) set([...members, m]); }} />
             )}
@@ -438,6 +445,9 @@ export function Builder({definition: d, transport, options, onOp}: {
     const criterion = newCriterion(e);
     if (criterion) onOp({op: "add_criterion", criterion});
   };
+  const sid = useId();
+  // Scope changes the count with two criteria or any negated one (definition._scope_swap)
+  const showSameReport = d.scope === "report" || d.criteria.length >= 2 || d.criteria.some((c) => c.mode !== "include");
   const sameReportBlocked = d.scope !== "report" && d.criteria.some(spansReports);
   return (
     <div className="builder">
@@ -448,12 +458,19 @@ export function Builder({definition: d, transport, options, onOp}: {
       </section>
       <section aria-labelledby="crit-h">
         <h2 id="crit-h">Criteria <small>(all must match)</small></h2>
-        <label title={sameReportBlocked ? "A sequence, testing by both vendors or serial reports spans several reports, so it cannot be matched on one report" : undefined}>
-          <input type="checkbox" checked={d.scope === "report"} disabled={sameReportBlocked}
-            onChange={(e) => onOp({op: "set_scope", scope: e.target.checked ? "report" : "patient"})} /> All criteria on the same report
-        </label>
         {d.criteria.map((c) => <CriterionCard key={c.id} c={c} scope={d.scope} transport={transport} options={options} onOp={onOp} />)}
-        <Typeahead label="Add criterion" search={(q) => searchAll(transport, q).then((r) => forScope(r, d.scope))} onPick={add} />
+        <Typeahead label="Add criterion" placeholder="Search genes, biomarkers, IHC, specimens… e.g. KRAS, TMB, PD-L1"
+          search={(q) => searchAll(transport, q).then((r) => forScope(r, d.scope))} onPick={add} />
+        {showSameReport && (
+          <div className="same-report">
+            <label>
+              <input type="checkbox" checked={d.scope === "report"} disabled={sameReportBlocked}
+                aria-describedby={sameReportBlocked ? `${sid}-why` : undefined}
+                onChange={(e) => onOp({op: "set_scope", scope: e.target.checked ? "report" : "patient"})} /> Match all criteria on the same report
+            </label>
+            {sameReportBlocked && <p id={`${sid}-why`} className="hint">A sequence, testing by both vendors or serial reports spans several reports, so it cannot be matched on one report.</p>}
+          </div>
+        )}
       </section>
     </div>
   );
