@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { Answer, DATA_FOOTNOTE, PIVOT_SUGGESTIONS, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
+import { Answer, Count, DATA_FOOTNOTE, PIVOT_SUGGESTIONS, SUPPRESSED, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
 import { EMPTY, pivotAxes } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, PivotResult } from "./types.ts";
 
@@ -28,6 +28,10 @@ const render = (r: CountResult | null, tab: Tab = "Accrual", extra: Partial<Answ
     tab={tab} onTab={() => {}} onOp={() => {}} {...extra} />);
 
 describe("suppressed counts", () => {
+  test("Count takes an optional title", () => {
+    expect(renderToStaticMarkup(<Count n={null} minCell={5} title="x" />)).toContain('title="x"');
+    expect(renderToStaticMarkup(<Count n={null} minCell={5} />)).toContain(`title="${SUPPRESSED}"`);
+  });
   test("null patients renders <5, never 0", () => {
     const html = render(result({patients: null, reports: null, denominator: null}));
     expect(html).toContain('<span class="suppressed"');

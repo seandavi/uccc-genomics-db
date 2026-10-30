@@ -11,8 +11,8 @@ export type Tab = (typeof TABS)[number];
 export const SUPPRESSED = "Fewer than 5 patients, or hidden so that a small count cannot be worked out by subtraction";
 
 /** A count as the API returned it: null is "<5", never 0 or blank. */
-export function Count({n, minCell}: {n: number | null | undefined; minCell: number}) {
-  if (n == null) return <span className="suppressed" title={SUPPRESSED}>{`<${minCell}`}</span>;
+export function Count({n, minCell, title = SUPPRESSED}: {n: number | null | undefined; minCell: number; title?: string}) {
+  if (n == null) return <span className="suppressed" title={title}>{`<${minCell}`}</span>;
   return <>{fmtCount(n)}</>;
 }
 
