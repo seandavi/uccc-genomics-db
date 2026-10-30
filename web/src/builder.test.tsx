@@ -51,6 +51,8 @@ describe("criterion cards", () => {
     expect(two).not.toMatch(/checked=""[^>]*\/> Match all criteria on the same report/);
     expect(two.indexOf("Match all criteria on the same report")).toBeGreaterThan(two.lastIndexOf("</article>"));
     expect(render({...EMPTY, scope: "report"})).toMatch(/checked=""[^>]*\/> Match all criteria on the same report/);
+    // one negated criterion counts differently at report scope, so the switch shows
+    expect(render({...EMPTY, criteria: [{...alt, mode: "exclude"} as Criterion]})).toContain("Match all criteria on the same report");
   });
   test("a sequence card shows both member lists, and no Edit", () => {
     const html = render({...EMPTY, criteria: [sequence]});

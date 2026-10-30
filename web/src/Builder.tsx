@@ -446,7 +446,8 @@ export function Builder({definition: d, transport, options, onOp}: {
     if (criterion) onOp({op: "add_criterion", criterion});
   };
   const sid = useId();
-  const showSameReport = d.criteria.length >= 2 || d.scope === "report";
+  // Scope changes the count with two criteria or any negated one (definition._scope_swap)
+  const showSameReport = d.scope === "report" || d.criteria.length >= 2 || d.criteria.some((c) => c.mode !== "include");
   const sameReportBlocked = d.scope !== "report" && d.criteria.some(spansReports);
   return (
     <div className="builder">

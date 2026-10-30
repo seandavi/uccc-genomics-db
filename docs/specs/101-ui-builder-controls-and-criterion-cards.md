@@ -23,7 +23,7 @@ changes the left (builder) column of Discover, in `web/` only.
    - Remove becomes a `.btn-icon` ✕ with `aria-label="Remove {label}"`.
 6. The chip ✕ buttons are at least 24×24px.
 7. The same-report toggle moves below the cards and reads "Match all criteria on the same report".
-   It shows only when there are two or more criteria or when it is already on. When it is
+   It shows only when there are two or more criteria, any exclude or tested-negative criterion (scope changes its count), or when it is already on. When it is
    disabled, the reason shows as visible text.
 
 ## Non-goals
@@ -64,7 +64,7 @@ on the same report" switch and "Then…". The PR replaces this text:
 with:
 
 > "Match all criteria on the same report" switch for the definition (not a lock per card; since
-> #101 it sits below the cards and shows once there are two criteria), `data` entries in the
+> #101 it sits below the cards and shows once there are two criteria or any exclude or tested-negative criterion), `data` entries in the
 > typeahead, a vendor select, "+ Later report" (first called "Then…") and the sequence card,
 
 The §3.3 "Left: builder" paragraph describes the target design (a per-card "same report" lock and

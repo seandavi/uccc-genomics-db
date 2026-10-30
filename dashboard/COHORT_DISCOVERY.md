@@ -299,7 +299,7 @@ there is no assistant column: it was removed until chat ships (owner decision 20
 
 **Phase 2 (#38).** Discover gains the include / exclude / tested-negative select on each card, one
 "Match all criteria on the same report" switch for the definition (not a lock per card; since
-#101 it sits below the cards and shows once there are two criteria), `data` entries in the
+#101 it sits below the cards and shows once there are two criteria or any exclude or tested-negative criterion), `data` entries in the
 typeahead, a vendor select, "+ Later report" (first called "Then…") and the sequence card, **Compare** and the
 **Feasibility statement**. Compare picks 2-4 versions from the local history (Discover does not call
 `/api/saved*`), not saved cohorts. Loosen suggestions are offered only for a definition with no
