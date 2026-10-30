@@ -54,6 +54,9 @@ class FakeIssuer:
     # the three endpoints, called in place of urllib.request.urlopen ------------------------------
     def urlopen(self, req, timeout=None, context=None):
         url = req.full_url
+        # Cloudflare in front of the real provider 403s Python's default agent; so does this fake
+        if req.get_header("User-agent") != authen.USER_AGENT:
+            raise urllib.error.HTTPError(url, 403, "Forbidden (default User-Agent)", {}, None)
         if url == ISS + ".well-known/openid-configuration":
             self.discovery_fetches += 1   # counted before the failure, so failed attempts count
         elif url == ISS + "jwks/":
