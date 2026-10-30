@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EMPTY } from "./cohort.ts";
-import { TransportError, describeError, errorMessage, fetchTransport, type FetchLike } from "./transport.ts";
+import { TransportError, describeError, errorMessage, fetchAccount, fetchTransport, type FetchLike } from "./transport.ts";
 
 interface Call { url: string; init: RequestInit }
 
@@ -72,6 +72,64 @@ describe("errors", () => {
   test("an unrecognised body", () => {
     expect(errorMessage(500, null)).toBe("request failed (500)");
     expect(errorMessage(500, {detail: {x: 1}})).toBe("request failed (500)");
+  });
+});
+
+describe("sign-in", () => {
+  const signIns = (status: number, body: unknown) => {
+    const seen: string[] = [];
+    const transport = fetchTransport(async () => new Response(JSON.stringify(body), {status}), (l) => seen.push(l));
+    return {seen, transport};
+  };
+  test("a 401 with a login path sends the user to sign in, and still throws", async () => {
+    const {seen, transport} = signIns(401, {detail: "not signed in", login: "/auth/login"});
+    const e = await transport.count(EMPTY).catch((x) => x);
+    expect(seen).toEqual(["/auth/login"]);
+    expect(e).toBeInstanceOf(TransportError);
+    expect(e.status).toBe(401);
+  });
+  test("a 401 without one, or with an off-site one, does not", async () => {
+    for (const body of [{detail: "bad credentials"}, {detail: "x", login: "https://evil.example/"}, {detail: "x", login: 1}]) {
+      const {seen, transport} = signIns(401, body);
+      await transport.count(EMPTY).catch(() => {});
+      expect(seen).toEqual([]);
+    }
+  });
+  test("other errors do not", async () => {
+    const {seen, transport} = signIns(400, {detail: "bad", login: "/auth/login"});
+    await transport.count(EMPTY).catch(() => {});
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("account", () => {
+  function account(status: number, body: unknown) {
+    const calls: Call[] = [];
+    const nav: string[] = [];
+    const signIns: string[] = [];
+    const impl: FetchLike = async (url, init = {}) => {
+      calls.push({url, init});
+      return new Response(JSON.stringify(body), {status});
+    };
+    return {calls, nav, signIns, account: fetchAccount(impl, (l) => signIns.push(l), (u) => nav.push(u))};
+  }
+  test("me is GET /api/me", async () => {
+    const {calls, account: a} = account(200, {sub: "s", email: "a@example.edu", sign_out: true});
+    expect(await a.me()).toEqual({sub: "s", email: "a@example.edu", sign_out: true});
+    expect(calls[0].url).toBe("/api/me");
+    expect(calls[0].init.method).toBeUndefined();
+  });
+  test("me on a 401 with a login path signs in", async () => {
+    const {signIns, account: a} = account(401, {detail: "not signed in", login: "/auth/login"});
+    await a.me().catch(() => {});
+    expect(signIns).toEqual(["/auth/login"]);
+  });
+  test("signOut POSTs /auth/logout then navigates to the returned url", async () => {
+    const {calls, nav, account: a} = account(200, {url: "https://id.example.test/end-session/"});
+    await a.signOut();
+    expect(calls[0].url).toBe("/auth/logout");
+    expect(calls[0].init.method).toBe("POST");
+    expect(nav).toEqual(["https://id.example.test/end-session/"]);
   });
 });
 
