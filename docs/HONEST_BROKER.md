@@ -83,6 +83,8 @@ The draft language below is ready to adapt. It should be reviewed by the privacy
 
 > The clinical genomics portal contains de-identified, date-shifted data belonging to \[health system\] and made available through the University of Colorado Cancer Center. Access is limited to approved cancer center members for research planning, feasibility, and cohort discovery. By using the portal, I agree not to attempt to identify any individual, link portal data with other sources to re-identify individuals, or share screenshots or exports beyond my study team. Identifiable data is available only through an approved honest-broker request tied to an active IRB authorization. Queries are logged.
 
+As built (#131): the text is `TERMS_TEXT` in `mcp/src/uccc_genomics_mcp/terms.py`, with `[health system]` = UCHealth (pending privacy-office review), version `TERMS_VERSION`; acceptance is `terms_acceptance(sub, terms_version, accepted_at)`.
+
 ### Access policy statement
 
 > Identifiable information derived from the clinical genomics database, including medical record numbers, true dates, and vendor report identifiers, is released only by the designated honest broker. Each release must be supported by an active IRB approval, a HIPAA pathway that covers the intended use, and protocol language that justifies each identifier requested. Releases are delivered to access-restricted storage, are logged, and must be destroyed or transferred to an approved study system at the end of the stated retention period.

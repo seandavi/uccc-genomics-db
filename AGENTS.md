@@ -48,6 +48,7 @@ mcp/src/uccc_genomics_mcp/
   authen.py     who is calling, `user(request) -> User(sub, email, broker)`: access|password|none|authentik backends
                 (authentik: campus sign-in, owns the /auth/* routes)
   saved.py      saved cohorts in Postgres (SQLAlchemy async): revisions, snapshots; migrations/ is Alembic (mcp/alembic.ini)
+  terms.py      portal terms gate (Tier 1): text, version, acceptance in Postgres
   broker.py     honest-broker records in Postgres (IRB registry, requests, reviews, releases): read-only here
   cohort/       cohort definition + operations + cohort_id, compile to SQL over mart.*, suppression (the seam REST/MCP/chat sit on)
 dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
@@ -96,7 +97,9 @@ systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
   `/api/health`, `GET /api/public/summary` (fixed coarse totals: floored at 5, rounded to 10, no parameters),
   the landing page `/` and its `/assets/*`, plus the sign-in endpoints `/auth/login`,
   `/auth/callback` and `/auth/logout` under `--auth authentik` (campus sign-in through Authentik, authorized on the
-  `groups` claim only, never on email). In production Traefik does not route `/mcp` and the container mounts only `genomics.duckdb` and
+  `groups` claim only, never on email). Every other
+  route also refuses a signed-in user who hasn't accepted the current portal terms (`terms.py`);
+  only `POST /api/terms/accept` is exempt. In production Traefik does not route `/mcp` and the container mounts only `genomics.duckdb` and
   `.db_key`, read-only; keep both. `--auth none` is for local dev only; `--auth password` (one local account,
   `authen.py`) is the development stand-in.
 - **Encrypted files:** plain `duckdb genomics.duckdb` fails by design. Use `uv run genomics shell`

@@ -319,6 +319,19 @@ max-age=3600`.
 `--static` serves a built front end: the landing page at `/` and Discover (below) at `/discover`.
 Production runs it in a container ([Production (container)](#production-container)).
 
+**Portal terms (#131).** After sign-in, a user who has not accepted the current portal terms
+(docs/HONEST_BROKER.md decision 3) sees the terms as a full page with Accept and Sign out, served in
+place at whatever gated address the browser opened (so a Discover `#d=` link survives). Until they
+accept, `/api/*` and `/mcp` answer 403 `{"detail": "You have not accepted the current portal terms. ..."}`.
+Only `POST /api/terms/accept` (JSON `{"version": ...}`; 409 if the version is stale), sign-out and the
+open routes above are reachable. The text and version are code constants in
+`mcp/src/uccc_genomics_mcp/terms.py`: to change the terms, edit `TERMS_TEXT`, bump `TERMS_VERSION`
+and deploy, and everyone is asked again. Acceptance is the table `terms_acceptance(sub, terms_version,
+accepted_at)` (migration `0003`; staff `sub`s only, old versions' rows stay). The gate is off only for
+`--auth none|password` without `DATABASE_URL` (development); `--auth access|authentik` refuse to start
+without it, and without a database they would answer 503. An MCP client's user accepts once in a
+browser.
+
 **Campus sign-in (Authentik)** (#95). `--auth authentik` signs members of one Authentik group in
 through the central Authentik run from seandavi/monode (`infrastructure/compose/authentik/README.md`
 § Contract for apps; the application, provider and group are seandavi/monode#130: slug
@@ -469,7 +482,9 @@ cost.
       | gcloud secrets create uccc-genomics-session-secret --data-file=- --project=<gsm-project>
 
 **Migrations** are unchanged: `uv run alembic -c mcp/alembic.ini upgrade head` from the host
-checkout when a release adds one (the app never migrates on start).
+checkout when a release adds one (the app never migrates on start). The release with `0003`
+(`terms_acceptance`, #131) needs it **before** the new image starts: without the table every
+signed-in request is a 500.
 
 **Build, validate, up.** Agents never run `up`, `restart` or `down` against production.
 
