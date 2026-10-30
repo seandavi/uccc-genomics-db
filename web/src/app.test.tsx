@@ -40,23 +40,29 @@ describe("FeasibilityPanel", () => {
 });
 
 describe("focusTrigger", () => {
-  const fake = (offsetParent: object | null) => {
+  const fake = (offsetParent: object | null, disabled = false) => {
     let focused = 0;
-    return {el: {offsetParent, focus: () => { focused++; }} as unknown as HTMLElement, focused: () => focused};
+    return {el: {offsetParent, disabled, focus: () => { focused++; }} as unknown as HTMLElement, focused: () => focused};
   };
-  test("a visible trigger takes focus, not ⋯", () => {
-    const [trigger, more] = [fake({}), fake({})];
-    focusTrigger(trigger.el, more.el);
-    expect([trigger.focused(), more.focused()]).toEqual([1, 0]);
+  test("a visible enabled trigger takes focus, not ⋯", () => {
+    const [trigger, more, fallback] = [fake({}), fake({}), fake({})];
+    focusTrigger(trigger.el, more.el, fallback.el);
+    expect([trigger.focused(), more.focused(), fallback.focused()]).toEqual([1, 0, 0]);
   });
-  test("a hidden or missing trigger sends focus to ⋯", () => {
-    const [hidden, more] = [fake(null), fake({})];
-    focusTrigger(hidden.el, more.el);
-    focusTrigger(null, more.el);
-    expect([hidden.focused(), more.focused()]).toEqual([0, 2]);
+  test("a hidden, disabled or missing trigger sends focus to a visible ⋯", () => {
+    const [hidden, disabled, more, fallback] = [fake(null), fake({}, true), fake({}), fake({})];
+    focusTrigger(hidden.el, more.el, fallback.el);
+    focusTrigger(disabled.el, more.el, fallback.el);
+    focusTrigger(null, more.el, fallback.el);
+    expect([hidden.focused(), disabled.focused(), more.focused(), fallback.focused()]).toEqual([0, 0, 3, 0]);
+  });
+  test("with ⋯ hidden too, focus goes to the fallback", () => {
+    const [trigger, more, fallback] = [fake({}, true), fake(null), fake(null)];
+    focusTrigger(trigger.el, more.el, fallback.el);
+    expect([trigger.focused(), more.focused(), fallback.focused()]).toEqual([0, 0, 1]);
   });
   test("nothing to focus is a no-op", () => {
-    expect(() => focusTrigger(null, null)).not.toThrow();
+    expect(() => focusTrigger(null, null, null)).not.toThrow();
   });
 });
 
@@ -66,7 +72,22 @@ describe("panel source", () => {
     expect(src).toContain('className="panel-anchor"');
     expect(src.match(/onClose=\{closePanel\}/g)?.length).toBe(3);
     expect(src).not.toContain("onClose={() => setPanel(null)}");
-    expect(src).toContain('e.key === "Escape"');
+    const start = src.indexOf("export function FeasibilityPanel");
+    const panelSrc = src.slice(start, src.indexOf("export function", start + 1));
+    expect(panelSrc).toContain('if (e.key === "Escape") onClose();');
+  });
+  test("closePanel restores focus after the commit, with the answer heading as the fallback", () => {
+    const close = src.slice(src.indexOf("const closePanel"), src.indexOf("const commitName"));
+    expect(close.indexOf("setPanel(null)")).toBeGreaterThan(-1);
+    expect(close.indexOf("setPanel(null)")).toBeLessThan(close.indexOf("requestAnimationFrame"));
+    expect(close).toMatch(/requestAnimationFrame\(\(\) => focusTrigger\(trigger, moreRef\.current, document\.getElementById\("answer-h"\)\)\)/);
+  });
+  test("Escape and Tab-out are on the header, not on the actions menu", () => {
+    const header = src.slice(src.indexOf('<header className="top"'), src.indexOf("<h1>Discover</h1>"));
+    expect(header).toContain('e.key === "Escape" && menuOpen');
+    expect(header).toContain("onBlur");
+    const actions = src.slice(src.indexOf('<div id="header-actions"'), src.indexOf("<button", src.indexOf('<div id="header-actions"')));
+    expect(actions).not.toContain("onKeyDown");
   });
 });
 
@@ -88,10 +109,11 @@ describe("header", () => {
     expect(h).toMatch(/aria-label="Next edit"[^>]*disabled=""/);
     expect(h).toMatch(/<button[^>]*aria-describedby="compare-why"[^>]*>Compare</);
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Compare</);
-    expect(h).toContain("Make a change to compare versions");
+    expect(h).toContain('<span id="compare-why" class="sr-only">Make a change to compare versions</span>');
+    expect(h).toMatch(/<button[^>]*title="Make a change to compare versions"[^>]*>Compare</);
+    expect(h).not.toContain('class="hint"');
     expect(h).toContain('aria-label="More actions"');
-    expect(h).toContain('aria-expanded="false"');
-    expect(h).toContain('aria-controls="header-actions"');
+    expect(h).toMatch(/aria-label="More actions"[^>]*aria-expanded="false"[^>]*aria-controls="header-actions"/);
     expect(h.indexOf('aria-controls="header-actions"')).toBeLessThan(h.indexOf('id="header-actions"'));
     expect(html).not.toContain('aria-label="Assistant"');
     expect(html).not.toContain("Coming later");
@@ -107,6 +129,7 @@ describe("header", () => {
       expect(h).toMatch(/aria-label="Next edit"[^>]*disabled=""/);
       expect(h).not.toMatch(/<button[^>]*disabled=""[^>]*>Compare</);
       expect(h).not.toContain("Make a change to compare versions");
+      expect(h).not.toContain("compare-why");
       expect(h).toContain('value="b"');
     } finally {
       delete (globalThis as unknown as {localStorage?: unknown}).localStorage;
@@ -114,7 +137,7 @@ describe("header", () => {
   });
   test("the header source never mentions cohort_id", () => {
     const src = readFileSync(join(import.meta.dir, "App.tsx"), "utf8");
-    const h = src.slice(src.indexOf('<header className="top">'), src.indexOf("</header>"));
+    const h = src.slice(src.indexOf('<header className="top"'), src.indexOf("</header>"));
     expect(h.length).toBeGreaterThan(500);
     expect(h).not.toContain("cohort_id");
   });
@@ -151,13 +174,26 @@ describe("SummaryBar", () => {
     expect(html).not.toContain(">0<");
     expect(html).not.toContain('class="tier');
     expect(html).toContain('href="#answer-h"');
-    expect(html).toContain(">View</a>");
+    expect(html).toContain(">View answer</a>");
   });
   test("a shown count has the tier pill", () => {
     const html = bar(400);
     expect(html).toContain("400");
     expect(html).not.toContain("hatched");
     expect(html).toContain('class="tier tier-high"');
+  });
+  test("dimmed and labelled while counting, or when the count is for an earlier version", () => {
+    const at = (busy: boolean, stale: boolean) =>
+      renderToStaticMarkup(<SummaryBar answer={{d: EMPTY, r: result({patients: 400}), p: null}} options={options} busy={busy} stale={stale} />);
+    expect(at(true, false)).toContain("Counting…");
+    expect(at(true, false)).toContain('class="dim"');
+    expect(at(false, true)).toContain("Out of date");
+    expect(at(false, true)).not.toContain("Counting…");
+    expect(at(false, true)).toContain('class="dim"');
+    for (const gone of ["dim", "Counting…", "Out of date"]) expect(at(false, false)).not.toContain(gone);
+  });
+  test("App passes busy and stale", () => {
+    expect(readFileSync(join(import.meta.dir, "App.tsx"), "utf8")).toContain("<SummaryBar answer={answer} options={options} busy={busy} stale={stale} />");
   });
   test("no answer, no bar", () => expect(renderToStaticMarkup(<SummaryBar answer={null} options={options} />)).toBe(""));
 });
