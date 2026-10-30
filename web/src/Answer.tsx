@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
-  BREAKDOWN_DIMS, accrualPerYear, criterionBody, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor,
+  BREAKDOWN_DIMS, accrualPerYear, barPct, criterionBody, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor, yearSlots,
 } from "./cohort.ts";
 import type { BreakdownDim, CountResult, Definition, Operation, Options, PivotResult } from "./types.ts";
 
@@ -67,7 +67,7 @@ function DataFootnote({onTab}: {onTab: (t: Tab) => void}) {
 }
 
 function Funnel({r, d}: {r: CountResult; d: Definition}) {
-  const top = r.funnel[0]?.patients ?? null;
+  const max = Math.max(1, ...r.funnel.map((s) => s.patients ?? 0));
   return (
     <section aria-labelledby="funnel-h">
       <h3 id="funnel-h">How each criterion narrows the cohort</h3>
@@ -77,11 +77,7 @@ function Funnel({r, d}: {r: CountResult; d: Definition}) {
             <span className="label">{stepLabel(d, i, s.criterion)}</span>
             <span className="num"><Count n={s.patients} minCell={r.min_cell} /></span>
             <span className="track" aria-hidden="true">
-              {s.patients == null
-                ? <span className="bar hatched" style={{width: "8%"}} />
-                : !top
-                  ? <span className="bar" style={{width: "0%"}} />
-                  : <span className="bar" style={{width: `${Math.max(1, (s.patients / top) * 100)}%`}} />}
+              <span className={s.patients == null ? "bar hatched" : "bar"} style={{width: `${barPct(s.patients, max, r.min_cell)}%`}} />
             </span>
           </li>
         ))}
@@ -116,34 +112,52 @@ function Loosen({r, d, stale, onOp}: {r: CountResult; d: Definition; stale: bool
   );
 }
 
+const ACCRUAL = "Patients by year of first qualifying report";
+
 function AccrualTab({r}: {r: CountResult}) {
+  const slots = yearSlots(r.by_year);
+  if (slots.length === 0) return <p>No years to show.</p>;
   const max = Math.max(1, ...r.by_year.map((y) => y.patients ?? 0));
+  const allHidden = r.by_year.every((y) => y.patients == null);
+  const short = slots.length > 12;
+  const partial = r.by_year.some((y) => !y.complete);
+  const gap = slots.some((s) => s.row == null);
+  const hidden = r.by_year.some((y) => y.patients == null);
   return (
     <div>
       <figure className="accrual">
-        <div className="bars" tabIndex={0} role="group" aria-label="Patients by year of first qualifying report">
-          {r.by_year.map((y) => (
-            <div key={y.year} className={`col${y.complete ? "" : " partial"}`}>
-              <div className="barbox" aria-hidden="true">
-                {y.patients == null
-                  ? <div className="vbar hatched" style={{height: "12%"}} />
-                  : <div className="vbar" style={{height: `${Math.max(2, (y.patients / max) * 100)}%`}} />}
-              </div>
-              <div className="barlabel" aria-hidden="true">
-                <span><Count n={y.patients} minCell={r.min_cell} /></span>
-                <span>{y.year}</span>
-                {!y.complete && <span>partial year</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-        <figcaption>Patients by year of first qualifying report</figcaption>
+        {allHidden
+          ? <p className="strip"><span className="bar hatched" aria-hidden="true" /><span>{`Every year under ${r.min_cell} or hidden`}</span></p>
+          : <div className="bars" role="group" aria-label={ACCRUAL}>
+              {slots.map(({year, row}) => (
+                <div key={year} className={row == null ? "col gap" : row.complete ? "col" : "col partial"}>
+                  <div className="barbox" aria-hidden="true">
+                    {row && <div className={row.patients == null ? "vbar hatched" : "vbar"}
+                      style={{height: `${barPct(row.patients, max, r.min_cell)}%`}} />}
+                  </div>
+                  <div className="barlabel" aria-hidden="true">
+                    <span>{row ? <Count n={row.patients} minCell={r.min_cell} /> : "–"}</span>
+                    <span>{`${short ? `’${String(year).slice(-2)}` : year}${row && !row.complete ? "*" : ""}`}</span>
+                  </div>
+                </div>
+              ))}
+            </div>}
+        <figcaption>{ACCRUAL}</figcaption>
       </figure>
+      {(partial || gap || hidden) && <p className="legend">
+        {partial && !allHidden && <span>* partial year</span>}
+        {gap && !allHidden && <span>–: no patients that year</span>}
+        {hidden && <span><span className="swatch hatched" aria-hidden="true" /> {`<${r.min_cell}`}: {SUPPRESSED.toLowerCase()}.</span>}
+      </p>}
       <table className="sr-only">
-        <caption>Patients by year of first qualifying report</caption>
+        <caption>{ACCRUAL}</caption>
         <thead><tr><th scope="col">Year</th><th scope="col">Patients</th><th scope="col">Complete</th></tr></thead>
-        <tbody>{r.by_year.map((y) => (
-          <tr key={y.year}><th scope="row">{y.year}</th><td><Count n={y.patients} minCell={r.min_cell} /></td><td>{y.complete ? "yes" : "partial year"}</td></tr>
+        <tbody>{slots.map(({year, row}) => (
+          <tr key={year}><th scope="row">{year}</th>
+            {row
+              ? <><td><Count n={row.patients} minCell={r.min_cell} /></td><td>{row.complete ? "yes" : "partial year"}</td></>
+              : <><td>no patients</td><td>unknown</td></>}
+          </tr>
         ))}</tbody>
       </table>
     </div>

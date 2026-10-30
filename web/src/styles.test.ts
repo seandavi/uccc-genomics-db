@@ -113,7 +113,7 @@ test("mobile shell: actions behind the more button, history on its own row, stic
   expect(inMobile(".summary-bar")).toContain("position: sticky");
   expect(inMobile(".summary-bar")).toContain("bottom: 0");
   expect(css.replace(/@media \(max-width: 600px\)\s*\{[\s\S]*?\n\}/, "")).toContain(".summary-bar { display: none; }");
-  expect(css.match(/([^{}]*)\{[^}]*suppressed-stripe\) 35%/)?.[1]).toContain(".summary-count.hatched");
+  expect(css.match(/([^{}]*)\{[^}]*suppressed-stripe\) 15%/)?.[1]).toContain(".summary-count.hatched");
 });
 
 test("builder: dashed adders, mode stripes, 24px chip buttons, no retired rules", () => {
@@ -124,4 +124,32 @@ test("builder: dashed adders, mode stripes, 24px chip buttons, no retired rules"
   expect(rule(".chip button")).toContain("min-width: 24px");
   expect(css).not.toContain(".cid");
   expect(css).not.toContain(".typeahead .field");
+});
+
+test("accrual: equal columns, no scroll, one label row", () => {
+  const bars = rule(".accrual .bars");
+  expect(bars).toContain("grid-auto-columns: minmax(0, 1fr)");
+  expect(bars).not.toContain("overflow");
+  expect(rule(".accrual .col")).toContain("grid-template-rows: minmax(0, 1fr) calc(2 * var(--lh-xs))");
+  expect(rule(".accrual .col")).not.toMatch(/min-width:\s*[\d.]+rem/);
+});
+
+test("<5 text on a hatched cell meets 4.5:1 in both themes", () => {
+  const pct = Number(rule("td.hatched").match(/suppressed-stripe\) (\d+)%/)?.[1]) / 100;
+  for (const [name, theme] of Object.entries(themes)) {
+    const mixed = "#" + [1, 3, 5].map((i) => {
+      const [s, b] = [theme["--suppressed-stripe"], theme["--suppressed-bg"]].map((h) => parseInt(h.slice(i, i + 2), 16));
+      return Math.round(pct * s + (1 - pct) * b).toString(16).padStart(2, "0");
+    }).join("");
+    for (const bg of [mixed, theme["--suppressed-bg"]]) {
+      const ratio = contrast(theme["--muted"], bg);
+      expect([name, bg, ratio >= 4.5]).toEqual([name, bg, true]);
+    }
+  }
+});
+
+test("every font-size outside :root is a --fs-* token", () => {
+  const sizes = [...css.replace(ROOT, "").matchAll(/font-size:\s*([^;}]+)/g)].map((m) => m[1].trim());
+  expect(sizes.length).toBeGreaterThan(5);
+  for (const v of sizes) expect([v, /^var\(--fs-[\w-]+\)$/.test(v)]).toEqual([v, true]);
 });

@@ -1,5 +1,5 @@
 // Pure helpers: labels, formatting, vocabulary entry -> action, versions, share hash, combobox keys.
-import type { BreakdownDim, CountResult, Criterion, Definition, Leaf, Mode, Option, Population, SeqMember } from "./types.ts";
+import type { BreakdownDim, CountResult, Criterion, Definition, Leaf, Mode, Option, Population, SeqMember, YearCount } from "./types.ts";
 
 export interface Version { n: number; definition: Definition }
 export interface History { versions: Version[]; current: number }   // current indexes versions
@@ -49,6 +49,22 @@ export function fmtPerYear(perYear: number): string {
 /** True when the definition has no population value, no year window and no criteria. */
 export function isEmptyDefinition(d: Definition): boolean {
   return d.criteria.length === 0 && d.population.years == null && POP_DIMS.every((k) => d.population[k].length === 0);
+}
+
+/** Bar length in percent of `max` (the largest shown count, at least 1). A suppressed count is drawn
+ *  as if it were `minCell`, so it is never longer than a shown bar of `minCell` or more; 0 is no bar. */
+export function barPct(n: number | null, max: number, minCell: number): number {
+  if (n === 0) return 0;
+  return Math.min(100, Math.max(2, ((n ?? minCell) / max) * 100));
+}
+
+/** Every year from the first listed to the last: `row` is null for a year the API did not list (no patients). */
+export function yearSlots(byYear: readonly YearCount[]): {year: number; row: YearCount | null}[] {
+  if (byYear.length === 0) return [];
+  const at = new Map(byYear.map((y) => [y.year, y]));
+  const years = byYear.map((y) => y.year);
+  const first = Math.min(...years);
+  return Array.from({length: Math.max(...years) - first + 1}, (_, i) => ({year: first + i, row: at.get(first + i) ?? null}));
 }
 
 export const TIERS = [
