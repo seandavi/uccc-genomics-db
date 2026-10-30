@@ -374,6 +374,7 @@ export function feasibility(d: Definition, r: CountResult, years: readonly [numb
   if (perYear != null) text += ` (about ${perYear.toFixed(1)} a year)`;
   text += ".";
   if (d.scope === "report") text += " Every criterion was met on the same report.";
+  if (years) text += " Collection dates are shifted for de-identification, so the last years are partial.";
   text += ` Counts are distinct de-identified patients from Caris and FMI reports; counts under ${r.min_cell}, and counts that would let one be worked out by subtraction, are not shown. ${r.notes.join(" ")}`;
   return text;
 }

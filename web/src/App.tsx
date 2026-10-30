@@ -14,17 +14,26 @@ function loadHistory(): History {
   return {versions: [{n: 1, definition: EMPTY}], current: 0};
 }
 
+/** Focus back on the button that opened a panel, or on ⋯ when that button sits in the closed mobile menu (hidden). */
+export function focusTrigger(trigger: HTMLElement | null, more: HTMLElement | null): void {
+  (trigger && trigger.offsetParent !== null ? trigger : more)?.focus();
+}
+
 export function FeasibilityPanel({statement, copied, onCopy, onClose, textareaRef}: {
   statement: string; copied: boolean; onCopy: () => void; onClose: () => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { headingRef.current?.focus(); }, []);   // a floating layer takes focus when it opens
   return (
-    <section aria-label="Feasibility statement" className="panel">
+    <section aria-labelledby="feasibility-h" className="panel floating"
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
+      <h2 id="feasibility-h" tabIndex={-1} ref={headingRef}>Feasibility statement for grant text</h2>
       {statement === ""
         ? <p role="status">Recounting… the statement updates when the count is current.</p>
-        : <textarea readOnly aria-label="Feasibility statement" rows={6} value={statement} onFocus={(e) => e.currentTarget.select()} ref={textareaRef} />}
+        : <textarea readOnly aria-label="Feasibility statement" rows={8} value={statement} onFocus={(e) => e.currentTarget.select()} ref={textareaRef} />}
       <div className="row">
-        <button type="button" disabled={statement === ""} onClick={onCopy}>Copy</button>
+        <button type="button" className="btn-primary" disabled={statement === ""} onClick={onCopy}>Copy</button>
         {copied && <span role="status">Copied</span>}
         <button type="button" onClick={onClose}>Close</button>
       </div>
@@ -128,6 +137,9 @@ export function App({transport, account}: {transport: Transport; account?: Accou
   const [panel, setPanel] = useState<"compare" | "feasibility" | "share" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
+  const shareRef = useRef<HTMLButtonElement>(null);
+  const compareRef = useRef<HTMLButtonElement>(null);
+  const feasibilityRef = useRef<HTMLButtonElement>(null);
   const [statementCopied, setStatementCopied] = useState(false);
   const statementRef = useRef<HTMLTextAreaElement>(null);
   const seq = useRef(0);
@@ -229,6 +241,10 @@ export function App({transport, account}: {transport: Transport; account?: Accou
     if (tab === "Pivot") refresh();
   }, [tab, refresh]);
 
+  const closePanel = () => {
+    if (panel) focusTrigger({share: shareRef, compare: compareRef, feasibility: feasibilityRef}[panel].current, moreRef.current);
+    setPanel(null);
+  };
   const commitName = () => { if (name !== current.name) edit({op: "rename", name}, "builder"); };
   const go = (i: number) => { setHist({...histRef.current, current: i}); refresh(); };
   const share = async () => {
@@ -277,25 +293,27 @@ export function App({transport, account}: {transport: Transport; account?: Accou
           aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
         <div id="header-actions" className={menuOpen ? "actions open" : "actions"}
           onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}>
-          <button type="button" className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
-          <button type="button" className="btn-secondary" aria-expanded={panel === "compare"} disabled={single}
+          <button type="button" ref={shareRef} className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
+          <button type="button" ref={compareRef} className="btn-secondary" aria-expanded={panel === "compare"} disabled={single}
             aria-describedby={single ? "compare-why" : undefined} onClick={() => togglePanel("compare")}>Compare</button>
           {single && <span id="compare-why" className="hint">Make a change to compare versions</span>}
-          <button type="button" className="btn-primary" aria-expanded={panel === "feasibility"}
+          <button type="button" ref={feasibilityRef} className="btn-primary" aria-expanded={panel === "feasibility"}
             disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
           {me && account && <Who me={me} onSignOut={() => { account.signOut().catch((e) => setEditError({at: "builder", message: `Sign-out failed: ${describeError(e)}`})); }} />}
         </div>
       </header>
       {panel === "share" && (
         <SharePanel link={window.location.href} copied={copied} cohortId={answer && !stale ? answer.r.cohort_id : null}
-          onClose={() => setPanel(null)} />
+          onClose={closePanel} />
       )}
       {panel === "compare" && (
-        <Compare versions={hist.versions} transport={transport} years={options?.years ?? null} onClose={() => setPanel(null)} />
+        <Compare versions={hist.versions} transport={transport} years={options?.years ?? null} onClose={closePanel} />
       )}
       {panel === "feasibility" && (
-        <FeasibilityPanel statement={statement} copied={statementCopied} onCopy={copyStatement}
-          onClose={() => setPanel(null)} textareaRef={statementRef} />
+        <div className="panel-anchor">
+          <FeasibilityPanel statement={statement} copied={statementCopied} onCopy={copyStatement}
+            onClose={closePanel} textareaRef={statementRef} />
+        </div>
       )}
       <div className="cols">
         <div className="col-builder">

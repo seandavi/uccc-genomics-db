@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CompareTable, type CompareColumn } from "./Compare.tsx";
+import { Compare, CompareTable, type CompareColumn } from "./Compare.tsx";
+import { EMPTY } from "./cohort.ts";
+import type { Transport } from "./transport.ts";
 import type { CountResult } from "./types.ts";
 
 const result = (over: Partial<CountResult>): CountResult => ({
@@ -59,5 +61,21 @@ describe("CompareTable", () => {
   test("a failed column says why", () => {
     const out = renderToStaticMarkup(<CompareTable minCell={5} columns={[...columns, {label: "v3", definition: "All patients", result: null, error: "request failed (500)"}]} />);
     expect(out).toContain("request failed (500)");
+  });
+});
+
+describe("Compare", () => {
+  const panel = (n: number) => renderToStaticMarkup(
+    <Compare versions={Array.from({length: n}, (_, i) => ({n: i + 1, definition: EMPTY}))} transport={{} as Transport} years={null} onClose={() => {}} />);
+  test("one version: explanation and Close, no checkbox, no disabled button", () => {
+    const html = panel(1);
+    expect(html).toContain("Compare needs two or more edits");
+    expect(html).toContain(">Close</button>");
+    for (const gone of ['type="checkbox"', "Compare selected", 'disabled=""']) expect(html).not.toContain(gone);
+  });
+  test("two versions: Compare selected, and Count is gone", () => {
+    const html = panel(2);
+    expect(html).toContain(">Compare selected</button>");
+    expect(html).not.toContain(">Count<");
   });
 });

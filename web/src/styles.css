@@ -166,9 +166,10 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .legend > span:not(.swatch) { display: inline-flex; align-items: center; gap: .4rem; margin-right: var(--s3); }
 .swatch { display: inline-block; width: 1.2rem; height: .8rem; border-radius: 2px; }
 
-.tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin: 1rem 0 .75rem; }
-.tabs button { background: var(--bg); border-bottom: 0; border-radius: 6px 6px 0 0; }
-.tabs button[aria-selected="true"] { background: var(--surface); font-weight: 600; border-color: var(--accent); }
+.tabs { display: flex; gap: var(--s4); border-bottom: 1px solid var(--line); margin: 1rem 0 .75rem; overflow-x: auto; scrollbar-width: thin; }
+.tabs button { flex: none; white-space: nowrap; background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding-inline: var(--s1); }
+.tabs button:hover:not(:disabled) { background: transparent; color: var(--fg); }
+.tabs button[aria-selected="true"] { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
 
 .accrual .bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s1); height: 12rem; }
 .accrual .col { display: grid; grid-template-rows: minmax(0, 1fr) calc(2 * var(--lh-xs)); min-width: 0; }
@@ -201,7 +202,18 @@ td.hatched, .summary-count.hatched {
   background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--suppressed-stripe) 15%, transparent) 0 2px, transparent 2px 6px);
 }
 .panel { padding: .6rem 1rem; border-bottom: 1px solid var(--line); background: var(--surface); }
-.panel textarea { width: 100%; max-width: 60rem; }
+.panel-anchor { position: relative; }
+.panel.floating {
+  position: absolute; top: 0; right: var(--s4); z-index: 15; width: min(44rem, calc(100% - 2 * var(--s4)));
+  padding: var(--s4); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgb(0 0 0 / .12);
+}
+.panel textarea { width: 100%; max-width: 65ch; resize: vertical; }
+
+.toggles { border: 0; padding: 0; margin: .4rem 0; display: flex; flex-wrap: wrap; gap: var(--s2); }
+.toggles legend { padding: 0; margin-bottom: var(--s1); font-weight: 600; }
+.toggle-chip { border-radius: 999px; }
+.toggle-chip[aria-pressed="true"] { background: var(--surface-2); border-color: var(--accent); font-weight: 600; }
+.pivot-controls select { max-width: 16rem; }
 .sequence { display: grid; gap: .4rem; margin: .3rem 0; }
 .sequence h4 { margin: .2rem 0; }
 

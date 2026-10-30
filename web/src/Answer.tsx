@@ -171,15 +171,20 @@ function BreakdownTab({r, counted, d, onOp}: {r: CountResult; counted: Definitio
     onOp({op: "set_breakdown", breakdown: chosen.includes(dim) ? chosen.filter((x) => x !== dim) : [...chosen, dim]});
   return (
     <div>
-      <fieldset className="checks">
+      <p className="hint">Split this cohort by up to four characteristics. Each table gives patients and their share of everyone in the population with that value.</p>
+      <fieldset className="toggles">
         <legend>Break down by (up to 4)</legend>
-        {BREAKDOWN_DIMS.map(({value, label}) => (
-          <label key={value}>
-            <input type="checkbox" checked={chosen.includes(value)} disabled={!chosen.includes(value) && chosen.length >= 4}
-              onChange={() => toggle(value)} /> {label}
-          </label>
-        ))}
+        {BREAKDOWN_DIMS.map(({value, label}) => {
+          const on = chosen.includes(value);
+          return (
+            <button key={value} type="button" className="toggle-chip" aria-pressed={on}
+              disabled={!on && chosen.length >= 4} onClick={() => toggle(value)}>
+              {on && <span aria-hidden="true">✓ </span>}{label}
+            </button>
+          );
+        })}
       </fieldset>
+      {chosen.length >= 4 && <p className="hint">Four chosen: remove one to add another.</p>}
       {counted.breakdown.map((dim) => (
         <GridTable key={dim} label={BREAKDOWN_DIMS.find((b) => b.value === dim)?.label ?? dim}>
           <thead><tr><th scope="col">Value</th><th scope="col">Patients</th><th scope="col">Of patients in population</th><th scope="col">Share</th></tr></thead>
@@ -206,6 +211,13 @@ export function GridTable({label, children}: {label: string; children: ReactNode
   );
 }
 
+/** Pivot pairs offered before one is chosen: population axes every definition has (see pivotAxes). */
+export const PIVOT_SUGGESTIONS = [
+  {rows: "oncotree", cols: "year", label: "Tumor type × Year"},
+  {rows: "vendor", cols: "year", label: "Vendor × Year"},
+  {rows: "oncotree", cols: "sex", label: "Tumor type × Sex"},
+] as const;
+
 function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: Definition; pivot: PivotResult | null; minCell: number; onOp: (op: Operation) => void}) {
   const axes = pivotAxes(d);
   const label = (v: string) => pivotAxes(counted).find((a) => a.value === v)?.label ?? v;
@@ -220,7 +232,7 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
   const select = (name: string, value: string, set: (v: string) => void) => (
     <label>{name}{" "}
       <select value={value} onChange={(e) => set(e.target.value)}>
-        <option value="">none</option>
+        <option value="">Choose…</option>
         {axes.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
       </select>
     </label>
@@ -228,12 +240,22 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
   const cell = new Map(pivot?.cells.map((c) => [`${c.row}\u0000${c.col}`, c.patients]));
   return (
     <div>
+      <p className="hint">Count patients for every combination of two characteristics, such as tumor type by year.</p>
       <div className="pivot-controls">
         {select("Rows", rows, (v) => choose(v, cols))}
         {select("Columns", cols, (v) => choose(rows, v))}
       </div>
-      {!d.pivot || !pivot
-        ? <p>Choose rows and columns.</p>
+      {!d.pivot
+        ? (
+          <div className="row suggestions">
+            <span className="hint">Choose rows and columns, or try:</span>
+            {PIVOT_SUGGESTIONS.map((s) => (
+              <button key={s.label} type="button" onClick={() => choose(s.rows, s.cols)}>{s.label}</button>
+            ))}
+          </div>
+        )
+        : !pivot
+        ? <p>The table appears once it is counted.</p>
         : (
           <>
           <GridTable label={`${label(pivot.rows)} × ${label(pivot.cols)}`}>
