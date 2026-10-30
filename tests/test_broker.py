@@ -187,7 +187,11 @@ def test_request_detail_is_frozen_to_its_revision(bclient, S):
     assert detail["snapshot_id"] == "synthetic-build-1"
     assert ok(rest.get(str(cohort_id)))["head"]["seq"] == 2   # the head moved; the request did not
     assert detail["irb"]["irb_number"] == "TEST-0001" and detail["irb"]["version"] == 1
-    assert [d["doc_type"] for d in detail["irb"]["documents"]] == ["protocol_excerpt", "approval_letter"]
+    assert not {"documents", "personnel"} & detail["irb"].keys()   # a requester sees the IRB's status only
+    assert "file_ref" not in json.dumps(detail)
+    broker = S(bclient, BROKER, True).request(req)[1]["irb"]
+    assert [d["doc_type"] for d in broker["documents"]] == ["protocol_excerpt", "approval_letter"]
+    assert [p["person_id"] for p in broker["personnel"]] == ["a@example.edu", "b@example.edu"]
     assert [r["decision"] for r in detail["reviews"]] == ["return"]
     assert detail["reviews"][0]["checklist"] == {"irb_active": True, "personnel": False}
     release = detail["releases"][0]

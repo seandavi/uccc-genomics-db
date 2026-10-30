@@ -32,7 +32,7 @@ import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PA
 from uccc_genomics_mcp import authen, broker, cohort, saved
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
-from uccc_genomics_mcp.broker import Irb, IrbList, RequestDetail, Requests, RequestStatus
+from uccc_genomics_mcp.broker import Irb, IrbList, MyRequestDetail, RequestDetail, Requests, RequestStatus
 from uccc_genomics_mcp.saved import (CohortVersion, Deleted, History, SavedCohort, SavedList, Snapshot,
                                      Snapshots)
 from uccc_genomics_mcp.server import get_db
@@ -457,7 +457,7 @@ async def list_my_requests(ctx: Context) -> Requests:
 
 
 @mcp_app.tool()
-async def get_my_request(id: uuid.UUID, ctx: Context) -> RequestDetail:
+async def get_my_request(id: uuid.UUID, ctx: Context) -> MyRequestDetail:
     """One of the logged-in user's requests, with its frozen cohort revision, IRB, reviews and releases."""
     try:
         return await broker.get_my_request(_mcp_user(ctx).sub, id)
@@ -621,7 +621,7 @@ def app(static_dir: str | None = None) -> FastAPI:
         return await broker.list_my_requests(u.sub)
 
     @application.get("/api/requests/{id}")
-    async def get_request(id: uuid.UUID, u: authen.User = Depends(user)) -> RequestDetail:
+    async def get_request(id: uuid.UUID, u: authen.User = Depends(user)) -> MyRequestDetail:
         return await broker.get_my_request(u.sub, id)
 
     @application.get("/api/broker/requests")

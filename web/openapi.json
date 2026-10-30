@@ -1408,6 +1408,176 @@
         "title": "Me",
         "type": "object"
       },
+      "MyRequestDetail": {
+        "properties": {
+          "cohort": {
+            "format": "uuid",
+            "title": "Cohort",
+            "type": "string"
+          },
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierReason"
+            },
+            "title": "Identifiers",
+            "type": "array"
+          },
+          "irb": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IrbAuthorization"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "irb_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Number"
+          },
+          "irb_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Version"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/Recipient"
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/Release"
+            },
+            "title": "Releases",
+            "type": "array"
+          },
+          "requester": {
+            "title": "Requester",
+            "type": "string"
+          },
+          "retention_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention End"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/Review"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "submitted",
+              "returned",
+              "approved",
+              "denied",
+              "fulfilled",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "storage_location": {
+            "title": "Storage Location",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requester",
+          "cohort",
+          "seq",
+          "cohort_id",
+          "definition",
+          "purpose",
+          "fields",
+          "identifiers",
+          "recipients",
+          "storage_location",
+          "status",
+          "created_at",
+          "updated_at",
+          "reviews",
+          "releases"
+        ],
+        "title": "MyRequestDetail",
+        "type": "object"
+      },
       "Option": {
         "properties": {
           "field": {
@@ -3382,7 +3552,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequestDetail"
+                  "$ref": "#/components/schemas/MyRequestDetail"
                 }
               }
             },

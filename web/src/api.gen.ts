@@ -831,6 +831,64 @@ export interface components {
             /** Sub */
             sub: string;
         };
+        /** MyRequestDetail */
+        MyRequestDetail: {
+            /**
+             * Cohort
+             * Format: uuid
+             */
+            cohort: string;
+            /** Cohort Id */
+            cohort_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["Definition"];
+            /** Fields */
+            fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identifiers */
+            identifiers: components["schemas"]["IdentifierReason"][];
+            irb?: components["schemas"]["IrbAuthorization"] | null;
+            /** Irb Number */
+            irb_number?: string | null;
+            /** Irb Version */
+            irb_version?: number | null;
+            /** Purpose */
+            purpose: string;
+            /** Recipients */
+            recipients: components["schemas"]["Recipient"][];
+            /** Releases */
+            releases: components["schemas"]["Release"][];
+            /** Requester */
+            requester: string;
+            /** Retention End */
+            retention_end?: string | null;
+            /** Reviews */
+            reviews: components["schemas"]["Review"][];
+            /** Seq */
+            seq: number;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "submitted" | "returned" | "approved" | "denied" | "fulfilled" | "closed";
+            /** Storage Location */
+            storage_location: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** Option */
         Option: {
             /** Field */
@@ -1705,7 +1763,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RequestDetail"];
+                    "application/json": components["schemas"]["MyRequestDetail"];
                 };
             };
             /** @description Validation Error */

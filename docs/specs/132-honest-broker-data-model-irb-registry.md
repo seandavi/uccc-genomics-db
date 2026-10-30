@@ -24,7 +24,7 @@ MRNs, names or dates of birth.
 - Write endpoints of any kind: creating or editing requests and the intake (#133), recording a review
   (#134), recording a release and its `release_patient` rows (#135), closeout (#136). In this issue
   rows come only from tests (and later from those issues).
-- The requester-facing IRB lookup/autocomplete (#133). Here the IRB registry is readable by brokers only.
+- The requester-facing IRB lookup/autocomplete (#133). Here the IRB registry is readable by brokers only; a requester sees only the status of the IRB version their own request names (`MyRequestDetail.irb`), never its personnel or documents.
 - Any endpoint that returns `release_patient` rows (disclosure-accounting search is #136).
 - Any UI in Discover. `web/` changes only by regenerating `openapi.json`/`api.gen.ts`.
 - Expiry flags and computed `expired` fields (#136). The terms gate (#131).
@@ -100,7 +100,10 @@ path. Saves are rare.
   way to remove one is `delete()`, which cascades from `cohort`. Change `delete()` so that, inside its
   transaction and before the DELETE, it raises
   `Conflict("saved cohort {id} is attached to a request for identified data; it can't be deleted")`
-  when `request` has any row with `request.cohort == id`. Behind that check, the database refuses too:
+  when `request` has a row with `request.cohort == id` and the cohort belongs to the caller
+  (`cohort.owner == owner`); someone else's cohort gets the same 404 as a missing one, so the 409
+  never reveals that a cohort exists or that a request references it. The check is `sa.text`, because
+  `broker.py` imports `saved.py`. Behind that check, the database refuses too:
   `request`'s foreign key to `cohort_revision` is `ON DELETE RESTRICT`, so the cascade fails even if
   the code check were bypassed.
 - The grant `snapshot` table is not changed.
@@ -311,10 +314,13 @@ class Request(BaseModel):
     storage_location: str; retention_end: datetime.date | None = None; status: RequestStatus
     created_at: datetime.datetime; updated_at: datetime.datetime
 
-class RequestDetail(Request):
-    irb: IrbVersion | None = None  # the version the request names
+class MyRequestDetail(Request):    # what a requester sees: the IRB's status, never its personnel or documents
+    irb: IrbAuthorization | None = None  # the version the request names
     reviews: list[Review]          # decided_at ascending
     releases: list[Release]        # released_at ascending
+
+class RequestDetail(MyRequestDetail):    # broker only
+    irb: IrbVersion | None = None  # the version the request names, with documents and personnel
 
 class Requests(BaseModel):         requests: list[Request]   # created_at descending, then id
 ```
@@ -327,7 +333,7 @@ class Requests(BaseModel):         requests: list[Request]   # created_at descen
 
 ```python
 async def list_my_requests(requester: str) -> Requests
-async def get_my_request(requester: str, id: uuid.UUID) -> RequestDetail   # NotFound(f"no request {id}") if missing or not the requester's
+async def get_my_request(requester: str, id: uuid.UUID) -> MyRequestDetail  # NotFound(f"no request {id}") if missing or not the requester's
 async def list_requests(status: RequestStatus | None = None) -> Requests   # broker: all, optionally one status
 async def get_request(id: uuid.UUID) -> RequestDetail                      # broker: any
 async def list_irb() -> IrbList                                            # broker
@@ -353,7 +359,7 @@ def _mcp_broker(ctx: Context) -> authen.User:   # ToolError("honest broker only"
 | REST | MCP tool | who |
 |---|---|---|
 | `GET /api/requests` → `Requests` | `list_my_requests()` | any signed-in user, own rows (`requester == u.sub`) |
-| `GET /api/requests/{id}` → `RequestDetail` | `get_my_request(id)` | same |
+| `GET /api/requests/{id}` → `MyRequestDetail` | `get_my_request(id)` | same |
 | `GET /api/broker/requests?status=` → `Requests` | `broker_list_requests(status=None)` | broker |
 | `GET /api/broker/requests/{id}` → `RequestDetail` | `broker_get_request(id)` | broker |
 | `GET /api/broker/irb` → `IrbList` | `broker_list_irb()` | broker |
@@ -410,7 +416,8 @@ results go to the caller's own client, the same as the REST JSON.
       After the downgrade, the seven tables and `cohort_revision.snapshot_id` are gone. `command.check`
       passes at head.
 - [ ] Deleting a saved cohort whose revision a `request` references answers 409 (REST) or a ToolError
-      (MCP), and the cohort and its revisions are still there. A raw `DELETE FROM cohort` for it fails
+      (MCP) to its owner, and the cohort and its revisions are still there. Another user gets the same
+      404 as for a missing cohort. A raw `DELETE FROM cohort` for it fails
       with an IntegrityError (FK RESTRICT).
 - [ ] `GET /api/requests` and `list_my_requests` return only the caller's requests. Another user's id
       gives 404 from `GET /api/requests/{id}` and a NotFound ToolError from `get_my_request`, with the
@@ -463,6 +470,8 @@ All synthetic. `DATA` is a temp dir, and Postgres is the throwaway `TEST_DATABAS
   - requester scoping (A sees one, B sees none, B's GET by id is 404 with the same message as a random UUID), REST and MCP;
   - broker gate: 403 / ToolError for A without the header; a broker sees all, filters by status and gets
     `IrbList` (latest version per IRB) and `Irb` (both versions, docs and personnel ordered);
+  - a requester's detail has an `irb` with no `personnel` or `documents` (no `file_ref` anywhere) and the
+    broker's has both;
   - `RequestDetail` includes the frozen definition, `cohort_id` and `snapshot_id` of the referenced
     revision, even after A appends newer revisions (head moves, the request still shows its `seq`);
   - delete refusal (409 / ToolError) and raw-SQL FK RESTRICT;

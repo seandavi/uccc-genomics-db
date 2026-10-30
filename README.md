@@ -390,7 +390,7 @@ seven tables: `irb_authorization`, `irb_document`, `irb_personnel`, `request`, `
 the `uccc-genomics-broker` Authentik group (the `groups` claim, never an email) reads all requests and
 the IRB registry:
 
-- `GET /api/requests` / `list_my_requests`; `GET /api/requests/{id}` / `get_my_request`
+- `GET /api/requests` / `list_my_requests`; `GET /api/requests/{id}` / `get_my_request` (the IRB's status only, no personnel or documents)
 - `GET /api/broker/requests?status=` / `broker_list_requests`; `GET /api/broker/requests/{id}` / `broker_get_request`
 - `GET /api/broker/irb` / `broker_list_irb`; `GET /api/broker/irb/{irb_number}` / `broker_get_irb`
 

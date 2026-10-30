@@ -230,10 +230,14 @@ class Request(BaseModel):
     updated_at: datetime.datetime
 
 
-class RequestDetail(Request):
-    irb: IrbVersion | None = None       # the version the request names
+class MyRequestDetail(Request):         # what a requester sees: the IRB's status, never its people or documents
+    irb: IrbAuthorization | None = None  # the version the request names
     reviews: list[Review]               # decided_at ascending
     releases: list[Release]             # released_at ascending
+
+
+class RequestDetail(MyRequestDetail):   # broker only
+    irb: IrbVersion | None = None       # the version the request names, with documents and personnel
 
 
 class Requests(BaseModel):
@@ -260,9 +264,14 @@ def _requests():
             .order_by(request.c.created_at.desc(), request.c.id))
 
 
-async def _irb_version(conn, irb_number: str, version: int) -> IrbVersion | None:
+async def _irb_authorization(conn, irb_number: str, version: int) -> IrbAuthorization | None:
     a = (await conn.execute(sa.select(irb_authorization).where(
         irb_authorization.c.irb_number == irb_number, irb_authorization.c.version == version))).first()
+    return None if a is None else IrbAuthorization(**{k: getattr(a, k) for k in IrbAuthorization.model_fields})
+
+
+async def _irb_version(conn, irb_number: str, version: int) -> IrbVersion | None:
+    a = await _irb_authorization(conn, irb_number, version)
     if a is None:
         return None
     docs = (await conn.execute(sa.select(irb_document).where(
@@ -272,12 +281,12 @@ async def _irb_version(conn, irb_number: str, version: int) -> IrbVersion | None
         irb_personnel.c.irb_number == irb_number, irb_personnel.c.version == version)
         .order_by(irb_personnel.c.person_id))).all()
     return IrbVersion(
-        **{k: getattr(a, k) for k in IrbAuthorization.model_fields},
+        **a.model_dump(),
         documents=[IrbDocument(**{k: getattr(d, k) for k in IrbDocument.model_fields}) for d in docs],
         personnel=[IrbPerson(person_id=p.person_id, name=p.name, role=p.role) for p in people])
 
 
-async def _detail(conn, where) -> RequestDetail:
+async def _detail(conn, where, *, broker: bool) -> MyRequestDetail:
     row = (await conn.execute(_requests().where(where))).first()
     if row is None:
         raise NotFound
@@ -286,8 +295,10 @@ async def _detail(conn, where) -> RequestDetail:
                                   .order_by(review.c.decided_at, review.c.id))).all()
     releases = (await conn.execute(sa.select(release).where(release.c.request_id == r.id)
                                    .order_by(release.c.released_at, release.c.id))).all()
-    irb = await _irb_version(conn, r.irb_number, r.irb_version) if r.irb_number is not None else None
-    return RequestDetail(
+    irb = None
+    if r.irb_number is not None:
+        irb = await (_irb_version if broker else _irb_authorization)(conn, r.irb_number, r.irb_version)
+    return (RequestDetail if broker else MyRequestDetail)(
         **{k: getattr(r, k) for k in Request.model_fields}, irb=irb,
         reviews=[Review(**{k: getattr(v, k) for k in Review.model_fields}) for v in reviews],
         releases=[Release(**{k: getattr(v, k) for k in Release.model_fields}) for v in releases])
@@ -299,10 +310,11 @@ async def list_my_requests(requester: str) -> Requests:
         return Requests(requests=[_request(r) for r in rows])
 
 
-async def get_my_request(requester: str, id: uuid.UUID) -> RequestDetail:
+async def get_my_request(requester: str, id: uuid.UUID) -> MyRequestDetail:
     async with saved._begin() as conn:
         try:
-            return await _detail(conn, sa.and_(request.c.id == id, request.c.requester == requester))
+            return await _detail(conn, sa.and_(request.c.id == id, request.c.requester == requester),
+                                 broker=False)
         except NotFound:
             raise NotFound(f"no request {id}") from None
 
@@ -316,7 +328,7 @@ async def list_requests(status: RequestStatus | None = None) -> Requests:
 async def get_request(id: uuid.UUID) -> RequestDetail:
     async with saved._begin() as conn:
         try:
-            return await _detail(conn, request.c.id == id)
+            return await _detail(conn, request.c.id == id, broker=True)
         except NotFound:
             raise NotFound(f"no request {id}") from None
 
