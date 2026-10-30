@@ -294,9 +294,10 @@ instead (nginx over `dist/`, IP allowlist).
 `mcp/src/uccc_genomics_mcp/app.py`: the campus cohort site's backend (docs/ARCHITECTURE.md). One
 process serves REST at `/api/*` (OpenAPI schema at `/api/openapi.json`; no Swagger UI) and MCP
 (Streamable HTTP, stateless) at `/mcp` (POST only; `GET /mcp` is 405, no SSE stream), both thin
-layers over `cohort/`. Every request but `/api/health` needs a login through `authen`
-(`--auth access|password|none|authentik`; `none`: no login, local dev only; under `authentik` the
-three `/auth/*` sign-in paths are also open). `count` and `pivot` are limited
+layers over `cohort/`. Every request but the open routes needs a login through `authen`
+(`--auth access|password|none|authentik`; `none`: no login, local dev only). The open routes are
+`/api/health`, `GET /api/public/summary`, the landing page `/` and its `/assets/*`, and, under
+`authentik`, the three `/auth/*` sign-in paths. `count` and `pivot` are limited
 to 60 a minute per user across both surfaces (a count or pivot the cohort module rejects, such as
 an unknown vocabulary value or a pivot of a definition that has no pivot, still uses the limit; a
 body that fails schema validation does not) and logged to stdout as one JSON line each (user,
@@ -308,8 +309,15 @@ tool.
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 [--static <dir>]
     # http://<tailnet-addr>:8092/api/openapi.json, MCP clients at http://<tailnet-addr>:8092/mcp
 
-`--static` serves a built front end at `/` (Discover, below). Development only: no systemd
-unit or deploy yet.
+`GET /api/public/summary` (#41) feeds the landing page. It takes no parameters and returns fixed
+aggregates over `mart.report`: patients, reports and tumor types (OncoTree codes other than `OTHER`
+with at least 5 patients) each floored at 5 and rounded to the nearest 10, the vendors with at least 5
+patients, and patients by year of first sample for the years with at least 5 patients (a year in
+that range with fewer shows null). It is cached per de-id file and sent with `Cache-Control: public,
+max-age=3600`.
+
+`--static` serves a built front end: the landing page at `/` and Discover (below) at `/discover`.
+Development only: no systemd unit or deploy yet.
 
 **Campus sign-in (Authentik)** (#95). `--auth authentik` signs members of one Authentik group in
 through the central Authentik run from seandavi/monode (`infrastructure/compose/authentik/README.md`
@@ -342,8 +350,8 @@ token; how a local MCP client obtains one is not built here. `/api/*` and `/mcp`
 a login (with `WWW-Authenticate: Bearer realm="uccc-genomics"`), or 503 with `Retry-After` when a Bearer
 token can't be checked because Authentik is unreachable. The app fetches Authentik's discovery document
 and key set at most once per 30 s, so a token signed with a new key is refused for up to 30 s after the
-last fetch and accepted after one refetch; a browser opening the site gets a page that sends it to `/auth/login` and back to the same address, a
-`#d=` share link included. `GET /api/me` returns the
+last fetch and accepted after one refetch; a browser opening a gated page (Discover at `/discover`) gets a page that sends it to `/auth/login` and back to the same address, a
+`#d=` share link included; a sign-in with no usable `next` lands on `/discover`. `GET /api/me` returns the
 caller's own `sub`, `email` and whether Discover shows "Sign out". Check it once as the contract
 asks: a member gets in (`/api/me` answers), a non-member is refused at Authentik or on the callback.
 A refusal page names the group (`AUTHENTIK_GROUP`) and says to ask the UCCC genomics team; a failure
@@ -397,11 +405,13 @@ The cohort builder (COHORT_DISCOVERY.md §3.3), a React + TypeScript app built w
 It sends only cohort definitions and edit operations to `/api/*` (never SQL), shows every
 suppressed count as "<5", keeps versions in the browser's local storage and shares a cohort as a
 link holding its definition. Compare (2-4 local versions side by side) and the Feasibility statement
-are in the top bar. No third-party requests; the build sets a same-origin CSP.
+are in the top bar. No third-party requests; the build sets a same-origin CSP. The build has two
+pages: the public landing page (`index.html`, `/`) and Discover (`discover.html`, `/discover`). An
+old share link `/#d=…` is sent on to `/discover#d=…` by the landing page's script.
 
     (cd web && bun install && bun run build)
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 --static web/dist
-    # http://<tailnet-addr>:8092/
+    # http://<tailnet-addr>:8092/discover (the landing page is at /)
 
 `bun run dev` serves the app with hot reload and proxies `/api` to a genomics-app on
 127.0.0.1:8092. After changing a model in `cohort/` or `app.py`, run `bun run gen` (rewrites

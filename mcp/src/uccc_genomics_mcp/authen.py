@@ -276,11 +276,11 @@ def _unsign(token: str, aud: str) -> dict:
 
 
 def _safe_next(raw: str | None) -> str:
-    """A same-site path to return to after sign-in; anything else is `/`. Fragments are kept."""
+    """A same-site path to return to after sign-in; anything else is `/discover`. Fragments are kept."""
     if (raw and raw.startswith("/") and not raw.startswith(("//", "/auth/")) and "\\" not in raw
             and not any(ord(c) < 32 or ord(c) == 127 for c in raw)):
         return raw
-    return "/"
+    return "/discover"
 
 
 def _cookie(response: Response, name: str, value: str, max_age: int, path: str) -> None:

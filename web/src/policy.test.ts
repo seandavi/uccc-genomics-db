@@ -6,6 +6,7 @@ const src = import.meta.dir;
 const files = [
   ...readdirSync(src).filter((f) => !/\.test\./.test(f)).map((f) => join(src, f)),
   join(src, "..", "index.html"),
+  join(src, "..", "discover.html"),
 ];
 const text = (p: string) => readFileSync(p, "utf8");
 

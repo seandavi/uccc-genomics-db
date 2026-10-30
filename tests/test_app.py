@@ -5,6 +5,8 @@ de-id file. Every parity case goes through both surfaces and must give identical
 """
 import asyncio
 import json
+import os
+import uuid
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -15,8 +17,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from mcp.server.mcpserver.exceptions import ToolError
 from starlette.testclient import TestClient
 
-from test_cohort import build_mart, use_mart, write_mart
-from uccc_genomics_mcp import app, authen, server
+from test_cohort import Mart, build_mart, use_mart, write_mart
+from uccc_genomics_mcp import app, authen, public, server
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +40,9 @@ def ids(mart_file, monkeypatch):
     info = use_mart(path, m, monkeypatch)
     monkeypatch.setattr(app, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
     monkeypatch.setattr(app, "_calls", {})
+    monkeypatch.setattr(public, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
+    monkeypatch.setattr(public, "DEID_DB", path)
+    monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
     monkeypatch.setenv("APP_USER", "sean")
     monkeypatch.setenv("APP_PASSWORD_HASH", authen.hash_password("s3cret"))
     monkeypatch.setattr(authen, "AUTH", dict(authen.AUTH))
@@ -50,6 +55,9 @@ def client(ids, tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)   # never touch a host .env database
     (tmp_path / "static").mkdir()
     (tmp_path / "static" / "index.html").write_text("<p>site</p>")
+    (tmp_path / "static" / "discover.html").write_text("<p>discover</p>")
+    (tmp_path / "static" / "assets").mkdir()
+    (tmp_path / "static" / "assets" / "app.js").write_text("console.log(1)")
     with TestClient(app.app(str(tmp_path / "static"))) as c:
         yield c
 
@@ -253,7 +261,8 @@ def test_openapi_names_the_models(client):
 
 GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply"), ("GET", "/api/options"),
          ("GET", "/api/schema"), ("GET", "/api/openapi.json"), ("POST", "/mcp"),
-         ("GET", "/mcp"), ("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path"),
+         ("GET", "/mcp"), ("GET", "/discover"), ("GET", "/discover.html"), ("GET", "/index.html"),
+         ("GET", "/no/such/path"),
          ("POST", "/api/saved"), ("GET", "/api/saved"), ("GET", "/api/snapshots"),
          ("GET", "/api/versions/v1-0000000000000000"), ("GET", "/api/me")]
 
@@ -266,6 +275,35 @@ def test_refused_without_login(client, method, path):
     assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
     assert client.request(method, path, auth=("sean", "wrong"), **kw).status_code == 401
     assert client.request(method, path, auth=AUTH, **kw).status_code != 401
+
+
+def test_public_paths_open(client):
+    r = client.get("/")
+    assert r.status_code == 200 and r.text == "<p>site</p>"
+    assert client.get("/assets/app.js").status_code == 200
+    assert client.get("/api/public/summary").status_code == 200
+    assert client.get("/discover", auth=AUTH).text == "<p>discover</p>"
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("/", True), ("/api/health", True), ("/api/public/summary", True), ("/assets/x.js", True),
+    ("/index.html", False), ("/discover", False), ("/assets/../discover.html", False), ("//assets/x", False),
+    ("/api/public/summary/x", False), ("/api/publicx", False)])
+def test_public_path(path, expected):
+    assert app.public_path(path) is expected
+
+
+def test_only_health_and_public_summary_are_open(client):
+    from fastapi.routing import APIRoute
+    open_paths = {"/api/health", "/api/public/summary"}
+    routes = [r for r in app.app().routes if isinstance(r, APIRoute) and r.path.startswith("/api/")]
+    assert len(routes) > 10
+    for route in routes:
+        path = route.path.replace("{id}", str(uuid.uuid4())).replace("{cohort_id}", "v1-0000000000000000")
+        for method in route.methods:
+            r = client.request(method, path, json={} if method in ("POST", "PUT", "PATCH") else None,
+                               headers={"accept": "application/json"})
+            assert (r.status_code != 401) == (route.path in open_paths), (method, route.path, r.status_code)
 
 
 def test_password_auth_routes_closed(client):
@@ -416,3 +454,104 @@ def test_mcp_tool_needs_the_middleware(ids):
 def test_openapi_snapshot():
     committed = json.loads((ROOT / "web" / "openapi.json").read_text())
     assert committed == app.app().openapi(), "web/openapi.json is stale: run `cd web && bun run gen`"
+
+
+# --- public summary (docs/specs/41-*.md) -----------------------------------------------------------
+
+SUMMARY_KEYS = {"patients", "reports", "tumor_types", "vendors", "first_year", "last_year", "by_year", "min_cell",
+                "round_to"}
+
+
+@pytest.mark.parametrize("n, expected", [(0, None), (4, None), (5, 10), (14, 10), (15, 20), (1234, 1230),
+                                         (1235, 1240)])
+def test_coarse(n, expected):
+    assert public.coarse(n) == expected
+
+
+def test_public_summary_shape(client):
+    r = client.get("/api/public/summary")
+    assert r.status_code == 200 and r.headers["cache-control"] == "public, max-age=3600"
+    body = r.json()
+    assert set(body) == SUMMARY_KEYS and body["min_cell"] == 5 and body["round_to"] == 10
+    assert set(body["vendors"]) <= {"caris", "fmi"}
+
+
+def test_public_summary_no_parameters(client):
+    op = client.get("/api/openapi.json", auth=AUTH).json()["paths"]["/api/public/summary"]["get"]
+    assert "parameters" not in op and "requestBody" not in op
+    assert client.get("/api/public/summary?oncotree=NSCLC&year=2023").json() == client.get("/api/public/summary").json()
+    assert client.post("/api/public/summary").status_code == 405
+
+
+def test_public_summary_counts_are_coarse(client, ids):
+    body = client.get("/api/public/summary").json()
+    counts = [body["patients"], body["reports"], body["tumor_types"], *(y["patients"] for y in body["by_year"])]
+    assert all(n is None or (n % 10 == 0 and n >= 10) for n in counts)
+    assert not any(isinstance(v, str) and v in ids for _, v in walk(body))
+
+
+def test_public_summary_unavailable(client, monkeypatch, capsys):
+    def boom():
+        raise RuntimeError("/secret/path")
+    monkeypatch.setattr(public, "get_db", boom)
+    r = client.get("/api/public/summary")
+    assert r.status_code == 503 and r.json() == {"detail": "totals unavailable"} and "secret" not in r.text
+    assert "/secret/path" in capsys.readouterr().err
+
+
+def test_public_summary_cached(client, monkeypatch):
+    calls = []
+    real = public.get_db
+    monkeypatch.setattr(public, "get_db", lambda: calls.append(1) or real())
+    client.get("/api/public/summary")
+    client.get("/api/public/summary")
+    assert len(calls) == 1
+    st = os.stat(public.DEID_DB)
+    os.utime(public.DEID_DB, (st.st_atime, st.st_mtime + 5))
+    client.get("/api/public/summary")
+    assert len(calls) == 2
+
+
+def test_public_summary_values(tmp_path, monkeypatch):
+    m = Mart()
+    n = 0
+
+    def add(count, oncotree, vendor, year, complete=True):
+        nonlocal n
+        for _ in range(count):
+            n += 1
+            m.report(f"p{n}", f"r{n}", oncotree, "Lung", vendor, year, complete=complete)
+
+    add(1, "NSCLC", "caris", 1999)             # outlier year: not in by_year, not first_year
+    add(12, "NSCLC", "caris", 2022)
+    add(2, "NSCLC", "caris", 2023, complete=False)   # a 2-patient year inside the range: null
+    add(15, "COADREAD", "fmi", 2024)
+    add(2, "OTHER", "fmi", 2024)
+    add(6, "OTHER", "caris", 2024)           # OTHER with enough patients is still not a tumor type
+    add(3, "RARE", "caris", 2024)            # 3 patients: not a tumor type
+    add(5, None, "caris", 2024)              # NULL oncotree
+    add(2, "BRCA", "other", 2024)            # 2 patients: vendor left out
+    m.report("p1", "r1b", "NSCLC", "Lung", "fmi", 2022)   # second report of a patient: reports > patients
+    m.mutation("r1", "KRAS", "G12C")   # write_mart needs a fact row
+    path = str(tmp_path / "v.duckdb")
+    write_mart(path, m)
+    monkeypatch.setattr(public, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
+    monkeypatch.setattr(public, "DEID_DB", path)
+    monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
+    # unrounded first, so a broken filter cannot hide behind rounding
+    coarse = public.coarse
+    monkeypatch.setattr(public, "coarse", lambda k: k)
+    raw = public.summary()
+    assert (raw.patients, raw.reports) == (n, n + 1)   # p1 has a second report
+    assert raw.tumor_types == 2   # NSCLC, COADREAD: OTHER, NULL, RARE (3) and BRCA (2) are left out
+    assert raw.vendors == ["caris", "fmi"]
+    assert [(y.year, y.patients, y.complete) for y in raw.by_year] == [(2022, 12, True), (2023, 2, False),
+                                                                        (2024, 33, True)]
+    monkeypatch.setattr(public, "coarse", coarse)
+    monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
+    s = public.summary()
+    assert (s.patients, s.reports, s.tumor_types) == (50, 50, None)
+    assert s.vendors == ["caris", "fmi"]
+    assert (s.first_year, s.last_year) == (2022, 2024)
+    assert [(y.year, y.patients, y.complete) for y in s.by_year] == [(2022, 10, True), (2023, None, False),
+                                                                      (2024, 30, True)]

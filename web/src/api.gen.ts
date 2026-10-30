@@ -109,6 +109,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Public Summary
+         * @description Open: fixed coarse totals for the landing page. No parameters; every count is floored at 5
+         *     and rounded to the nearest 10 (public.coarse).
+         */
+        get: operations["get_public_summary_api_public_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/saved": {
         parameters: {
             query?: never;
@@ -714,6 +735,27 @@ export interface components {
                 number
             ] | null;
         };
+        /** PublicSummary */
+        PublicSummary: {
+            /** By Year */
+            by_year: components["schemas"]["YearCount"][];
+            /** First Year */
+            first_year: number | null;
+            /** Last Year */
+            last_year: number | null;
+            /** Min Cell */
+            min_cell: number;
+            /** Patients */
+            patients: number | null;
+            /** Reports */
+            reports: number | null;
+            /** Round To */
+            round_to: number;
+            /** Tumor Types */
+            tumor_types: number | null;
+            /** Vendors */
+            vendors: string[];
+        };
         /** RemoveCriterion */
         RemoveCriterion: {
             /** Id */
@@ -1151,6 +1193,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_public_summary_api_public_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSummary"];
                 };
             };
         };

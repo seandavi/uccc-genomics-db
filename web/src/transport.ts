@@ -1,4 +1,4 @@
-import type { ApplyResult, CountResult, Definition, Me, Operation, Options, PivotResult } from "./types.ts";
+import type { ApplyResult, CountResult, Definition, Me, Operation, Options, PivotResult, PublicSummary } from "./types.ts";
 
 export interface OptionsQuery { q?: string; field?: string; parent?: string; limit?: number }
 
@@ -84,6 +84,11 @@ export function fetchTransport(fetchImpl: FetchLike = fetch, signIn: (login: str
       return request(`/api/options?${p}`);
     },
   };
+}
+
+/** GET /api/public/summary: the landing page's totals. Never redirects to sign-in (the route is open). */
+export function fetchPublicSummary(fetchImpl: FetchLike = fetch): Promise<PublicSummary> {
+  return requester(fetchImpl, () => {})("/api/public/summary");
 }
 
 /** Who is signed in, and signing out. `sign_out` is false when the backend has no session to end. */

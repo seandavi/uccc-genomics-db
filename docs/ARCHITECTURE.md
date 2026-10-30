@@ -9,7 +9,7 @@ and the decisions behind it. Tracking issue: #23.
         React app (Discover)                    MCP App (same React builder, ui:// resource)
              │ apply(op) over fetch                  │ apply(op) over MCP tool calls
              ▼                                       ▼
-   FastAPI:  /api/*  REST      /api/chat         /mcp  MCP tools
+   FastAPI:  /api/*  REST      /api/chat         /mcp  MCP tools      /api/public/summary (open)
              └──────────────┬──────────────────────────┘
                      authen.user(request) -> who            (one check for every surface)
                             │
@@ -69,14 +69,17 @@ and the decisions behind it. Tracking issue: #23.
 11. **Suppression applies to logged-in users too.** Campus login decides who may ask, not what a
     count may reveal. Saved, editable cohorts make differencing easier, so §3.6's rules apply
     and requests are rate-limited per user.
-12. **The app is campus-only.** The public Cloudflare dashboard shrinks to high-level totals
-    (patients, diseases, vendors, years); everything else moves behind login.
+12. **The app is campus-only, with a public landing page.** The public totals (patients, reports,
+    tumor types, vendors, years) are the campus app's landing page (`/`, fed by the open
+    `GET /api/public/summary`: fixed aggregates, floored at 5 and rounded to 10, #41); everything
+    else, Discover included (`/discover`), is behind login. The Cloudflare dashboard and
+    `genomics-cohort-api` retire in a follow-up once production hosting is live.
 
 ## Development
 
 The app runs on the pipeline host, bound to its tailnet address, with `--auth password` or
 `--auth authentik` (campus sign-in through Authentik, `APP_BASE_URL` set to the tailnet URL), so
-progress is visible at `http://<host>:<port>` from the tailnet. No `tailscale serve`, no
+progress is visible at `http://<host>:<port>` from the tailnet (Discover at `/discover`, the landing page at `/`). No `tailscale serve`, no
 deploys. The service is `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35). Production hosting (Docker Compose behind Traefik) comes after the app works.
 
 The app (Discover) is built from `web/` and served by `genomics-app --static web/dist` (#37), so it

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EMPTY } from "./cohort.ts";
-import { TransportError, describeError, errorMessage, fetchAccount, fetchTransport, type FetchLike } from "./transport.ts";
+import { TransportError, describeError, errorMessage, fetchAccount, fetchPublicSummary, fetchTransport, type FetchLike } from "./transport.ts";
 
 interface Call { url: string; init: RequestInit }
 
@@ -142,5 +142,32 @@ describe("describeError", () => {
     expect(describeError(new TransportError("x", 429))).toBe("Too many queries; try again in a few s.");
     expect(describeError(new TransportError("bad field", 400))).toBe("bad field");
     expect(describeError(new Error("boom"))).toBe("boom");
+  });
+});
+
+describe("public summary", () => {
+  test("GETs /api/public/summary same-origin", async () => {
+    const calls: Call[] = [];
+    const impl: FetchLike = async (url, init = {}) => {
+      calls.push({url, init});
+      return new Response(JSON.stringify({patients: 1230}), {status: 200});
+    };
+    expect(await fetchPublicSummary(impl)).toEqual({patients: 1230} as never);
+    expect(calls[0].url).toBe("/api/public/summary");
+    expect(calls[0].init.method).toBeUndefined();
+    expect(calls[0].init.credentials).toBe("same-origin");
+  });
+  test("a 401 throws TransportError and never navigates", async () => {
+    const nav: string[] = [];
+    const orig = globalThis.window;
+    (globalThis as {window?: unknown}).window = {location: {assign: (u: string) => nav.push(u)}};
+    try {
+      const impl: FetchLike = async () => new Response(JSON.stringify({detail: "no", login: "/auth/login"}), {status: 401});
+      const e = await fetchPublicSummary(impl).catch((x) => x);
+      expect(e).toBeInstanceOf(TransportError);
+      expect(nav).toEqual([]);
+    } finally {
+      (globalThis as {window?: unknown}).window = orig;
+    }
   });
 });
