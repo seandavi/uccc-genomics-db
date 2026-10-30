@@ -34,6 +34,7 @@ SESSION_AUD = "uccc-genomics-session"
 LOGIN_AUD = "uccc-genomics-login"
 SESSION_HOURS = 8
 LOGIN_SECONDS = 600
+LEEWAY_SECONDS = 60   # provider clock skew on iat/exp; the provider runs on another host
 OPEN_PATHS = ("/auth/login", "/auth/callback", "/auth/logout")   # open under authentik only
 DEFAULT_GROUP = "uccc-genomics-dashboard"
 
@@ -186,7 +187,7 @@ def _verify(token: str, nonce: str | None) -> dict:
         _oidc()
         key = AUTH["jwks"].get_signing_key_from_jwt(token).key
         claims = jwt.decode(token, key, algorithms=["RS256"], audience=AUTH["client_id"], issuer=AUTH["issuer"],
-                            options={"require": ["exp", "iat", "sub"]})
+                            leeway=LEEWAY_SECONDS, options={"require": ["exp", "iat", "sub"]})
     except jwt.PyJWTError as e:
         raise PermissionError(str(e)) from None
     except (OSError, ValueError, RuntimeError, KeyError):   # discovery failed or was malformed
@@ -243,6 +244,16 @@ def _authentik(request: Request) -> User:
 
 _PAGE = ('<!doctype html><meta charset="utf-8"><title>UCCC genomics</title><p>{}</p>'
          '<p><a href="/auth/login">Sign in</a></p>')
+
+
+def signin_page() -> Response:
+    """For a signed-out browser navigation: an HTML page that goes to sign-in carrying the whole
+    address, `#fragment` included (a server redirect never sees it, so a `#d=` share link would be lost)."""
+    return HTMLResponse(
+        '<!doctype html><meta charset="utf-8"><title>UCCC genomics</title><p>Signing in&hellip;</p>'
+        '<p><a href="/auth/login">Sign in</a></p>'
+        '<script>location.replace("/auth/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash))</script>',
+        status_code=401)
 
 
 def _refuse(status: int, message: str) -> Response:

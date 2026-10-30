@@ -339,7 +339,8 @@ its own signed cookie for at most 8 hours (not extended on use), so removing som
 takes effect at their next sign-in, up to 8 hours later. `/api/*` and `/mcp` also accept
 `Authorization: Bearer <access token>` from the same provider, checked on every call like the ID
 token; how a local MCP client obtains one is not built here. `/api/*` and `/mcp` answer 401 without
-a login; a browser opening the site is redirected to `/auth/login`. `GET /api/me` returns the
+a login; a browser opening the site gets a page that sends it to `/auth/login` and back to the same address, a
+`#d=` share link included. `GET /api/me` returns the
 caller's own `sub`, `email` and whether Discover shows "Sign out". Check it once as the contract
 asks: a member gets in (`/api/me` answers), a non-member is refused at Authentik or on the callback.
 

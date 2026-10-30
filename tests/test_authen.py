@@ -259,6 +259,18 @@ def test_callback_refuses_bad_id_tokens(c, issuer, tweak):
     never_signed_in(c, r)
 
 
+def test_callback_tolerates_provider_clock_skew(c, issuer):
+    now = int(time.time())
+    assert sign_in(c, issuer, iat=now + 5, exp=now + 305).status_code == 303
+
+
+def test_callback_refuses_an_iat_far_in_the_future(c, issuer):
+    now = int(time.time())
+    issuer.override.update(iat=now + 300, exp=now + 600)
+    state, code = begin(c, issuer)
+    assert c.get("/auth/callback", params={"code": code, "state": state}).status_code == 403
+
+
 @pytest.mark.parametrize("what", ["bad-state", "no-state", "no-code", "no-login-cookie"])
 def test_callback_refuses_a_flow_that_did_not_start_here(c, issuer, what):
     state, code = begin(c, issuer)
@@ -339,14 +351,25 @@ STATIC = [("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path")]
 def test_signed_out_gets_401_or_a_redirect(c, method, path):
     r = c.request(method, path, headers={"accept": "application/json"})
     if (method, path) in STATIC:
-        assert r.status_code == 302 and r.headers["location"] == "/auth/login?next=" + urllib.parse.quote(path, safe="")
+        assert_signin_page(r)
     else:
         assert r.status_code == 401 and r.json()["login"] == "/auth/login" and "location" not in r.headers
 
 
-def test_redirect_keeps_the_query(c):
-    r = c.get("/no/such/path?q=1&r=a b")
-    assert r.headers["location"] == "/auth/login?next=" + urllib.parse.quote("/no/such/path?q=1&r=a%20b", safe="")
+def assert_signin_page(r):
+    """The page that carries path, query and #fragment to /auth/login (a server redirect would drop the fragment)."""
+    assert r.status_code == 401 and "location" not in r.headers and "content-security-policy" not in r.headers
+    assert r.headers["content-type"].startswith("text/html")
+    assert "location.replace(\"/auth/login?next=\" + encodeURIComponent(location.pathname + location.search + location.hash))" in r.text
+    assert '<a href="/auth/login">Sign in</a>' in r.text
+
+
+def test_signed_out_share_link_survives_sign_in(c, issuer):
+    """The page's script sends /x?q=1#d=abc to /auth/login?next=<that>; the callback lands back on it."""
+    assert_signin_page(c.get("/no/such/path?q=1&r=a b"))
+    next = "/x?q=1#d=abc"
+    r = sign_in(c, issuer, next=next)
+    assert r.status_code == 303 and r.headers["location"] == next
 
 
 @pytest.mark.parametrize("method, path", GATED)

@@ -18,7 +18,7 @@ Every example below is synthetic. Hostnames are placeholders (`<authentik-host>`
 3. Users are keyed on `sub`. Saved cohorts, snapshots and the rate limit use it; email is a
    display label and goes in the audit log next to `sub`.
 4. `/api/*` answers 401 (never a redirect) without a login; browser navigations to the static
-   site redirect to `/auth/login`; Discover sends the user to sign in on a 401 and shows who is
+   site get a small HTML page that goes to `/auth/login?next=<path, query and #fragment>`; Discover sends the user to sign in on a 401 and shows who is
    signed in with a "Sign out" button.
 5. `/mcp` (and `/api/*`) accept `Authorization: Bearer <access token>` from the same provider,
    validated like the ID token.
@@ -32,9 +32,6 @@ Every example below is synthetic. Hostnames are placeholders (`<authentik-host>`
 - Refresh tokens. The session ends after 8 hours and the user goes back through Authentik.
 - RP-initiated logout with `id_token_hint` or `post_logout_redirect_uri`. Sign out clears the app
   cookie and sends the browser to Authentik's `end_session_endpoint`.
-- Keeping the `#d=` share fragment when a signed-out user's **first** navigation is redirected by
-  the server (the fragment never reaches the server). A 401 caught by Discover does keep it (see
-  Design § Discover).
 - A systemd unit, Traefik route or deploy for `genomics-app` (still development only).
 - `bun run dev` with `--auth authentik` (the Vite proxy forwards `/api` only; use `password`).
 - `genomics-cohort-api` does not get the `authentik` backend (it has no `/auth/*` routes).
@@ -136,7 +133,9 @@ Private helpers (names fixed so tests and reviewers can find them):
 - `_verify(token: str, nonce: str | None) -> dict`: the shared check for ID and access tokens.
   `key = AUTH["jwks"].get_signing_key_from_jwt(token).key`; `jwt.decode(token, key,
   algorithms=["RS256"], audience=AUTH["client_id"], issuer=AUTH["issuer"],
-  options={"require": ["exp", "iat", "sub"]})`. When `nonce` is not `None` the claim must be a
+  leeway=LEEWAY_SECONDS, options={"require": ["exp", "iat", "sub"]})`. `LEEWAY_SECONDS = 60`: the provider runs on another
+  host, and with no leeway a token whose `iat` is a fraction of a second ahead of this clock is
+  refused and a member sees "no access". When `nonce` is not `None` the claim must be a
   string equal to it (`hmac.compare_digest`; missing means refused). Then `_require_group`. Any
   `jwt.PyJWTError` (including `PyJWKClientError` for a fetch failure or an unknown `kid`), a
   discovery failure, or a group failure becomes `PermissionError` with a short fixed or PyJWT
@@ -210,8 +209,12 @@ The access token for `/mcp`: Authentik issues JWT access tokens signed with the 
 - `RequireUser.__call__`: let through `lifespan`, `GET /api/health` (as today) and any HTTP path
   where `authen.open_path(path)`. On `PermissionError`:
   - if `authen.login_path()` is set, the method is `GET`, and the path neither starts with
-    `/api/` nor equals `/mcp`: `302` to `login_path + "?next=" + quote(path + ("?" + query if
-    query else ""), safe="")` (a browser navigation to the static site);
+    `/api/` nor equals `/mcp` (a browser navigation to the static site): `401` with
+    `authen.signin_page()`, an HTML page (no CSP; that lives only in Discover's `index.html`) whose
+    script runs `location.replace("/auth/login?next=" + encodeURIComponent(location.pathname +
+    location.search + location.hash))`, with a plain `Sign in` link as fallback. A server `302` would
+    lose the `#d=` share fragment, which the browser never sends, so the page does the redirect in
+    the browser; `_safe_next` keeps the fragment through sign-in;
   - otherwise `401` JSON `{"detail": str(e)}`, plus `"login": login_path` when it is set, with
     `headers=authen.challenge()` as today.
   On success store the `authen.User` in `scope["state"]["user"]`.
@@ -337,11 +340,12 @@ body.
       query (403); token endpoint error (502).
 - [ ] `next=//evil.example`, `next=https://evil.example`, `next=/auth/logout` all land on `/`;
       `next=/x?y=1#d=abc` is kept.
+- [ ] An ID token with `iat` a few seconds ahead of now signs in; one 5 minutes ahead is refused.
 - [ ] A forged session cookie (other secret), an expired one, and a `uccc_login` value used as
       `uccc_session` are refused (401 on `/api/*`).
 - [ ] Without login under `authentik`: `/api/*` and `/mcp` → 401 JSON with `"login":
-      "/auth/login"` and no `Location`; `GET /`, `/index.html`, `/no/such/path?q=1` → 302 to
-      `/auth/login?next=<quoted path and query>`. Every `GATED` route (plus `/api/me`) accepts the
+      "/auth/login"` and no `Location`; `GET /`, `/index.html`, `/no/such/path?q=1` → the 401 sign-in page above, no `Location`;
+      `next=/x?q=1#d=abc` round-trips through sign-in to that exact address. Every `GATED` route (plus `/api/me`) accepts the
       session cookie. `/api/health` and the three `/auth/*` paths need no login.
 - [ ] Under `password`, `/auth/login` is not open (401 with the Basic challenge), and the existing
       `GATED` test passes unchanged except for the added `/api/me`.

@@ -16,11 +16,10 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
-from urllib.parse import quote
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -66,8 +65,8 @@ INSTRUCTIONS = (
 class RequireUser:
     """Pure ASGI middleware around the whole app: every HTTP request except GET /api/health and the open
     sign-in paths is authenticated once with authen.user(); the authen.User goes into the request's
-    scope state. A failed browser navigation to the static site is redirected to sign in; /api/* and
-    /mcp answer 401."""
+    scope state. A failed browser navigation to the static site gets the sign-in page (authen.signin_page,
+    which keeps the #fragment); /api/* and /mcp answer 401."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -84,9 +83,7 @@ class RequireUser:
         except PermissionError as e:
             path, login = scope["path"], authen.login_path()
             if login and scope["method"] == "GET" and not path.startswith("/api/") and path != "/mcp":
-                query = scope["query_string"].decode("latin-1")
-                response = RedirectResponse(login + "?next=" + quote(path + ("?" + query if query else ""), safe=""),
-                                            status_code=302)
+                response = authen.signin_page()
             else:
                 response = JSONResponse({"detail": str(e)} | ({"login": login} if login else {}), status_code=401,
                                         headers=authen.challenge())
