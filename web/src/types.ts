@@ -13,6 +13,7 @@ export type CountResult = S["CountResult"];
 export type YearCount = S["YearCount"];
 export type PivotResult = S["PivotResult"];
 export type Me = S["Me"];
+export type PublicSummary = S["PublicSummary"];
 export type Options = S["Options"];
 export type Option = S["Option"];
 export type BreakdownDim = Definition["breakdown"][number];
