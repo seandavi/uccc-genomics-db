@@ -209,7 +209,7 @@ personnel and dates other than expiry are not in requester responses.
 `missing` holds fixed strings, in this order. `n` and `v` are the IRB number and version, and `today` is
 `datetime.date.today()` (the container's TZ is America/Denver):
 
-1. `"choose an IRB authorization"` if `irb_number` is NULL. When that is true, rules 2-6 are skipped.
+1. `"choose an IRB authorization"` if `irb_number` is NULL. When that is true, rules 2-4 (the ones about the IRB) are skipped; the others still apply.
 2. `f"IRB {n} version {v} is {status}"` if the status isn't `active`.
 3. `f"IRB {n} version {v} expired on {expiration_date}"` if `expiration_date < today`.
 4. `"add a reference to the IRB approval letter"`, `"... to the approved personnel list"` and `"... to the
@@ -269,9 +269,9 @@ The helpers:
   `get_my_request` uses, so someone else's request looks missing.
 - `async def _irb_status(conn, viewer, n, v) -> IrbStatus | None`.
 - `async def _missing(conn, r: Request) -> list[str]`.
-- `_detail(conn, where, *, broker: bool, viewer: str)` gains `viewer` (for `registered_by_you`) and fills
+- `_detail(conn, where, *, broker: bool, viewer: str = "")` gains `viewer` (for `registered_by_you`) and fills
   `attestations` for both views. The requester view also gets `irb` (an `IrbStatus`), `missing`, and
-  `attestation` (the text when `missing == []`).
+  `attestation` (the text when `missing == []`). The broker view has `missing == []` and `attestation` null: it is not computed there.
 
 Semantics:
 
@@ -287,7 +287,7 @@ Semantics:
 - **update_request**: lock the row. If the status isn't in `EDITABLE`, raise
   `Conflict(f"request {id} is {status}; only a draft or a returned request can be changed")`. If the IRB
   pair is set and that row doesn't exist, raise `Invalid(f"no IRB authorization {n} version {v}")`.
-  Otherwise update every editable column (JSON lists via `model_dump(mode="json")`) and set
+  If the status is `returned` and the pair or `retention_end` would be NULL, raise `Invalid` (the table's CHECK allows that only on a draft). Otherwise update every editable column (JSON lists via `model_dump(mode="json")`) and set
   `updated_at = now()`. Status is unchanged: a returned request stays `returned` until it is resubmitted.
 - **submit_request**: lock the row and check the status as in update. Then:
   1. Compute `missing`. If it isn't empty, raise `Invalid("can't submit yet: " + "; ".join(missing))`.

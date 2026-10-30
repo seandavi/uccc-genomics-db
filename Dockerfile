@@ -4,7 +4,7 @@ WORKDIR /web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web/ ./
-RUN bun run build                        # -> /web/dist (index.html, discover.html, assets/)
+RUN bun run build                        # -> /web/dist (index.html, discover.html, requests.html, assets/)
 
 FROM ghcr.io/astral-sh/uv:0.11.21-python3.12-trixie-slim AS app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=0

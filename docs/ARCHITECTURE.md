@@ -52,8 +52,8 @@ and the decisions behind it. Tracking issue: #23.
    campus-only and no patient data or counts are revealed, and a keyed `cohort_id` would mean
    another key file to manage. Revisit if the audience widens (#56). The query audit log stays one
    JSON line on stdout for now; moving it to Postgres is a later issue. The honest-broker tables
-   (IRB registry, requests, reviews, releases; #132) live there too, and hold study ids only, never
-   identifiers: see `docs/HONEST_BROKER.md`.
+   (IRB registry, requests, requester attestations, reviews, releases; #132, #133) live there too, and hold study
+   ids only, never identifiers: see `docs/HONEST_BROKER.md`.
 8. **Auth behind `authen.user(request)`.** Backends today: `access` (Cloudflare Access JWT),
    `password` (one local account, while developing), `none`, and `authentik` (#95): OIDC through
    the central Authentik (seandavi/monode), authorization code flow with PKCE, a signed app cookie
