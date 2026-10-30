@@ -92,7 +92,7 @@ def page(sign_out: bool) -> HTMLResponse:
     """The full-page terms for a signed-in browser that hasn't accepted, served in place (status 403,
     Cache-Control: no-store). Accept POSTs JSON to ACCEPT_PATH and reloads, so the address and its #fragment
     stay. Sign out (authentik only) POSTs /auth/logout and goes to the returned url, as Discover does."""
-    body = (authen._HEAD + "<h2>Portal terms</h2>"
+    body = (authen._HEAD + authen.GA + "<h2>Portal terms</h2>"
             f"<p>{html.escape(TERMS_TEXT)}</p><p>Version {html.escape(TERMS_VERSION)}</p>"
             '<p>You need to accept these terms to use the portal.</p><p><button type="button" id="accept">I accept these terms</button>'
             + (' <button type="button" id="sign-out">Sign out</button>' if sign_out else "")
