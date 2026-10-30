@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FeasibilityPanel } from "./App.tsx";
+import { FeasibilityPanel, Who } from "./App.tsx";
 
 const render = (statement: string, copied = false) =>
   renderToStaticMarkup(<FeasibilityPanel statement={statement} copied={copied} onCopy={() => {}} onClose={() => {}} textareaRef={{current: null}} />);
@@ -22,5 +22,18 @@ describe("FeasibilityPanel", () => {
   test("copied is announced", () => {
     expect(render("x", true)).toContain("Copied");
     expect(render("x")).not.toContain("Copied");
+  });
+});
+
+describe("Who", () => {
+  const html = (sign_out: boolean) =>
+    renderToStaticMarkup(<Who me={{sub: "s", email: "a@example.edu", sign_out}} onSignOut={() => {}} />);
+  test("shows the email and, when the backend has a session, Sign out", () => {
+    expect(html(true)).toContain("a@example.edu");
+    expect(html(true)).toContain(">Sign out</button>");
+  });
+  test("no Sign out button without a session", () => {
+    expect(html(false)).toContain("a@example.edu");
+    expect(html(false)).not.toContain("Sign out");
   });
 });

@@ -32,6 +32,7 @@ code { background: var(--panel); padding: .1rem .35rem; border-radius: 4px; }
 .top h1 { margin: 0; }
 .top input[aria-label="Cohort name"] { min-width: 16rem; }
 .top .link { min-width: 20rem; }
+.top .who { margin-left: auto; color: var(--muted); }
 
 .cols { display: grid; grid-template-columns: minmax(18rem, 24rem) 1fr; gap: 1rem; padding: 1rem; align-items: start; }
 .assistant { display: none; }
