@@ -314,7 +314,8 @@ def _authentik(request: Request) -> User:
 _HEAD = ('<!doctype html><html lang="en"><meta charset="utf-8">'
          '<meta name="viewport" content="width=device-width, initial-scale=1">'
          '<title>UCCC genomics</title><h1>UCCC genomics</h1>')
-_PAGE = _HEAD + '<p>{}</p><p><a href="/auth/login">Sign in</a></p>'
+GA = '<script src="/assets/ga.js"></script>'   # web/public/assets/ga.js; not on the instant-redirect page
+_PAGE = _HEAD + GA + '<p>{}</p><p><a href="/auth/login">Sign in</a></p>'
 
 
 def _access_help() -> str:
