@@ -120,7 +120,7 @@ Markup, in this order:
 
 ```tsx
 <section className="start" aria-labelledby="start-h">
-  <p className="intro">How many of our sequenced patients fit your study? Pick who on the left, add criteria,
+  <p className="intro">How many of our sequenced patients fit your study? Pick who in the builder, add criteria,
     then copy a feasibility statement. Counts under {minCell} show as {`<${minCell}`}.</p>
   <h3 id="start-h">Start from an example</h3>
   <ul className="examples">

@@ -187,7 +187,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
       setHist(await applyDefinition(d, () => histRef.current, transport));
       setEditError(null);
       refresh();
-      jumpToAnswer();   // "Use →" unmounts the landing that held focus
+      requestAnimationFrame(jumpToAnswer);   // after the commit, so the heading reads the example's name ("Use →" unmounted the landing that held focus)
     } catch (e) {
       setEditError({at: "answer", message: `This example could not be used: ${describeError(e)}`});
     }

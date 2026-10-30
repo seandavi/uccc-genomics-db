@@ -248,7 +248,7 @@ describe("applyDefinition", () => {
     const body = (start: string, end: string) => src.slice(src.indexOf(start), src.indexOf(end, src.indexOf(start)));
     expect(body("export async function applyShareHash", "export function App")).toContain("applyDefinition(");
     const example = body("const applyExample", "}, [transport");
-    for (const text of ["applyDefinition(", "setHist(", "refresh()", "jumpToAnswer()", "This example could not be used: "]) expect(example).toContain(text);
+    for (const text of ["applyDefinition(", "setHist(", "refresh()", "requestAnimationFrame(jumpToAnswer)", "This example could not be used: "]) expect(example).toContain(text);
     expect(src).toContain("onExample={applyExample}");
   });
 });
