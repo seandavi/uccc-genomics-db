@@ -451,8 +451,8 @@ old share link `/#d=…` is sent on to `/discover#d=…` by the landing page's s
 
 `Dockerfile` builds `genomics-app` and the built `web/` into one image (non-root uid 10001, no
 secrets, data or keys inside; `.dockerignore` is an allowlist). `deploy/compose.yaml` runs it on the
-pipeline host behind the host's Traefik (`proxy` network, Let's Encrypt through the `cloudflare`
-resolver, grey-cloud DNS) with Authentik sign-in, and on `pg_main_stack_default` for Postgres. Every
+pipeline host behind the host's Traefik (`proxy` network, orange-cloud DNS, Traefik's default
+Cloudflare Origin Certificate) with Authentik sign-in, and on `pg_main_stack_default` for Postgres. Every
 route but the open ones needs a login in the Authentik group. `/mcp` is not routed (MCP stays on the
 tailnet, `genomics-mcp`), and the container publishes no port. Traefik rate-limits each client address (average 20/s, burst 50) on every route; it exists for the open ones (`/`, `/assets/*`, `/auth/*`, `/api/public/summary`), and signed-in traffic from a shared campus NAT address shares it.
 
@@ -506,9 +506,10 @@ tag, `docker compose -f deploy/compose.yaml up -d`.
 
 **monode follow-ups, for a person, before the first `up`:**
 
-1. An A record for `<APP_HOST>` to the host's public IP, `proxied = false`, in
-   `terraform/apps/dns/cancerdatasci_org.tf` (check with `dig` first; TLS-ALPN-01 cannot issue a
-   certificate without it).
+1. An A record for `<APP_HOST>` (`uccc-genomics.cancerdatasci.org`, one level under the zone so the
+   `*.cancerdatasci.org` edge and Origin certificates cover it) to the host's public IP,
+   `proxied = true`, in `terraform/apps/dns/cancerdatasci_org.tf`. That name was the Cloudflare
+   Worker dashboard's: remove the Worker's custom domain and its Cloudflare Access application first.
 2. A second uptime check and alert policy in `terraform/apps/uccc_genomics/` on
    `https://<APP_HOST>/api/health` (status 200, body contains `Healthy`), like the existing one.
 3. The GSM session secret above.

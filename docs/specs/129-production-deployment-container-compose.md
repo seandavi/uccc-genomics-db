@@ -1,5 +1,7 @@
 # Spec #129: production deployment, container + compose behind Traefik
 
+> **Changed after merge (2026-10-30):** the hostname is `uccc-genomics.cancerdatasci.org`, orange-cloud: no `tls.certresolver` label (Traefik's default Cloudflare Origin Certificate), and the rate limit keys on `CF-Connecting-IP`. `deploy/compose.yaml` and README are current; the grey-cloud/LE text below is historical.
+
 ## Goal
 
 Run the campus cohort app (`genomics-app` + the built `web/` site) in production on the pipeline
