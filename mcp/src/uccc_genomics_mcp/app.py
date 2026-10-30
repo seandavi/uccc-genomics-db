@@ -603,7 +603,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--auth", choices=authen.MODES, required=True,
                     help="access: Cloudflare Access JWT; password: one local account; none: local dev only; "
                          "authentik: campus sign-in through Authentik (AUTHENTIK_*, APP_BASE_URL, SESSION_SECRET in .env)")
-    ap.add_argument("--static", help="also serve this built front-end directory (landing page at /, Discover at /discover; local dev only)")
+    ap.add_argument("--static", help="also serve this built front-end directory (landing page at /, Discover at /discover)")
     args = ap.parse_args(argv)
     authen.configure(args.auth)
     uvicorn.run(app(args.static), host=args.host, port=args.port, access_log=False)

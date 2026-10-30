@@ -414,7 +414,7 @@ but run it anyway if it's cheap.
   `..` can't reach a gated file.
 - **No rate limit on the open endpoint.** The cache makes a request one `os.path.getmtime` call
   plus serialisation. The ceiling is a flood of requests that just costs CPU; add a per-IP limit at
-  Traefik when production hosting lands.
+  Traefik when production hosting lands. (Done in `deploy/compose.yaml`, #129.)
 - **Cache-Control and the daily rebuild.** A browser or proxy may show totals up to an hour old
   after the rebuild. That's acceptable for coarse totals.
 - **Bookmarks to `/`.** Signed-in users who bookmarked `/` now land on the landing page, one click

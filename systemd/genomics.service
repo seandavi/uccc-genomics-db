@@ -13,6 +13,9 @@ Type=oneshot
 WorkingDirectory=/home/davsean/Documents/git/uccc-genomics-db
 # NOT `/usr/bin/env uv` -- systemd --user PATH excludes ~/.local/bin (see SCHEDULING.md).
 ExecStart=%h/.local/bin/uv run genomics all
+# The campus app container (deploy/compose.yaml) bind-mounts genomics.duckdb as a file and keeps the
+# replaced inode until it restarts (#129). Skipped while the container does not exist.
+ExecStart=/bin/sh -c 'if docker container inspect uccc_genomics_app >/dev/null 2>&1; then docker restart uccc_genomics_app; fi'
 # Then rebuild the static dashboard and push it to Cloudflare Workers (README § Dashboard).
 # npm needs node on PATH; the deploy token is read from GSM at run time, never stored here.
 Environment=PATH=%h/.nvm/versions/node/v22.20.0/bin:%h/.local/bin:/usr/bin:/bin
