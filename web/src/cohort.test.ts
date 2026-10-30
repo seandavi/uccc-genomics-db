@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DATA_ENTRIES, EMPTY, EXAMPLES, KIND_LABELS, MAX_VERSIONS, accrualPerYear, addToPopulation, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
-  exampleLabel, feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
+  DATA_ENTRIES, EMPTY, EXAMPLES, KIND_LABELS, MAX_VERSIONS, accrualPerYear, addToPopulation, barPct, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
+  exampleLabel, feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor, yearSlots,
   type History,
 } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, Option, Population } from "./types.ts";
@@ -13,6 +13,27 @@ const ihc = (over: object = {}) => ({kind: "ihc", id: "c1", mode: "include", mar
 const defn = (criteria: Criterion[]): Definition => ({...EMPTY, criteria});
 
 describe("numbers", () => {
+  test("barPct: a suppressed bar is never longer than a shown bar of min_cell or more", () => {
+    for (const max of [5, 10, 400, 10000])
+      for (const m of [5, 10])
+        for (let n = m; n <= Math.max(max, m); n += Math.max(1, Math.floor(max / 50))) {
+          expect(barPct(null, max, m)).toBeLessThanOrEqual(barPct(n, max, m));
+          expect(barPct(n, max, m)).toBeLessThanOrEqual(100);
+        }
+    expect(barPct(null, 50, 5)).toBe(10);
+    expect(barPct(0, 50, 5)).toBe(0);
+    expect(barPct(3, 10000, 5)).toBe(2);
+    expect(barPct(null, 0, 5)).toBe(2);   // nothing shown: no scale, a stub rather than a full bar
+  });
+  test("yearSlots fills the gaps between the first and last year only", () => {
+    const y = (year: number) => ({year, patients: 6, complete: true});
+    expect(yearSlots([])).toEqual([]);
+    const slots = yearSlots([y(2020), y(2022)]);
+    expect(slots.map((s) => s.year)).toEqual([2020, 2021, 2022]);
+    expect(slots.map((s) => s.row === null)).toEqual([false, true, false]);
+    expect(yearSlots([y(2022), y(2020)])).toEqual(slots);
+    expect(yearSlots([y(2021)]).length).toBe(1);
+  });
   test("fmtCount", () => {
     expect(fmtCount(null)).toBe("<5");
     expect(fmtCount(undefined)).toBe("<5");

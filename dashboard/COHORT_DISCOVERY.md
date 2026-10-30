@@ -358,9 +358,14 @@ reorders the funnel.
   This view is what makes the work iterative: the user sees which criterion
   costs the most patients.
 - Tabs:
-  - *Accrual*: patients by year of first qualifying report. Years under 5
-    are drawn as a hatched "<5" bar, not left blank. Partial years (the
-    current year and date-shift spillover) are shaded.
+  - *Accrual*: patients by year of first qualifying report, one equal
+    column per year from the first to the last, so the chart never scrolls
+    (two-digit year labels past 12 years). Years under 5 are drawn as a
+    hatched "<5" bar at the height a count of 5 would have, never taller
+    than a shown bar. A year with no patients between the first and last is
+    an empty "–" slot. Partial years (the current year and date-shift
+    spillover) are shaded and marked "*". When every year is hidden the
+    chart is one hatched strip. Each mark has a legend line.
   - *Breakdown*: the phase 1 bars (disease, vendor and class, sex, age,
     alteration class).
   - *Pivot*: choose rows and columns from population dimensions or

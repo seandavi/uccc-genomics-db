@@ -219,6 +219,78 @@ describe("loosen", () => {
   });
 });
 
+describe("accrual chart", () => {
+  const yr = (year: number, patients: number | null, complete = true) => ({year, patients, complete});
+  const colOf = (html: string, year: string) => html.split('<div class="col').find((c) => c.includes(`<span>${year}`)) ?? "";
+  const heights = (html: string) => [...html.matchAll(/height:([\d.]+)%/g)].map((m) => Number(m[1]));
+  const years = (from: number, n: number) => Array.from({length: n}, (_, i) => yr(from + i, 6));
+
+  test("a null year is a hatched bar labelled <5, never 0 or blank", () => {
+    const col = colOf(render(result()), "2024");
+    expect(col).toContain("vbar hatched");
+    expect(col).toContain("&lt;5");
+    expect(col).not.toContain(">0<");
+    expect(col).not.toContain("<span></span>");
+  });
+  test("a year with no patients is an empty dash slot", () => {
+    const html = render(result({by_year: [yr(2020, 6), yr(2022, 7)]}));
+    expect(html).toContain('<div class="col gap"><div class="barbox" aria-hidden="true"></div><div class="barlabel" aria-hidden="true"><span>–</span><span>2021</span></div></div>');
+    expect(html).toContain("–: no patients that year");
+    expect(html).toContain('<th scope="row">2021</th><td>no patients</td><td>unknown</td>');
+    const gap = html.split('<div class="col').find((c) => c.startsWith(" gap")) ?? "";
+    expect(gap).not.toContain("&lt;5");
+    expect(gap).not.toContain("hatched");
+    expect(render(result({by_year: [yr(2020, 6), yr(2021, 7)]}))).not.toContain("no patients that year");
+  });
+  test("a partial year is starred, with one legend line and no third label line", () => {
+    const html = render(result());
+    expect(html).toContain("<span>2025*</span>");
+    expect(html).toContain("* partial year");
+    for (const label of html.split('<div class="barlabel"').slice(1)) expect(label.split("</div>")[0]).not.toContain("partial year");
+    expect(html).toContain("<td>partial year</td>");
+  });
+  test("more than 6 columns get the dense class (phones label alternate columns)", () => {
+    expect(render(result({by_year: years(2018, 7)}))).toContain('class="bars dense"');
+    expect(render(result({by_year: years(2018, 6)}))).toContain('class="bars"');
+  });
+  test("past 12 years the labels are two-digit; the table keeps four", () => {
+    const html = render(result({by_year: years(2010, 14)}));
+    expect(html).toContain("<span>’10</span>");
+    expect(html).toContain("<span>’23</span>");
+    expect(html).not.toContain("<span>2010</span>");
+    expect(html).toContain('<th scope="row">2010</th>');
+    expect(render(result({by_year: years(2010, 12)}))).toContain("<span>2010</span>");
+  });
+  test("a suppressed bar is not taller than a shown bar of min_cell or more", () => {
+    const [shown, hidden] = heights(render(result({by_year: [yr(2020, 5), yr(2021, null), yr(2022, 400)]})));
+    expect(hidden).toBeLessThanOrEqual(shown);
+  });
+  test("a suppressed funnel bar is drawn as min_cell would be", () => {
+    const html = render(result({funnel: [{criterion: null, patients: 50}, {criterion: "c1", patients: 5}, {criterion: "c2", patients: null}]}));
+    expect(html).toContain('class="bar hatched" style="width:10%"');
+    expect(html).toContain('class="bar" style="width:10%"');
+  });
+  test("a funnel with every step suppressed draws stubs, not full bars", () => {
+    const html = render(result({funnel: [{criterion: null, patients: null}, {criterion: "c1", patients: null}]}));
+    expect(html).toContain('class="bar hatched" style="width:2%"');
+    expect(html).not.toContain("width:100%");
+  });
+  test("every year hidden is one hatched strip", () => {
+    const html = render(result({by_year: [yr(2023, null), yr(2024, null)]}));
+    expect(html).toContain('class="strip"');
+    expect(html).toContain("Every year under 5 or hidden");
+    expect(html).not.toContain('class="bars"');
+    expect(html).toContain("<span class=\"swatch hatched\"");
+    expect(html.match(/<th scope="row">\d{4}<\/th><td><span class="suppressed"[^>]*>&lt;5/g)?.length).toBe(2);
+    expect(render(result({by_year: [yr(2023, null)], min_cell: 10}))).toContain("Every year under 10 or hidden");
+  });
+  test("no years shows a message and no chart", () => {
+    const html = render(result({by_year: []}));
+    expect(html).toContain("No years to show.");
+    expect(html).not.toContain('class="bars"');
+  });
+});
+
 describe("tabs", () => {
   test("accrual: hatched <5 year, partial year label, hidden table", () => {
     const html = render(result(), "Accrual");
