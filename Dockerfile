@@ -19,6 +19,9 @@ FROM python:3.12-slim-trixie
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=app /app/.venv /app/.venv
 COPY --from=web /web/dist /app/web/dist
+# The build context keeps host modes (umask 027 makes new files 640) and the container runs as the data
+# owner's uid, not root: make the static files world-readable.
+RUN chmod -R a+rX /app/web/dist
 ENV PATH=/app/.venv/bin:$PATH HOME=/tmp PYTHONUNBUFFERED=1 DATA=/data
 WORKDIR /app
 USER 10001
