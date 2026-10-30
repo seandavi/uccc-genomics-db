@@ -118,11 +118,12 @@ class RequireUser:
             return
         scope["state"] = {**scope.get("state", {}), "user": u}   # a fresh dict per request
         path = scope["path"]
-        if path != terms.ACCEPT_PATH and terms.gate_on():
+        if not (path == terms.ACCEPT_PATH and scope["method"] == "POST") and terms.gate_on():
             try:
                 ok = await terms.accepted(u.sub)
             except saved.Unavailable as e:   # --auth access|authentik built without a database: closed
-                await JSONResponse({"detail": str(e)}, status_code=503)(scope, receive, send)
+                await JSONResponse({"detail": "portal terms acceptance needs a database (DATABASE_URL)"},
+                                   status_code=503)(scope, receive, send)
                 return
             if not ok:
                 if scope["method"] == "GET" and not path.startswith("/api/") and path != "/mcp":
