@@ -40,6 +40,17 @@ export function accrualPerYear(patients: number | null, years: readonly [number,
   return patients / (Math.abs(years[1] - years[0]) + 1);
 }
 
+/** Patients a year for display: one decimal below 10, whole numbers (with separators) from 10. */
+export function fmtPerYear(perYear: number): string {
+  const tenth = Math.round(perYear * 10) / 10;
+  return tenth < 10 ? tenth.toFixed(1) : Math.round(perYear).toLocaleString("en-US");
+}
+
+/** True when the definition has no population value, no year window and no criteria. */
+export function isEmptyDefinition(d: Definition): boolean {
+  return d.criteria.length === 0 && d.population.years == null && POP_DIMS.every((k) => d.population[k].length === 0);
+}
+
 export const TIERS = [
   {min: 50, name: "High", desc: "≥ 50 patients/yr: observational cohorts, outcomes linkage, biomarker-stratified trials"},
   {min: 10, name: "Moderate", desc: "10–49 patients/yr: multi-year retrospective cohorts; prospective accrual takes 2–4 years"},
@@ -95,17 +106,22 @@ export function forScope(entries: Option[], scope: Definition["scope"]): Option[
 const VENDOR_NAMES = {caris: "Caris", fmi: "FMI"} as const;
 
 export function criterionLabel(c: Criterion | Leaf | SeqMember): string {
-  const vendor = "vendor" in c && c.vendor ? ` (${VENDOR_NAMES[c.vendor]})` : "";
   const mode = "mode" in c ? c.mode : "include";
-  if (mode === "tested_negative" && c.kind === "alteration") return `${c.gene.join(" and ")} tested negative${vendor}`;
-  const label = baseLabel(c) + vendor;
+  if (mode === "tested_negative" && c.kind === "alteration") return `${c.gene.join(" and ")} tested negative${vendorSuffix(c)}`;
+  const label = criterionBody(c);
   return mode === "exclude" ? `no ${label}` : label;
 }
+
+const vendorSuffix = (c: Criterion | Leaf | SeqMember): string => "vendor" in c && c.vendor ? ` (${VENDOR_NAMES[c.vendor]})` : "";
+
+/** What the criterion matches, without the mode word ("no", "tested negative"): the funnel row supplies its own prefix. */
+export const criterionBody = (c: Criterion | Leaf | SeqMember): string => baseLabel(c) + vendorSuffix(c);
 
 function baseLabel(c: Criterion | Leaf | SeqMember): string {
   switch (c.kind) {
     case "alteration": {
-      const genes = c.gene.join(" or ");
+      // every listed gene must be negative (AND); for include/exclude any one gene is enough (OR)
+      const genes = c.gene.join("mode" in c && c.mode === "tested_negative" ? " and " : " or ");
       const what = c.aa.length ? c.aa.join("/") : c.class.length ? c.class.join("/") : "alteration";
       return `${genes} ${what}${tierSuffix(c.tier)}`;
     }

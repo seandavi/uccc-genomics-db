@@ -338,13 +338,19 @@ reorders the funnel.
 
 **Centre: answer.**
 
-- Cards: patients, accrual a year over the window, percentage of the right
-  denominator, and the existing tier badge. Under the percentage the card
-  names the denominator ("of 120 NSCLC patients tested since 2023").
-- **Funnel**, an attrition table that reads like a CONSORT diagram: one row
-  for each criterion as it is added, with the count after it. This view is
-  what makes the work iterative: the user sees which criterion costs the
-  most patients.
+- Cards: patients as the hero (the largest number on the page), then accrual
+  a year with its year window and the existing tier badge, then the
+  percentage of the right denominator. Under the percentage the card names
+  the denominator ("of 120 NSCLC patients tested since 2023"). With an empty
+  definition (no population values and no criteria) the percentage card and
+  the funnel are not shown. A one-line footnote under the cards names the
+  fields that are not in the data and says the last years are partial because
+  dates are shifted (#99).
+- **How each criterion narrows the cohort** (the funnel), an attrition table
+  that reads like a CONSORT diagram: one row for each criterion as it is
+  added, prefixed "+", "−" or "+ tested negative:", with the count after it.
+  This view is what makes the work iterative: the user sees which criterion
+  costs the most patients.
 - Tabs:
   - *Accrual*: patients by year of first qualifying report. Years under 5
     are drawn as a hatched "<5" bar, not left blank. Partial years (the

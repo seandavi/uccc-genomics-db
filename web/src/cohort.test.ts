@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   DATA_ENTRIES, EMPTY, KIND_LABELS, MAX_VERSIONS, accrualPerYear, addToPopulation, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
-  feasibility, fmtCount, forScope, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
+  feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor,
   type History,
 } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, Option, Population } from "./types.ts";
@@ -27,6 +27,17 @@ describe("numbers", () => {
     expect(pct(4, 10)).toBe("40%");
     expect(pct(1, 3)).toBe("33%");
     expect(pct(0, 10)).toBe("0%");
+  });
+  test("fmtPerYear", () => {
+    expect([2, 9.94, 9.96, 30, 1234.4].map(fmtPerYear)).toEqual(["2.0", "9.9", "10", "30", "1,234"]);
+  });
+  test("isEmptyDefinition", () => {
+    expect(isEmptyDefinition(EMPTY)).toBe(true);
+    for (const same of [{name: "x"}, {scope: "report"}, {breakdown: ["sex"]}, {pivot: {rows: "year", cols: "sex"}}])
+      expect(isEmptyDefinition({...EMPTY, ...same} as Definition)).toBe(true);
+    expect(isEmptyDefinition({...EMPTY, population: {...EMPTY.population, oncotree: ["NSCLC"]}})).toBe(false);
+    expect(isEmptyDefinition({...EMPTY, population: {...EMPTY.population, years: [2024, 2025]}})).toBe(false);
+    expect(isEmptyDefinition(defn([alt()]))).toBe(false);
   });
   test("accrualPerYear and tierFor", () => {
     expect(accrualPerYear(null, [2023, 2026])).toBeNull();

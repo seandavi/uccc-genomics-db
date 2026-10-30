@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Answer, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
+import { Answer, DATA_FOOTNOTE, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
 import { EMPTY } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, PivotResult } from "./types.ts";
 
@@ -49,7 +49,7 @@ describe("suppressed counts", () => {
   test("a null funnel step is a hatched bar", () => {
     const html = render(result());
     expect(html).toMatch(/class="bar hatched"/);
-    expect(html).toContain("∧ ALK fusion");
+    expect(html).toContain("+ ALK fusion");
   });
   test("a known zero is an empty bar, not a hatched one", () => {
     const html = render(result({funnel: [{criterion: null, patients: 0}, {criterion: "c1", patients: 0}]}));
@@ -75,6 +75,78 @@ describe("cards", () => {
     const html = render(result({patients: null, denominator: null}));
     expect(html).toContain(">–<");
   });
+  test("the hero card holds the patient count", () => {
+    expect(render(result())).toContain('class="card hero"><h3>Patients</h3><p class="big">8</p>');
+  });
+  test("a suppressed patient count is <5 in the hero", () => {
+    const hero = /class="card hero"><h3>Patients<\/h3><p class="big"><span class="suppressed"[^>]*>&lt;(\d+)<\/span>/;
+    const html = render(result({patients: null, reports: null, denominator: null}));
+    expect(html.match(hero)?.[1]).toBe("5");
+    expect(html).not.toContain(">0<");
+    expect(render(result({patients: null, min_cell: 10})).match(hero)?.[1]).toBe("10");
+  });
+  test("accrual names its window", () => {
+    expect(render(result())).toContain("per year, 2023–2026");
+    const years = {...def, population: {...def.population, years: [2024, 2025] as [number, number]}};
+    expect(render(result(), "Accrual", {}, years)).toContain("per year, 2024–2025");
+    const html = renderToStaticMarkup(<Answer definition={def} answer={{d: def, r: result(), p: null}} options={null} tab="Accrual" onTab={() => {}} onOp={() => {}} />);
+    expect(html).not.toContain("per year");
+  });
+  test("accrual shows one decimal below 10 and whole numbers from 10", () => {
+    const html = render(result({patients: 120}));
+    expect(html).toContain('<p class="big">30</p>');
+    expect(html).not.toContain("30.0");
+  });
+  test("an empty definition shows no share card and no funnel", () => {
+    const html = render(result(), "Accrual", {}, EMPTY);
+    expect(html).not.toContain("Share of population");
+    expect(html).not.toContain("funnel-h");
+    expect(html).not.toContain('class="funnel"');
+    for (const text of ["Patients", "Accrual", DATA_FOOTNOTE]) expect(html).toContain(text);
+    const withYears = {...EMPTY, population: {...EMPTY.population, years: [2024, 2025] as [number, number]}};
+    for (const d of [withYears, {...EMPTY, criteria: [kras]}]) {
+      const shown = render(result(), "Accrual", {}, d);
+      expect(shown).toContain("Share of population");
+      expect(shown).toContain("funnel-h");
+    }
+  });
+});
+
+describe("funnel", () => {
+  const exclude = {...alk, id: "c2", gene: ["KEAP1"], class: [], mode: "exclude"} as Criterion;
+  const negative = {...alk, id: "c3", gene: ["STK11"], class: [], mode: "tested_negative"} as Criterion;
+  const d: Definition = {...def, criteria: [kras, exclude, negative]};
+  const r = result({funnel: [
+    {criterion: null, patients: 120}, {criterion: "c1", patients: 40}, {criterion: "c2", patients: 30}, {criterion: "c3", patients: 20},
+  ]});
+  test("step prefixes by mode, no ∧", () => {
+    const html = render(r, "Accrual", {}, d);
+    for (const label of ["+ KRAS G12C", "− KEAP1 alteration", "+ tested negative: STK11 alteration"]) expect(html).toContain(label);
+    expect(html).not.toContain("∧");
+    expect(html).not.toContain("− no ");
+  });
+  test("a tested-negative step lists its genes with and, not or", () => {
+    const two = {...negative, gene: ["STK11", "KEAP1"]} as Criterion;
+    const html = render(r, "Accrual", {}, {...d, criteria: [kras, exclude, two]});
+    expect(html).toContain("+ tested negative: STK11 and KEAP1 alteration");
+    expect(html).not.toContain("STK11 or KEAP1");
+  });
+  test("the heading names the narrowing", () => {
+    expect(render(r, "Accrual", {}, d)).toContain("How each criterion narrows the cohort");
+  });
+});
+
+describe("answer heading and data footnote", () => {
+  test("the heading is the cohort name or Your cohort", () => {
+    expect(render(result(), "Accrual", {}, {...def, name: "Lung pilot"})).toContain('<h2 id="answer-h" tabindex="-1">Lung pilot</h2>');
+    for (const name of ["", "  "]) expect(render(result(), "Accrual", {}, {...def, name})).toContain('<h2 id="answer-h" tabindex="-1">Your cohort</h2>');
+  });
+  test("the footnote sits under the cards, before the tabs", () => {
+    const html = render(result());
+    expect(html).toContain(`<p class="hint footnote">${DATA_FOOTNOTE} <button type="button" class="btn-tertiary">More in Data notes</button></p>`);
+    expect(html.indexOf('class="card hero"')).toBeLessThan(html.indexOf('class="hint footnote"'));
+    expect(html.indexOf('class="hint footnote"')).toBeLessThan(html.indexOf('class="tabs"'));
+  });
 });
 
 describe("loosen", () => {
@@ -89,7 +161,7 @@ describe("loosen", () => {
     const edited: Definition = {...def, criteria: [kras, egfr]};
     const counted: Counted = {d: def, r: result({patients: null, loosen: [{drop: "c2", patients: 6}]}), p: null};
     const html = renderToStaticMarkup(<Answer definition={edited} answer={counted} options={null} tab="Accrual" onTab={() => {}} onOp={() => {}} />);
-    expect(html).toContain("∧ ALK fusion");
+    expect(html).toContain("+ ALK fusion");
     expect(html).not.toContain("EGFR");
     expect(html).toMatch(/<button type="button" disabled="">Drop<\/button>/);
     expect(html).not.toContain("dim");   // stale, not busy
