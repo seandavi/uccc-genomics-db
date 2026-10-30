@@ -320,9 +320,9 @@ max-age=3600`.
 Production runs it in a container ([Production (container)](#production-container)).
 
 **Portal terms (#131).** After sign-in, a user who has not accepted the current portal terms
-(docs/HONEST_BROKER.md decision 3) sees the terms as a full page with Accept and Sign out, served in
+(docs/HONEST_BROKER.md decision 3) sees the terms as a full page with "I accept these terms" and Sign out, served in
 place at whatever gated address the browser opened (so a Discover `#d=` link survives). Until they
-accept, `/api/*` and `/mcp` answer 403 `{"detail": "You have not accepted the current portal terms. ..."}`.
+accept, `/api/*` and `/mcp` answer 403 `{"detail": "The portal terms have changed or have not been accepted. ..."}`.
 Only `POST /api/terms/accept` (JSON `{"version": ...}`; 409 if the version is stale), sign-out and the
 open routes above are reachable. The text and version are code constants in
 `mcp/src/uccc_genomics_mcp/terms.py`: to change the terms, edit `TERMS_TEXT`, bump `TERMS_VERSION`

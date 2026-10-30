@@ -7,7 +7,7 @@ GitHub. This change stores only who accepted which terms version, and when.
 ## Goal
 
 1. After sign-in, a user who has not accepted the **current** terms version sees the terms as a full
-   page, with **Accept** and **Sign out**, before Discover or any other gated page.
+   page, with **I accept these terms** and **Sign out**, before Discover or any other gated page.
 2. Acceptance is stored in Postgres as `(sub, terms_version, accepted_at)`. Changing the terms means
    bumping `TERMS_VERSION`, and then every user is asked again.
 3. Until the user accepts, REST (`/api/*`) and MCP (`/mcp`) answer **403** with a clear message.
@@ -80,8 +80,8 @@ TERMS_TEXT = (
     "attempt to identify any individual, link portal data with other sources to re-identify individuals, or "
     "share screenshots or exports beyond my study team. Identifiable data is available only through an "
     "approved honest-broker request tied to an active IRB authorization. Queries are logged.")
-TERMS_REQUIRED = ("You have not accepted the current portal terms. Open /discover in a browser (or reload "
-                  "it) to read and accept them.")
+TERMS_REQUIRED = ("The portal terms have changed or have not been accepted. Reload this page (or open "
+                  "/discover in a browser) to read and accept them.")
 ACCEPT_PATH = "/api/terms/accept"
 DEV_MODES = ("none", "password")
 
@@ -143,7 +143,7 @@ def page(sign_out: bool) -> HTMLResponse:
 - Built on `authen._HEAD`, the same head, `lang`, viewport and `<h1>` as the sign-in pages.
 - Then `<h2>Portal terms</h2>`, `<p>{html.escape(TERMS_TEXT)}</p>` and
   `<p>Version {html.escape(TERMS_VERSION)}</p>`.
-- Then `<p><button type="button" id="accept">Accept</button>`. When `sign_out` is true, add
+- Then `<p>You need to accept these terms to use the portal.</p><p><button type="button" id="accept">I accept these terms</button>`. When `sign_out` is true, add
   ` <button type="button" id="sign-out">Sign out</button>`. Close with `</p>` and
   `<p id="error" role="alert"></p>`.
 - Then one inline `<script>`. The version is embedded with `json.dumps(TERMS_VERSION)`. The script:
