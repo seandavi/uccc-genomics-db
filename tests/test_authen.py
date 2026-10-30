@@ -112,6 +112,7 @@ def make(issuer, tmp_path, monkeypatch):
     """make(base) -> a client for the app configured for authentik at APP_BASE_URL=base."""
     (tmp_path / "static").mkdir()
     (tmp_path / "static" / "index.html").write_text("<p>site</p>")
+    (tmp_path / "static" / "discover.html").write_text("<p>discover</p>")
     with ExitStack() as stack:
         def factory(base="http://testserver"):
             monkeypatch.setenv("APP_BASE_URL", base)
@@ -218,7 +219,7 @@ def test_login_when_the_issuer_is_down_is_502(c, issuer):
 
 def test_member_signs_in(c, issuer, capsys):
     r = sign_in(c, issuer)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert r.status_code == 303 and r.headers["location"] == "/discover"
     cookie = next(h for h in r.headers.get_list("set-cookie") if h.startswith("uccc_session="))
     low = cookie.lower()
     assert "httponly" in low and "samesite=lax" in low and "max-age=28800" in low and "secure" not in low
@@ -355,7 +356,7 @@ def test_refusal_page_escapes_the_group(make, issuer, monkeypatch):
 
 
 def test_pages_have_lang_viewport_and_heading(c, issuer):
-    for r in (c.get("/auth/callback"), c.get("/")):
+    for r in (c.get("/auth/callback"), c.get("/discover")):
         assert r.status_code in (400, 401)
         assert '<html lang="en">' in r.text and 'name="viewport"' in r.text and "<h1>" in r.text
 
@@ -369,8 +370,9 @@ def test_callback_when_the_token_endpoint_fails_is_502(c, issuer):
 
 
 @pytest.mark.parametrize("next, landing", [
-    ("//evil.example", "/"), ("https://evil.example", "/"), ("/auth/logout", "/"), ("/\\evil.example", "/"),
-    ("/x\r\ny", "/"), ("/x?y=1#d=abc", "/x?y=1#d=abc"), (None, "/")])
+    ("//evil.example", "/discover"), ("https://evil.example", "/discover"), ("/auth/logout", "/discover"),
+    ("/\\evil.example", "/discover"), ("/x\r\ny", "/discover"), ("/x?y=1#d=abc", "/x?y=1#d=abc"),
+    ("/discover#d=abc", "/discover#d=abc"), (None, "/discover")])
 def test_next_is_same_site_only(c, issuer, next, landing):
     r = sign_in(c, issuer, next=next)
     assert r.status_code == 303 and r.headers["location"] == landing
@@ -409,7 +411,7 @@ def test_session_cookie_is_not_a_login_cookie(c, issuer):
 
 # --- gating --------------------------------------------------------------------------------------
 
-STATIC = [("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path")]
+STATIC = [("GET", "/discover"), ("GET", "/discover.html"), ("GET", "/index.html"), ("GET", "/no/such/path")]
 
 
 @pytest.mark.parametrize("method, path", GATED)
@@ -447,6 +449,8 @@ def test_session_cookie_opens_every_route(c, issuer, method, path):
 
 def test_open_paths(c, issuer):
     assert c.get("/api/health").status_code == 200
+    assert c.get("/").status_code == 200
+    assert c.get("/api/public/summary").status_code == 200
     assert c.get("/auth/login").status_code == 302
     assert c.get("/auth/callback").status_code == 400
     assert c.post("/auth/logout").status_code == 200
