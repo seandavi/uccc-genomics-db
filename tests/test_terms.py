@@ -103,6 +103,8 @@ def test_unaccepted_user_is_refused_everywhere(gate):
         assert html.escape(terms.TERMS_TEXT) in r.text and terms.TERMS_VERSION in r.text and 'id="accept"' in r.text
         assert r.headers["cache-control"] == "no-store"
     assert gate.get("/mcp", headers=HDR).json() == {"detail": terms.TERMS_REQUIRED}
+    r = gate.post("/api/requests", json={"cohort": "00000000-0000-0000-0000-000000000000", "seq": 1}, headers=HDR)
+    assert r.status_code == 403 and r.json() == {"detail": terms.TERMS_REQUIRED}
 
 
 def test_open_routes_stay_open_for_an_unaccepted_user(gate):

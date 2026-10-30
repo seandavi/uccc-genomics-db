@@ -462,7 +462,7 @@ def test_session_cookie_is_not_a_login_cookie(c, issuer):
 
 # --- gating --------------------------------------------------------------------------------------
 
-STATIC = [("GET", "/discover"), ("GET", "/discover.html"), ("GET", "/index.html"), ("GET", "/no/such/path")]
+STATIC = [("GET", "/discover"), ("GET", "/requests"), ("GET", "/discover.html"), ("GET", "/index.html"), ("GET", "/no/such/path")]
 
 
 @pytest.mark.parametrize("method, path", GATED)
