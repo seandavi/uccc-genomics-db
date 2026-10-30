@@ -33,7 +33,7 @@ classes, merged). It reworks the header and the page grid in `web/` only.
   Compare panel's helper text. The Feasibility button stays disabled while there is no current
   answer. Item 7 gives it a visible reason (review 3.4).
 - No click-outside or focus-trap behaviour for the ⋯ menu. It closes on ⋯, on Escape and when an
-  action in it is chosen.
+  action in it is chosen. Since #125 it also closes when Tab moves focus out of the header.
 - **No data or output-path change.** Nothing under `src/uccc_genomics/`, `mcp/`, `dashboard/` or
   `systemd/` changes. No schema, table or column changes. The summary bar shows numbers the answer
   cards already show (the same `CountResult`, through the same `Count` component), so it is not a
@@ -135,7 +135,11 @@ the CSS and tests use them.
 ```tsx
 const single = hist.versions.length < 2;
 const last = hist.versions.length - 1;
-<header className="top">
+<header className="top"
+  onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}
+  onBlur={(e) => {   // Tab out of the header closes the menu, so it never covers the focused control (WCAG 2.4.11)
+    if (menuOpen && e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget)) setMenuOpen(false);
+  }}>
   <h1>Discover</h1>
   <input aria-label="Cohort name" className="cohort-name" placeholder="Untitled cohort" value={name} maxLength={200}
     onChange={(e) => setName(e.target.value)} onBlur={commitName}
@@ -153,8 +157,7 @@ const last = hist.versions.length - 1;
   </div>
   <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
     aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
-  <div id="header-actions" className={menuOpen ? "actions open" : "actions"}
-    onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}>
+  <div id="header-actions" className={menuOpen ? "actions open" : "actions"}>
     <button type="button" className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
     <button type="button" className="btn-secondary" aria-expanded={panel === "compare"} disabled={single}
       aria-describedby={single ? "compare-why" : undefined} onClick={() => togglePanel("compare")}>Compare</button>

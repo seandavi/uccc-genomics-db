@@ -50,6 +50,11 @@ to a history entry whose URL `replaceState` already set to the current version's
 (goal 3) compares the hash with `shareHash(current definition)` and returns before any request, so
 that case is a no-op rather than a round trip.
 
+Back/Forward can also reach an entry holding another version's hash. Pasting link B into a tab
+showing A creates a new history entry whose state `setHist` replaces, but the previous entry still
+holds A's hash. Back then fires `hashchange` with A's hash, which is not the current version, so
+`applyShareHash` adds A as a new version; Forward adds B again.
+
 ### `web/src/App.tsx`: new exported function
 
 The body of the mount effect's `if (window.location.hash.startsWith("#d="))` block moves into one
@@ -199,6 +204,9 @@ Checks: `cd web && bun install --frozen-lockfile && bun run typecheck && bun tes
 
 ## Risks
 
+- **Back/Forward across a pasted link** re-applies the other entry's cohort as a new version (no
+  popstate handling, by design); ↶/↷ is the in-app undo. A later change could select an existing
+  equal version instead of pushing.
 - **Two pastes in quick succession** both resolve and push in resolve order; the last to resolve
   is current. Acceptable for a user action; no sequence guard is added.
 - **A paste while an edit is in flight** pushes both versions; neither is lost, because both paths

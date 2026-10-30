@@ -178,7 +178,7 @@ export function FeasibilityPanel({statement, copied, onCopy, onClose, textareaRe
   button row:
 
   ```tsx
-  <p className="hint">Compare needs two or more edits. Make a change to the cohort, then compare the versions here.</p>
+  <p className="hint">Compare needs two or more versions. Make a change to the cohort, then compare the versions here.</p>
   <div className="row"><button type="button" onClick={onClose}>Close</button></div>
   ```
 
@@ -350,7 +350,7 @@ functions, as the current suites do. No backend runs, and nothing reads `$DATA`.
   - the `FeasibilityPanel` source contains `e.key === "Escape"`.
 - **`compare.test.tsx`, new `describe("Compare")`**: render `<Compare versions={…} transport={{} as
   Transport} years={null} onClose={() => {}} />`:
-  - with one version (`{n: 1, definition: EMPTY}`): contains "Compare needs two or more edits",
+  - with one version (`{n: 1, definition: EMPTY}`): contains "Compare needs two or more versions",
     contains `>Close</button>`, does not contain `type="checkbox"`, `Compare selected` or
     `disabled=""`;
   - with two versions: contains `>Compare selected</button>` and does not contain `>Count<`.
@@ -391,6 +391,9 @@ functions, as the current suites do. No backend runs, and nothing reads `$DATA`.
 
 ## Risks
 
+- **Focus after closing a panel.** `closePanel` restores focus after the close commits, skipping a
+  trigger that is hidden or now disabled (the Feasibility button when the cohort was edited while
+  the panel was open): ⋯ next, then the answer heading (#125).
 - **A floating panel covers the top of the answer column** while it is open. That is the point of
   "anchored", and the panel holds only the statement and buttons. Escape and Close dismiss it and
   return focus. If it covers too much on a phone, a follow-up can drop `.floating` at 600px and

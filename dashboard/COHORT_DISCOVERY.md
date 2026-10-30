@@ -314,11 +314,11 @@ need its own checks, so the page says why there are none.
 │ + sex  + age  + assay        │  │ patients │ │ accrual  │ │ of 120   │ │        │ │ > How many KRAS G12C lung   │
 │                              │  └──────────┘ └──────────┘ │ tested   │ └────────┘ │   patients could we screen  │
 │ CRITERIA            (AND)    │                            └──────────┘            │   for a sotorasib combo?    │
-│ ┌──────────────────────────┐ │  FUNNEL                                            │                             │
-│ │ ● KRAS G12C  pathogenic  │ │  NSCLC 2023+            120 ████████████████████   │ I set: NSCLC, KRAS G12C,    │
-│ │   mutation · any report  │ │  ∧ KRAS G12C              8 ██                     │ 2023 onward. 8 patients,    │
-│ └──────────────────────────┘ │  ∧ no STK11/KEAP1         6 █                      │ about 2 a year...           │
-│ ┌──────────────────────────┐ │  ∧ PD-L1 TPS ≥ 50        <5 ▒                      │                             │
+│ ┌──────────────────────────┐ │  HOW EACH CRITERION NARROWS THE COHORT             │                             │
+│ │ ● KRAS G12C  pathogenic  │ │  NSCLC 2023+                  120 ██████████████   │ I set: NSCLC, KRAS G12C,    │
+│ │   mutation · any report  │ │  + KRAS G12C                    8 █                │ 2023 onward. 8 patients,    │
+│ └──────────────────────────┘ │  − STK11 or KEAP1 alteration    6 █                │ about 2 a year...           │
+│ ┌──────────────────────────┐ │  + PD-L1 TPS ≥ 50              <5 ▒                │                             │
 │ │ ⊘ STK11 or KEAP1         │ │                                                    │ [Apply] [Show me why]       │
 │ │   exclude                │ │  [ Accrual ] [ Breakdown ] [ Pivot ] [ Data notes ]│                             │
 │ └──────────────────────────┘ │  ▁▃▅▂  2023 <5  2024 <5  2025 <5  2026 <5          │ Suggestions:                │
