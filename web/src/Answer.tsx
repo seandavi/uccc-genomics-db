@@ -1,8 +1,8 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
-  BREAKDOWN_DIMS, accrualPerYear, criterionLabel, fmtCount, pct, pivotAxes, populationLabel, tierFor,
+  BREAKDOWN_DIMS, accrualPerYear, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor,
 } from "./cohort.ts";
-import type { BreakdownDim, CountResult, Definition, Operation, Options, PivotResult } from "./types.ts";
+import type { BreakdownDim, CountResult, Criterion, Definition, Operation, Options, PivotResult } from "./types.ts";
 
 export const TABS = ["Accrual", "Breakdown", "Pivot", "Data notes"] as const;
 export type Tab = (typeof TABS)[number];
@@ -18,7 +18,9 @@ export function Count({n, minCell}: {n: number | null | undefined; minCell: numb
 function stepLabel(d: Definition, i: number, criterion: string | null): string {
   if (i === 0 || criterion == null) return populationLabel(d.population);
   const c = d.criteria.find((x) => x.id === criterion);
-  return `∧ ${c ? criterionLabel(c) : criterion}`;
+  if (!c) return `+ ${criterion}`;
+  const label = criterionLabel({...c, mode: "include"} as Criterion);   // the mode word is the prefix, once
+  return c.mode === "exclude" ? `− ${label}` : c.mode === "tested_negative" ? `+ tested negative: ${label}` : `+ ${label}`;
 }
 
 /** The accrual tier as a pill: `tier tier-high|tier-moderate|tier-low`, with the tier's description as its title. */
@@ -34,7 +36,7 @@ function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options
   const share = pct(r.patients, r.denominator);
   return (
     <div className="cards">
-      <div className="card">
+      <div className="card hero">
         <h3>Patients</h3>
         <p className="big"><Count n={r.patients} minCell={r.min_cell} /></p>
         <p className="sub">{r.reports == null
@@ -42,24 +44,33 @@ function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options
           : <>in <Count n={r.reports} minCell={r.min_cell} /> reports</>}</p>
       </div>
       <div className="card">
-        <h3>Accrual a year</h3>
-        <p className="big">{perYear == null ? "–" : perYear.toFixed(1)}</p>
+        <h3>Accrual</h3>
+        <p className="big">{perYear == null ? "–" : fmtPerYear(perYear)}</p>
+        {window && <p className="sub">per year, {window[0]}–{window[1]}</p>}
         {perYear != null && <p className="sub"><TierPill perYear={perYear} /></p>}
       </div>
-      <div className="card">
+      {!isEmptyDefinition(d) && <div className="card">
         <h3>Share of population</h3>
         <p className="big">{share ?? "–"}</p>
         <p className="sub">of <Count n={r.denominator} minCell={r.min_cell} /> patients {pop === "All patients" ? "(all patients)" : `in ${pop}`}</p>
-      </div>
+      </div>}
     </div>
   );
+}
+
+export const DATA_FOOTNOTE = "Not in this data: stage, treatment, outcomes, race and ethnicity. "
+  + "Dates are shifted for de-identification; the last years are partial.";
+
+function DataFootnote({onTab}: {onTab: (t: Tab) => void}) {
+  return <p className="hint footnote">{DATA_FOOTNOTE}{" "}
+    <button type="button" className="btn-tertiary" onClick={() => onTab("Data notes")}>More in Data notes</button></p>;
 }
 
 function Funnel({r, d}: {r: CountResult; d: Definition}) {
   const top = r.funnel[0]?.patients ?? null;
   return (
     <section aria-labelledby="funnel-h">
-      <h3 id="funnel-h">Funnel</h3>
+      <h3 id="funnel-h">How each criterion narrows the cohort</h3>
       <ol className="funnel">
         {r.funnel.map((s, i) => (
           <li key={i}>
@@ -271,7 +282,7 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
   const stale = !!answer && answer.d !== definition;
   return (
     <main aria-labelledby="answer-h" aria-busy={busy}>
-      <h2 id="answer-h" tabIndex={-1}>Answer</h2>
+      <h2 id="answer-h" tabIndex={-1}>{definition.name.trim() || "Your cohort"}</h2>
       {editError && <p role="alert" className="error">{editError}</p>}
       {error && <p role="alert" className="error">{error}{onRetry && <> <button type="button" onClick={onRetry}>Retry</button></>}</p>}
       {!answer ? <p>{busy ? "Counting…" : "No result yet."}</p> : (() => {
@@ -282,8 +293,9 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
               {r.patients == null ? "patient count not shown" : `${fmtCount(r.patients)} patients`}
             </p>
             <Cards r={r} d={counted} options={options} />
+            <DataFootnote onTab={onTab} />
             <Loosen r={r} d={counted} stale={stale} onOp={onOp} />
-            <Funnel r={r} d={counted} />
+            {!isEmptyDefinition(counted) && <Funnel r={r} d={counted} />}
             <div role="tablist" aria-label="Views" className="tabs" onKeyDown={onKey}>
               {TABS.map((t, i) => (
                 <button key={t} type="button" role="tab" id={`tab-${i}`} aria-selected={t === tab} aria-controls="tabpanel"

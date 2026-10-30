@@ -80,6 +80,14 @@ describe("tier colours are semantic", () => {
   });
 });
 
+test("the patient count is the largest type", () => {
+  expect(rule(".card.hero .big")).toContain("var(--fs-hero)");
+  expect(rule(".big")).toContain("var(--fs-2xl)");
+  expect(rule(".big")).toContain("tabular-nums");
+  expect(rule(".barlabel")).toContain("tabular-nums");
+  for (const [k, v] of Object.entries(light)) if (/^--fs-/.test(k) && k !== "--fs-hero") expect([k, parseInt(light["--fs-hero"]) > parseInt(v)]).toEqual([k, true]);
+});
+
 test("controls: sr-only, minimum heights and button classes", () => {
   const sr = rule(".sr-only");
   for (const p of ["margin: -1px", "padding: 0", "border: 0"]) expect(sr).toContain(p);
@@ -101,6 +109,7 @@ test("mobile shell: actions behind the more button, history on its own row, stic
   const inMobile = (sel: string) => mobile.match(new RegExp("\\n\\s*" + sel.replace(/\./g, "\\.") + " \\{([^}]*)\\}"))?.[1] ?? "";
   expect(inMobile(".more")).toContain("display: inline-flex");
   expect(inMobile(".history")).toContain("flex-basis: 100%");
+  expect(inMobile(".card.hero")).toContain("grid-column: 1 / -1");
   expect(inMobile(".summary-bar")).toContain("position: sticky");
   expect(inMobile(".summary-bar")).toContain("bottom: 0");
   expect(css.replace(/@media \(max-width: 600px\)\s*\{[\s\S]*?\n\}/, "")).toContain(".summary-bar { display: none; }");

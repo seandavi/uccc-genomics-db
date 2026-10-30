@@ -40,6 +40,17 @@ export function accrualPerYear(patients: number | null, years: readonly [number,
   return patients / (Math.abs(years[1] - years[0]) + 1);
 }
 
+/** Patients a year for display: one decimal below 10, whole numbers (with separators) from 10. */
+export function fmtPerYear(perYear: number): string {
+  const tenth = Math.round(perYear * 10) / 10;
+  return tenth < 10 ? tenth.toFixed(1) : Math.round(perYear).toLocaleString("en-US");
+}
+
+/** True when the definition has no population value, no year window and no criteria. */
+export function isEmptyDefinition(d: Definition): boolean {
+  return d.criteria.length === 0 && d.population.years == null && POP_DIMS.every((k) => d.population[k].length === 0);
+}
+
 export const TIERS = [
   {min: 50, name: "High", desc: "≥ 50 patients/yr: observational cohorts, outcomes linkage, biomarker-stratified trials"},
   {min: 10, name: "Moderate", desc: "10–49 patients/yr: multi-year retrospective cohorts; prospective accrual takes 2–4 years"},

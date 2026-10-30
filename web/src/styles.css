@@ -80,6 +80,7 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
     padding: var(--s2) var(--s4); background: var(--surface); border-top: 1px solid var(--line);
   }
   .summary-bar a { margin-left: auto; color: var(--accent); }
+  .card.hero { grid-column: 1 / -1; }
 }
 .summary-count { font-weight: 600; font-variant-numeric: tabular-nums; padding: 0 var(--s1); border-radius: 4px; }
 
@@ -108,11 +109,15 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .typeahead .field { color: inherit; opacity: .75; font-size: var(--fs-sm); line-height: var(--lh-sm); }
 
 /* answer */
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.cards { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--s3); margin-bottom: var(--s2); }
 .card { border: 1px solid var(--line); border-radius: 6px; padding: .6rem .8rem; background: var(--surface); }
 .card h3 { color: var(--muted); font-weight: 600; }
 .card p { margin: 0; }
-.big { font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 600; }
+.big { font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) { .cards { grid-template-columns: 1fr 1fr; } }   /* after .cards: same specificity, later wins */
+.card.hero .big { font-size: var(--fs-hero); line-height: var(--lh-hero); }
+.footnote { margin: 0 0 var(--s4); }
+.footnote .btn-tertiary { min-height: 0; padding: 0; font-size: inherit; }
 .sub { color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-sm); }
 .tier { display: inline-block; font-weight: 600; font-size: var(--fs-xs); line-height: var(--lh-xs); padding: 2px var(--s2); border-radius: 999px; }
 .tier-high { color: var(--high); background: var(--high-bg); }
@@ -139,7 +144,7 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .accrual .barbox { flex: 1; display: flex; align-items: flex-end; }
 .vbar { width: 100%; background: var(--bar); border-radius: 2px 2px 0 0; }
 .col.partial .vbar:not(.hatched) { background: var(--bar-partial); }
-.barlabel { display: flex; flex-direction: column; align-items: center; font-size: var(--fs-xs); line-height: var(--lh-xs); }
+.barlabel { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; font-size: var(--fs-xs); line-height: var(--lh-xs); }
 figcaption { color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-sm); margin-top: .4rem; }
 figure { margin: 0; }
 
