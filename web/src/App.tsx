@@ -77,6 +77,16 @@ export function Who({me, onSignOut}: {me: Me; onSignOut: () => void}) {
   );
 }
 
+/** d as a new version, through the server: apply(d, rename to its own name) validates it, against the vocabulary
+ *  too, and returns its normal form. history() is read after the request, so an edit made meanwhile is kept;
+ *  no version is added when the normal form equals the current version. Throws what transport.apply throws. */
+export async function applyDefinition(d: Definition, history: () => History, transport: Pick<Transport, "apply">): Promise<History> {
+  const n = (d as {name?: unknown}).name;   // a share link's JSON is unchecked until the server reads it
+  const r = await transport.apply(d, {op: "rename", name: typeof n === "string" ? n : ""});
+  const h = history();
+  return JSON.stringify(r.definition) === JSON.stringify(h.versions[h.current].definition) ? h : pushVersion(h, r.definition);
+}
+
 /** What a URL hash does to the history. null: it is the current version's share hash (setHist wrote it),
  *  nothing to do. {history}: the history with the link's definition as a new version, or the history read
  *  after the request (unchanged) when the server's form equals the current version or the hash is not a
@@ -90,10 +100,7 @@ export async function applyShareHash(hash: string, history: () => History, trans
   try {
     const decoded = readShareHash(hash);
     if (decoded === null) throw new Error("it could not be read");
-    const n = (decoded as {name?: unknown}).name;
-    const r = await transport.apply(decoded as Definition, {op: "rename", name: typeof n === "string" ? n : ""});
-    const h = history();
-    return {history: JSON.stringify(r.definition) === JSON.stringify(h.versions[h.current].definition) ? h : pushVersion(h, r.definition)};
+    return {history: await applyDefinition(decoded as Definition, history, transport)};
   } catch (e) {
     return {error: `This link does not hold a valid cohort: ${describeError(e)}`};
   }
@@ -167,6 +174,16 @@ export function App({transport, account}: {transport: Transport; account?: Accou
       refresh();
     } catch (e) {
       setEditError({at, message: describeError(e)});
+    }
+  }, [transport, setHist, refresh]);
+
+  const applyExample = useCallback(async (d: Definition) => {
+    try {
+      setHist(await applyDefinition(d, () => histRef.current, transport));
+      setEditError(null);
+      refresh();
+    } catch (e) {
+      setEditError({at: "answer", message: `This example could not be used: ${describeError(e)}`});
     }
   }, [transport, setHist, refresh]);
 
@@ -280,7 +297,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
           <Builder definition={current} transport={transport} options={options} onOp={(op) => edit(op, "builder")} />
         </div>
         <Answer definition={current} answer={answer} options={options} tab={tab} onTab={setTab}
-          onOp={(op) => edit(op, "answer")} onRetry={refresh} busy={busy} error={answerError}
+          onOp={(op) => edit(op, "answer")} onRetry={refresh} busy={busy} error={answerError} onExample={applyExample}
           editError={editError?.at === "answer" ? editError.message : null} />
       </div>
       <SummaryBar answer={answer} options={options} />
