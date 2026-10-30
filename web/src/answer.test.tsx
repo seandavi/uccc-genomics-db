@@ -207,3 +207,15 @@ describe("states", () => {
     expect(html).toContain('role="tabpanel"');
   });
 });
+
+describe("Data notes and the answer heading", () => {
+  test("the Data notes tab shows the cohort id for support", () => {
+    const html = render(result(), "Data notes");
+    expect(html).toContain("Cohort ID (for support)");
+    expect(html).toContain("<code>abc</code>");
+    expect(render(result())).not.toContain("<code>abc</code>");
+  });
+  test("the answer heading is a focus target", () => {
+    expect(render(result())).toContain('id="answer-h" tabindex="-1"');
+  });
+});

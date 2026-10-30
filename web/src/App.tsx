@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Answer, type Counted, type Tab } from "./Answer.tsx";
+import { Answer, Count, TierPill, type Counted, type Tab } from "./Answer.tsx";
 import { Builder } from "./Builder.tsx";
 import { Compare } from "./Compare.tsx";
-import { EMPTY, HISTORY_KEY, feasibility, pushVersion, readShareHash, shareHash, type History } from "./cohort.ts";
+import { EMPTY, HISTORY_KEY, accrualPerYear, feasibility, pushVersion, readShareHash, shareHash, type History } from "./cohort.ts";
 import { describeError, type Transport } from "./transport.ts";
 import type { Definition, Operation, Options } from "./types.ts";
 
@@ -32,6 +32,42 @@ export function FeasibilityPanel({statement, copied, onCopy, onClose, textareaRe
   );
 }
 
+export function SharePanel({link, copied, cohortId, onClose}: {
+  link: string; copied: boolean; cohortId: string | null; onClose: () => void;
+}) {
+  return (
+    <section aria-label="Share" className="panel">
+      <div className="row">
+        <input readOnly aria-label="Share link" className="link" value={link} autoFocus onFocus={(e) => e.currentTarget.select()} />
+        {copied && <span role="status">Link copied</span>}
+        <button type="button" onClick={onClose}>Close</button>
+      </div>
+      {cohortId && <p className="hint">Cohort ID (for support): <code>{cohortId}</code></p>}
+    </section>
+  );
+}
+
+/** The patient count, tier and a jump to the answer: shown only at 600px and below (CSS). */
+export function SummaryBar({answer, options}: {answer: Counted | null; options: Options | null}) {
+  if (!answer) return null;
+  const {d, r} = answer;
+  const perYear = accrualPerYear(r.patients, d.population.years ?? options?.years ?? null);
+  const view = (e: React.MouseEvent) => {
+    e.preventDefault();   // a #answer-h fragment would replace the share hash in the address bar
+    const h = document.getElementById("answer-h");
+    h?.scrollIntoView();
+    h?.focus();
+  };
+  return (
+    <div className="summary-bar" role="region" aria-label="Cohort summary">
+      <span><span className={r.patients == null ? "summary-count hatched" : "summary-count"}>
+        <Count n={r.patients} minCell={r.min_cell} /></span> patients</span>
+      {perYear != null && <TierPill perYear={perYear} />}
+      <a href="#answer-h" onClick={view}>View</a>
+    </div>
+  );
+}
+
 export function App({transport}: {transport: Transport}) {
   const [hist, setHistState] = useState<History>(loadHistory);
   const histRef = useRef(hist);
@@ -44,9 +80,10 @@ export function App({transport}: {transport: Transport}) {
   const [editError, setEditError] = useState<{at: "builder" | "answer"; message: string} | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [name, setName] = useState(hist.versions[hist.current].definition.name);
-  const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [panel, setPanel] = useState<"compare" | "feasibility" | null>(null);
+  const [panel, setPanel] = useState<"compare" | "feasibility" | "share" | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const [statementCopied, setStatementCopied] = useState(false);
   const statementRef = useRef<HTMLTextAreaElement>(null);
   const seq = useRef(0);
@@ -59,7 +96,6 @@ export function App({transport}: {transport: Transport}) {
     setHistState(h);
     const d = h.versions[h.current].definition;
     setName(d.name);
-    setLink(null);
     setCopied(false);
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch { /* storage full or disabled */ }
     window.history.replaceState(null, "", shareHash(d));
@@ -134,17 +170,23 @@ export function App({transport}: {transport: Transport}) {
   }, [tab, refresh]);
 
   const commitName = () => { if (name !== current.name) edit({op: "rename", name}, "builder"); };
+  const go = (i: number) => { setHist({...histRef.current, current: i}); refresh(); };
   const share = async () => {
+    setMenuOpen(false);
+    if (panel === "share") { setPanel(null); return; }
+    setPanel("share");
+    setCopied(false);
     if (navigator.clipboard) {
-      try { await navigator.clipboard.writeText(window.location.href); setCopied(true); return; } catch { /* fall through */ }
+      try { await navigator.clipboard.writeText(window.location.href); setCopied(true); } catch { /* the panel shows the link to copy */ }
     }
-    setLink(window.location.href);
   };
 
   const stale = !!answer && answer.d !== current;
   const statement = answer && !stale ? feasibility(answer.d, answer.r, answer.d.population.years ?? options?.years ?? null) : "";
   useEffect(() => setStatementCopied(false), [statement]);
-  const togglePanel = (p: "compare" | "feasibility") => { setPanel(panel === p ? null : p); setStatementCopied(false); };
+  const togglePanel = (p: "compare" | "feasibility") => { setPanel(panel === p ? null : p); setStatementCopied(false); setMenuOpen(false); };
+  const single = hist.versions.length < 2;
+  const last = hist.versions.length - 1;
   const copyStatement = async () => {
     if (statement === "") return;
     if (navigator.clipboard) {
@@ -157,23 +199,36 @@ export function App({transport}: {transport: Transport}) {
     <div className="app">
       <header className="top">
         <h1>Discover</h1>
-        <input aria-label="Cohort name" placeholder="Untitled cohort" value={name} maxLength={200}
+        <input aria-label="Cohort name" className="cohort-name" placeholder="Untitled cohort" value={name} maxLength={200}
           onChange={(e) => setName(e.target.value)} onBlur={commitName}
           onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-        <label>Version{" "}
-          <select aria-label="Version" value={hist.current}
-            onChange={(e) => { setHist({...hist, current: Number(e.target.value)}); refresh(); }}>
-            {hist.versions.map((v, i) => <option key={v.n} value={i}>v{v.n}</option>)}
-          </select>
-        </label>
-        {answer && <code title="Cohort id">{answer.r.cohort_id}</code>}
-        <button type="button" onClick={share}>Share link</button>
-        {copied && <span role="status">Link copied</span>}
-        {link && <input readOnly aria-label="Share link" className="link" value={link} autoFocus onFocus={(e) => e.currentTarget.select()} />}
-        <button type="button" aria-expanded={panel === "compare"} onClick={() => togglePanel("compare")}>Compare</button>
-        <button type="button" aria-expanded={panel === "feasibility"} disabled={panel !== "feasibility" && (!answer || stale)}
-          onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
+        <div className="history">
+          <button type="button" aria-label="Previous edit" title="Previous edit" disabled={hist.current === 0}
+            onClick={() => go(hist.current - 1)}>↶</button>
+          <button type="button" aria-label="Next edit" title="Next edit" disabled={hist.current === last}
+            onClick={() => go(hist.current + 1)}>↷</button>
+          <label>History{" "}
+            <select aria-label="History" value={hist.current} onChange={(e) => go(Number(e.target.value))}>
+              {hist.versions.map((v, i) => <option key={v.n} value={i}>Edit {v.n}</option>)}
+            </select>
+          </label>
+        </div>
+        <div id="header-actions" className={menuOpen ? "actions open" : "actions"}
+          onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}>
+          <button type="button" className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
+          <button type="button" className="btn-secondary" aria-expanded={panel === "compare"} disabled={single}
+            aria-describedby={single ? "compare-why" : undefined} onClick={() => togglePanel("compare")}>Compare</button>
+          {single && <span id="compare-why" className="hint">Make a change to compare versions</span>}
+          <button type="button" className="btn-primary" aria-expanded={panel === "feasibility"}
+            disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
+        </div>
+        <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
+          aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
       </header>
+      {panel === "share" && (
+        <SharePanel link={window.location.href} copied={copied} cohortId={answer && !stale ? answer.r.cohort_id : null}
+          onClose={() => setPanel(null)} />
+      )}
       {panel === "compare" && (
         <Compare versions={hist.versions} transport={transport} years={options?.years ?? null} onClose={() => setPanel(null)} />
       )}
@@ -189,11 +244,8 @@ export function App({transport}: {transport: Transport}) {
         <Answer definition={current} answer={answer} options={options} tab={tab} onTab={setTab}
           onOp={(op) => edit(op, "answer")} onRetry={refresh} busy={busy} error={answerError}
           editError={editError?.at === "answer" ? editError.message : null} />
-        <aside aria-label="Assistant" className="assistant">
-          <h2>Assistant</h2>
-          <p>Coming later: ask in words and get a definition you can apply.</p>
-        </aside>
       </div>
+      <SummaryBar answer={answer} options={options} />
     </div>
   );
 }

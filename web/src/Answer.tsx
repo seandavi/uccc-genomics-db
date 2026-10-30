@@ -21,6 +21,12 @@ function stepLabel(d: Definition, i: number, criterion: string | null): string {
   return `∧ ${c ? criterionLabel(c) : criterion}`;
 }
 
+/** The accrual tier as a pill: `tier tier-high|tier-moderate|tier-low`, with the tier's description as its title. */
+export function TierPill({perYear}: {perYear: number}) {
+  const t = tierFor(perYear);
+  return <span className={`tier tier-${t.name.split(" ")[0].toLowerCase()}`} title={t.desc}>{t.name}</span>;
+}
+
 function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options | null}) {
   const pop = populationLabel(d.population);
   const window = d.population.years ?? options?.years ?? null;
@@ -38,8 +44,7 @@ function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options
       <div className="card">
         <h3>Accrual a year</h3>
         <p className="big">{perYear == null ? "–" : perYear.toFixed(1)}</p>
-        {perYear != null && <p className="sub"><span className={`tier tier-${tierFor(perYear).name.split(" ")[0].toLowerCase()}`}
-          title={tierFor(perYear).desc}>{tierFor(perYear).name}</span></p>}
+        {perYear != null && <p className="sub"><TierPill perYear={perYear} /></p>}
       </div>
       <div className="card">
         <h3>Share of population</h3>
@@ -266,7 +271,7 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
   const stale = !!answer && answer.d !== definition;
   return (
     <main aria-labelledby="answer-h" aria-busy={busy}>
-      <h2 id="answer-h">Answer</h2>
+      <h2 id="answer-h" tabIndex={-1}>Answer</h2>
       {editError && <p role="alert" className="error">{editError}</p>}
       {error && <p role="alert" className="error">{error}{onRetry && <> <button type="button" onClick={onRetry}>Retry</button></>}</p>}
       {!answer ? <p>{busy ? "Counting…" : "No result yet."}</p> : (() => {
@@ -290,7 +295,10 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
               {tab === "Accrual" && <AccrualTab r={r} />}
               {tab === "Breakdown" && <BreakdownTab r={r} counted={counted} d={definition} onOp={onOp} />}
               {tab === "Pivot" && <PivotTab key={JSON.stringify(definition.pivot)} d={definition} counted={counted} pivot={pivot} minCell={r.min_cell} onOp={onOp} />}
-              {tab === "Data notes" && <ul>{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+              {tab === "Data notes" && <>
+                <ul>{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                <p className="hint">Cohort ID (for support): <code>{r.cohort_id}</code></p>
+              </>}
             </div>
           </div>
         );

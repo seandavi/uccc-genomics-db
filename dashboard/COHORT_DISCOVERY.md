@@ -295,7 +295,7 @@ assistant collapses into a drawer below 1,200 px.
 storage, and the share link carries the definition in the URL fragment (saved cohorts (#36) store
 only the cohorts a user saves; Discover does not call `/api/saved*` yet, so a link carries the
 definition, and `/c/<cohort_id>` comes when Discover uses saved cohorts). Drag-to-reorder and Request data are not built (no operation yet, and #16), and
-the assistant column is empty.
+there is no assistant column: it was removed until chat ships (owner decision 2026-10-30, #98). The header holds History (↶/↷ and "Edit n"), Share, Compare and Feasibility statement; at 600 px and below they sit behind a ⋯ menu, and a sticky bar at the bottom shows the patient count.
 
 **Phase 2 (#38).** Discover gains the include / exclude / tested-negative select on each card, one
 "All criteria on the same report" switch for the definition (not a lock per card), `data` entries
