@@ -91,21 +91,41 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .chips { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem; padding: 0; margin: 0 0 .5rem; }
 .chip { display: inline-flex; align-items: center; gap: .25rem; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: .1rem .2rem .1rem .6rem; }
 .chip button { border: 0; background: transparent; border-radius: 999px; padding: 0 .4rem; min-height: 24px; min-width: 24px; }
+.adder { border: 1px dashed var(--line); border-radius: 999px; background: transparent; }
+.adder[aria-expanded="true"] { border-style: solid; background: var(--surface-2); }
 .adders, .years, .row, .pivot-controls { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0; align-items: center; }
 .checks { border: 1px solid var(--line); border-radius: 4px; margin: .4rem 0; padding: .4rem .6rem; display: flex; flex-wrap: wrap; gap: .25rem .9rem; }
 .checks label { white-space: nowrap; }
-.criterion { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .6rem; margin-bottom: .6rem; background: var(--surface); }
-.criterion header { margin-bottom: .3rem; }
-.cid { color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-sm); margin-right: .3rem; }
+.criterion { border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; padding: .5rem .6rem; margin-bottom: .6rem; background: var(--surface); }
+.criterion.mode-include { border-left-color: var(--high); }
+.criterion.mode-exclude { border-left-color: var(--low); }
+.criterion.mode-tested_negative { border-left-color: var(--muted); }
+.criterion header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin-bottom: .3rem; }
+.criterion .mode {
+  border-radius: 999px; font-size: var(--fs-xs); line-height: var(--lh-xs); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em; padding-inline: var(--s2);
+}
+.criterion.mode-include .mode { color: var(--high); background: var(--high-bg); }
+.criterion.mode-exclude .mode { color: var(--low); background: var(--low-bg); }
+.criterion.mode-tested_negative .mode { color: var(--fg); background: var(--surface-2); }
+.card-actions { gap: var(--s1); }
+.card-actions .sep { color: var(--muted); }
+.card-actions .remove { margin-left: auto; }
 .members { margin: .2rem 0; padding-left: 1.2rem; }
 .editor { border-top: 1px solid var(--line); margin-top: .4rem; padding-top: .4rem; display: grid; gap: .4rem; }
 .typeahead { position: relative; margin: .5rem 0; }
 .typeahead label { display: block; font-weight: 600; margin-bottom: .2rem; }
 .typeahead input { width: 100%; }
 .typeahead ul { position: absolute; z-index: 5; left: 0; right: 0; margin: 2px 0 0; padding: 0; list-style: none; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; max-height: 16rem; overflow: auto; }
-.typeahead li { padding: .3rem .6rem; cursor: pointer; display: flex; justify-content: space-between; gap: .75rem; }
+.typeahead li { padding: .3rem .6rem; cursor: pointer; display: flex; justify-content: flex-start; gap: var(--s1); }
 .typeahead li[aria-selected="true"] { background: var(--accent); color: var(--accent-fg); }
-.typeahead .field { color: inherit; opacity: .75; font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.typeahead .kind {
+  font-size: var(--fs-xs); line-height: var(--lh-xs); font-weight: 600; white-space: nowrap;
+  padding: 2px var(--s2); border-radius: 999px; background: var(--surface-2); color: var(--muted); align-self: center;
+}
+.typeahead li[aria-selected="true"] .kind { background: transparent; color: inherit; }
+.same-report { margin: .4rem 0; }
+.same-report .hint { margin-left: 1.5rem; }
 
 /* answer */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: .75rem; margin-bottom: 1rem; }
@@ -162,7 +182,6 @@ td.hatched, .summary-count.hatched {
 }
 .panel { padding: .6rem 1rem; border-bottom: 1px solid var(--line); background: var(--surface); }
 .panel textarea { width: 100%; max-width: 60rem; }
-.criterion header select { margin-left: .5rem; }
 .sequence { display: grid; gap: .4rem; margin: .3rem 0; }
 .sequence h4 { margin: .2rem 0; }
 
