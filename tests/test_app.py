@@ -255,7 +255,7 @@ GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply")
          ("GET", "/api/schema"), ("GET", "/api/openapi.json"), ("POST", "/mcp"),
          ("GET", "/mcp"), ("GET", "/"), ("GET", "/index.html"), ("GET", "/no/such/path"),
          ("POST", "/api/saved"), ("GET", "/api/saved"), ("GET", "/api/snapshots"),
-         ("GET", "/api/versions/v1-0000000000000000")]
+         ("GET", "/api/versions/v1-0000000000000000"), ("GET", "/api/me")]
 
 
 @pytest.mark.parametrize("method, path", GATED)
@@ -266,6 +266,12 @@ def test_refused_without_login(client, method, path):
     assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
     assert client.request(method, path, auth=("sean", "wrong"), **kw).status_code == 401
     assert client.request(method, path, auth=AUTH, **kw).status_code != 401
+
+
+def test_password_auth_routes_closed(client):
+    r = client.get("/auth/login", follow_redirects=False)
+    assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic") and "login" not in r.json()
+    assert client.get("/api/me", auth=AUTH).json() == {"sub": "sean", "email": "sean", "sign_out": False}
 
 
 def test_mcp_get_is_405(client):
@@ -351,7 +357,8 @@ def test_access_backend(client, monkeypatch, capsys):
     r = client.post("/mcp", json=body, headers=MCP_HEADERS | hdr())
     assert r.status_code == 200 and not r.json()["result"]["isError"]
     lines = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
-    assert [(line["surface"], line["email"]) for line in lines] == [("rest", "a@b.edu"), ("mcp", "a@b.edu")]
+    assert [(line["surface"], line["sub"], line["email"]) for line in lines] == [
+        ("rest", "a@b.edu", "a@b.edu"), ("mcp", "a@b.edu", "a@b.edu")]
 
 
 def test_audit(client, capsys):
@@ -367,7 +374,8 @@ def test_audit(client, capsys):
     rest(client, "POST", "/api/cohort", {"version": 2})
     lines = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
     assert len(lines) == 2
-    assert [(x["email"], x["surface"], x["endpoint"]) for x in lines] == [("sean", "rest", "count"), ("sean", "mcp", "pivot")]
+    assert [(x["sub"], x["email"], x["surface"], x["endpoint"]) for x in lines] == [
+        ("sean", "sean", "rest", "count"), ("sean", "sean", "mcp", "pivot")]
     assert lines[0]["patients"] == rc["patients"] and lines[1]["patients"] == mp["patients"]
     assert lines[0]["cohort_id"] == app.cohort.cohort_id(app.Definition.model_validate(d))
     assert lines[0]["definition"]["criteria"][0]["gene"] == ["KRAS"]

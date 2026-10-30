@@ -3,6 +3,9 @@
 Persistence only; app.py validates definitions and runs counts. Every query is scoped to the
 owner, and someone else's cohort is indistinguishable from a missing one (NotFound).
 Postgres holds definitions, operations and suppressed snapshot results: no patient data.
+`owner` is `authen.User.sub` (the caller passes it): `cohort.owner`, `snapshot.created_by` and
+`cohort_version.created_by` hold the sub under `--auth authentik`, whatever the old backend returned
+(email, `APP_USER`) before. The columns keep their names; README has the one-off UPDATE for old rows.
 """
 import datetime
 import os
@@ -159,9 +162,9 @@ def _selecting(d: Definition) -> Definition:
     return Definition.model_validate(_dump(d) | {"name": "", "breakdown": [], "pivot": None})
 
 
-async def _upsert_version(conn: AsyncConnection, d: Definition, cohort_id: str, email: str) -> None:
+async def _upsert_version(conn: AsyncConnection, d: Definition, cohort_id: str, owner: str) -> None:
     await conn.execute(insert(cohort_version).values(
-        cohort_id=cohort_id, definition=_dump(_selecting(d)), created_by=email).on_conflict_do_nothing())
+        cohort_id=cohort_id, definition=_dump(_selecting(d)), created_by=owner).on_conflict_do_nothing())
 
 
 def _revision(row) -> Revision:
@@ -183,90 +186,90 @@ def _with_head(owner: str):
             .where(cohort.c.owner == owner))
 
 
-async def _get(conn: AsyncConnection, email: str, id: uuid.UUID) -> SavedCohort:
-    row = (await conn.execute(_with_head(email).where(cohort.c.id == id))).first()
+async def _get(conn: AsyncConnection, owner: str, id: uuid.UUID) -> SavedCohort:
+    row = (await conn.execute(_with_head(owner).where(cohort.c.id == id))).first()
     if row is None:
         raise NotFound(f"no saved cohort {id}")
     return _saved(row)
 
 
-async def _lock_head(conn: AsyncConnection, email: str, id: uuid.UUID) -> int:
-    head = (await conn.execute(sa.select(cohort.c.head).where(cohort.c.id == id, cohort.c.owner == email)
+async def _lock_head(conn: AsyncConnection, owner: str, id: uuid.UUID) -> int:
+    head = (await conn.execute(sa.select(cohort.c.head).where(cohort.c.id == id, cohort.c.owner == owner)
                                .with_for_update())).scalar()
     if head is None:
         raise NotFound(f"no saved cohort {id}")
     return head
 
 
-async def _append(conn: AsyncConnection, email: str, id: uuid.UUID, head: int, d: Definition,
+async def _append(conn: AsyncConnection, owner: str, id: uuid.UUID, head: int, d: Definition,
                   op: dict) -> SavedCohort:
     """Add revision head + 1 to a cohort whose row this transaction has locked."""
     if head >= MAX_REVISIONS:
         raise Conflict(f"a saved cohort holds at most {MAX_REVISIONS} revisions")
     cid = selecting_id(d)
-    await _upsert_version(conn, d, cid, email)
+    await _upsert_version(conn, d, cid, owner)
     await conn.execute(sa.insert(cohort_revision).values(cohort=id, seq=head + 1, cohort_id=cid,
                                                          definition=_dump(d), op=op))
     await conn.execute(sa.update(cohort).where(cohort.c.id == id).values(head=head + 1, updated_at=sa.func.now()))
-    return await _get(conn, email, id)
+    return await _get(conn, owner, id)
 
 
 # --- persistence ---------------------------------------------------------------------------------
 
-async def create(email: str, d: Definition) -> SavedCohort:
+async def create(owner: str, d: Definition) -> SavedCohort:
     async with _begin() as conn:
-        n = await conn.scalar(sa.select(sa.func.count()).select_from(cohort).where(cohort.c.owner == email))
+        n = await conn.scalar(sa.select(sa.func.count()).select_from(cohort).where(cohort.c.owner == owner))
         if n >= MAX_COHORTS:
             raise Conflict(f"at most {MAX_COHORTS} saved cohorts per user")
         cid = selecting_id(d)
-        await _upsert_version(conn, d, cid, email)
+        await _upsert_version(conn, d, cid, owner)
         id = uuid.uuid4()
-        await conn.execute(sa.insert(cohort).values(id=id, owner=email, head=1))
+        await conn.execute(sa.insert(cohort).values(id=id, owner=owner, head=1))
         await conn.execute(sa.insert(cohort_revision).values(cohort=id, seq=1, cohort_id=cid,
                                                              definition=_dump(d), op=None))
-        return await _get(conn, email, id)
+        return await _get(conn, owner, id)
 
 
-async def list_cohorts(email: str) -> SavedList:
+async def list_cohorts(owner: str) -> SavedList:
     async with _begin() as conn:
-        rows = (await conn.execute(_with_head(email).order_by(cohort.c.updated_at.desc(), cohort.c.id))).all()
+        rows = (await conn.execute(_with_head(owner).order_by(cohort.c.updated_at.desc(), cohort.c.id))).all()
         return SavedList(cohorts=[_saved(r) for r in rows])
 
 
-async def get(email: str, id: uuid.UUID) -> SavedCohort:
+async def get(owner: str, id: uuid.UUID) -> SavedCohort:
     async with _begin() as conn:
-        return await _get(conn, email, id)
+        return await _get(conn, owner, id)
 
 
-async def history(email: str, id: uuid.UUID) -> History:
+async def history(owner: str, id: uuid.UUID) -> History:
     async with _begin() as conn:
-        await _get(conn, email, id)   # ownership
+        await _get(conn, owner, id)   # ownership
         rows = (await conn.execute(sa.select(cohort_revision).where(cohort_revision.c.cohort == id)
                                    .order_by(cohort_revision.c.seq))).all()
         return History(revisions=[_revision(r) for r in rows])
 
 
-async def append(email: str, id: uuid.UUID, d: Definition, op: dict, after: int) -> SavedCohort:
+async def append(owner: str, id: uuid.UUID, d: Definition, op: dict, after: int) -> SavedCohort:
     async with _begin() as conn:
-        head = await _lock_head(conn, email, id)
+        head = await _lock_head(conn, owner, id)
         if head != after:
             raise Conflict(f"saved cohort changed since revision {after}; reload it")
-        return await _append(conn, email, id, head, d, op)
+        return await _append(conn, owner, id, head, d, op)
 
 
-async def revert(email: str, id: uuid.UUID, to: int) -> SavedCohort:
+async def revert(owner: str, id: uuid.UUID, to: int) -> SavedCohort:
     async with _begin() as conn:
-        head = await _lock_head(conn, email, id)
+        head = await _lock_head(conn, owner, id)
         target = (await conn.execute(sa.select(cohort_revision.c.definition).where(
             cohort_revision.c.cohort == id, cohort_revision.c.seq == to))).scalar()
         if target is None:
             raise NotFound(f"no revision {to}")
-        return await _append(conn, email, id, head, Definition.model_validate(target), {"op": "revert", "to": to})
+        return await _append(conn, owner, id, head, Definition.model_validate(target), {"op": "revert", "to": to})
 
 
-async def delete(email: str, id: uuid.UUID) -> Deleted:
+async def delete(owner: str, id: uuid.UUID) -> Deleted:
     async with _begin() as conn:
-        gone = (await conn.execute(sa.delete(cohort).where(cohort.c.id == id, cohort.c.owner == email)
+        gone = (await conn.execute(sa.delete(cohort).where(cohort.c.id == id, cohort.c.owner == owner)
                                    .returning(cohort.c.id))).first()
         if gone is None:
             raise NotFound(f"no saved cohort {id}")
@@ -278,21 +281,21 @@ def _snapshot(row) -> Snapshot:
                     data_date=row.data_date, result=CountResult.model_validate(row.result), created_at=row.created_at)
 
 
-async def add_snapshot(email: str, d: Definition, data_date: datetime.date, result: CountResult) -> Snapshot:
+async def add_snapshot(owner: str, d: Definition, data_date: datetime.date, result: CountResult) -> Snapshot:
     async with _begin() as conn:
-        n = await conn.scalar(sa.select(sa.func.count()).select_from(snapshot).where(snapshot.c.created_by == email))
+        n = await conn.scalar(sa.select(sa.func.count()).select_from(snapshot).where(snapshot.c.created_by == owner))
         if n >= MAX_SNAPSHOTS:
             raise Conflict(f"at most {MAX_SNAPSHOTS} snapshots per user")
-        await _upsert_version(conn, d, result.cohort_id, email)
+        await _upsert_version(conn, d, result.cohort_id, owner)
         row = (await conn.execute(sa.insert(snapshot).values(
-            id=uuid.uuid4(), created_by=email, cohort_id=result.cohort_id, definition=_dump(d), data_date=data_date,
+            id=uuid.uuid4(), created_by=owner, cohort_id=result.cohort_id, definition=_dump(d), data_date=data_date,
             result=result.model_dump(mode="json")).returning(*snapshot.c))).one()
         return _snapshot(row)
 
 
-async def list_snapshots(email: str) -> Snapshots:
+async def list_snapshots(owner: str) -> Snapshots:
     async with _begin() as conn:
-        rows = (await conn.execute(sa.select(snapshot).where(snapshot.c.created_by == email)
+        rows = (await conn.execute(sa.select(snapshot).where(snapshot.c.created_by == owner)
                                    .order_by(snapshot.c.created_at.desc(), snapshot.c.id))).all()
         return Snapshots(snapshots=[_snapshot(r) for r in rows])
 

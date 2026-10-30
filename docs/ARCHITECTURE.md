@@ -53,14 +53,19 @@ and the decisions behind it. Tracking issue: #23.
    another key file to manage. Revisit if the audience widens (#56). The query audit log stays one
    JSON line on stdout for now; moving it to Postgres is a later issue.
 8. **Auth behind `authen.user(request)`.** Backends today: `access` (Cloudflare Access JWT),
-   `password` (one local account, while developing), `none`. Zitadel (OIDC, campus email
-   required, checked again in the backend) becomes another backend; callers do not change.
+   `password` (one local account, while developing), `none`, and `authentik` (#95): OIDC through
+   the central Authentik (seandavi/monode), authorization code flow with PKCE, a signed app cookie
+   for at most 8 hours, Bearer access tokens for `/mcp`. It authorizes on the `groups` claim only
+   (the Authentik contract forbids deciding on email or domain), so campus-only (decision 12) is
+   enforced by who is in the group, not by an email check in the backend. Users are keyed on
+   `sub`; email is a display label. `authen.user` returns `User(sub, email)`; callers use `sub`.
+   This replaces the earlier Zitadel plan (#40).
 9. **Chat inside the site** (`/api/chat`): a server-side model loop whose only tools are the
    cohort module's operations and queries. It never states a number a tool did not return. The
    provider waits on the DUA question (`COHORT_DISCOVERY.md` §5.2).
 10. **MCP App** as a second host for the builder, once REST, MCP and the React app exist. Remote
     MCP clients (Claude.ai) need the MCP endpoint reachable from the internet and OAuth client
-    registration in Zitadel (dynamic registration is off by default there; verify the version).
+    registration in Authentik (Dynamic Client Registration stays off there; #30).
 11. **Suppression applies to logged-in users too.** Campus login decides who may ask, not what a
     count may reveal. Saved, editable cohorts make differencing easier, so §3.6's rules apply
     and requests are rate-limited per user.
@@ -69,9 +74,10 @@ and the decisions behind it. Tracking issue: #23.
 
 ## Development
 
-The app runs on the pipeline host, bound to its tailnet address, with `--auth password`, so
+The app runs on the pipeline host, bound to its tailnet address, with `--auth password` or
+`--auth authentik` (campus sign-in through Authentik, `APP_BASE_URL` set to the tailnet URL), so
 progress is visible at `http://<host>:<port>` from the tailnet. No `tailscale serve`, no
-deploys. The service is `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35). Production hosting (Docker Compose behind Traefik, Zitadel) comes after the app works.
+deploys. The service is `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35). Production hosting (Docker Compose behind Traefik) comes after the app works.
 
 The app (Discover) is built from `web/` and served by `genomics-app --static web/dist` (#37), so it
 shares the origin and the login of `/api/*`.

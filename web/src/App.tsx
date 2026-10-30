@@ -3,8 +3,8 @@ import { Answer, Count, TierPill, type Counted, type Tab } from "./Answer.tsx";
 import { Builder } from "./Builder.tsx";
 import { Compare } from "./Compare.tsx";
 import { EMPTY, HISTORY_KEY, accrualPerYear, feasibility, pushVersion, readShareHash, shareHash, type History } from "./cohort.ts";
-import { describeError, type Transport } from "./transport.ts";
-import type { Definition, Operation, Options } from "./types.ts";
+import { describeError, type Account, type Transport } from "./transport.ts";
+import type { Definition, Me, Operation, Options } from "./types.ts";
 
 function loadHistory(): History {
   try {
@@ -68,7 +68,17 @@ export function SummaryBar({answer, options}: {answer: Counted | null; options: 
   );
 }
 
-export function App({transport}: {transport: Transport}) {
+export function Who({me, onSignOut}: {me: Me; onSignOut: () => void}) {
+  return (
+    <>
+      <span className="who">{me.email}</span>
+      {me.sign_out && <button type="button" className="btn-tertiary" onClick={onSignOut}>Sign out</button>}
+    </>
+  );
+}
+
+export function App({transport, account}: {transport: Transport; account?: Account}) {
+  const [me, setMe] = useState<Me | null>(null);
   const [hist, setHistState] = useState<History>(loadHistory);
   const histRef = useRef(hist);
   const [options, setOptions] = useState<Options | null>(null);
@@ -164,6 +174,8 @@ export function App({transport}: {transport: Transport}) {
     })();
   }, [transport, setHist, refresh]);
 
+  useEffect(() => { account?.me().then(setMe, () => {}); }, [account]);   // a failed me() shows nothing extra
+
   useEffect(() => {
     tabRef.current = tab;
     if (tab === "Pivot") refresh();
@@ -223,6 +235,7 @@ export function App({transport}: {transport: Transport}) {
           {single && <span id="compare-why" className="hint">Make a change to compare versions</span>}
           <button type="button" className="btn-primary" aria-expanded={panel === "feasibility"}
             disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
+          {me && account && <Who me={me} onSignOut={() => { account.signOut().catch(() => {}); }} />}
         </div>
       </header>
       {panel === "share" && (

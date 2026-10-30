@@ -45,6 +45,8 @@ mcp/src/uccc_genomics_mcp/
   server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
   cohort_api.py genomics-cohort-api: fixed-parameter, floored patient counts, Access JWT auth
   app.py        genomics-app: FastAPI REST (/api/*) + MCP (/mcp) over cohort/, behind authen
+  authen.py     who is calling, `user(request) -> User(sub, email)`: access|password|none|authentik backends
+                (authentik: campus sign-in, owns the /auth/* routes)
   saved.py      saved cohorts in Postgres (SQLAlchemy async): revisions, snapshots; migrations/ is Alembic (mcp/alembic.ini)
   cohort/       cohort definition + operations + cohort_id, compile to SQL over mart.*, suppression (the seam REST/MCP/chat sit on)
 dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
@@ -85,7 +87,10 @@ systemd/        unit files (symlinked into ~/.config/systemd/user on the host)
   dir with synthetic inputs, as `tests/test_pipeline.py` does.
 - **Don't weaken Cloudflare Access.** Keep `workers_dev = false` and preview URLs off in
   `dashboard/wrangler.toml`. The cohort API must keep refusing requests without a valid Access
-  JWT (only `/api/health` is open). `--auth none` is for local dev only; `--auth password` (one local account, `authen.py`) stands in until Zitadel.
+  JWT (only `/api/health` is open). `genomics-app` is the same, plus the sign-in endpoints `/auth/login`,
+  `/auth/callback` and `/auth/logout` under `--auth authentik` (campus sign-in through Authentik, authorized on the
+  `groups` claim only, never on email). `--auth none` is for local dev only; `--auth password` (one local account,
+  `authen.py`) is the development stand-in.
 - **Encrypted files:** plain `duckdb genomics.duckdb` fails by design. Use `uv run genomics shell`
   or `uccc_genomics.config.connect()`. Reading the real de-id file read-only is fine for checking
   a change on this host.

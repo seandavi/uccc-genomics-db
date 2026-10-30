@@ -11,6 +11,7 @@ export type Operation = S["ApplyRequest"]["op"];
 export type ApplyResult = S["ApplyResult"];
 export type CountResult = S["CountResult"];
 export type PivotResult = S["PivotResult"];
+export type Me = S["Me"];
 export type Options = S["Options"];
 export type Option = S["Option"];
 export type BreakdownDim = Definition["breakdown"][number];

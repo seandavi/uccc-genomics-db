@@ -295,11 +295,12 @@ instead (nginx over `dist/`, IP allowlist).
 process serves REST at `/api/*` (OpenAPI schema at `/api/openapi.json`; no Swagger UI) and MCP
 (Streamable HTTP, stateless) at `/mcp` (POST only; `GET /mcp` is 405, no SSE stream), both thin
 layers over `cohort/`. Every request but `/api/health` needs a login through `authen`
-(`--auth access|password|none`; `none`: no login, local dev only). `count` and `pivot` are limited
+(`--auth access|password|none|authentik`; `none`: no login, local dev only; under `authentik` the
+three `/auth/*` sign-in paths are also open). `count` and `pivot` are limited
 to 60 a minute per user across both surfaces (a count or pivot the cohort module rejects, such as
 an unknown vocabulary value or a pivot of a definition that has no pivot, still uses the limit; a
 body that fails schema validation does not) and logged to stdout as one JSON line each (user,
-cohort_id, definition, suppressed patients). The MCP tools are `search_vocabulary`, `apply_op`,
+cohort_id, definition, suppressed patients); the line carries the user's `sub` and `email`. The MCP tools are `search_vocabulary`, `apply_op`,
 `count`, `pivot` and `describe_definition`, plus the saved-cohort tools below; there is no SQL
 tool.
 
@@ -309,6 +310,53 @@ tool.
 
 `--static` serves a built front end at `/` (Discover, below). Development only: no systemd
 unit or deploy yet.
+
+**Campus sign-in (Authentik)** (#95). `--auth authentik` signs members of one Authentik group in
+through the central Authentik run from seandavi/monode (`infrastructure/compose/authentik/README.md`
+§ Contract for apps; the application, provider and group are seandavi/monode#130: slug
+`uccc-genomics`, confidential client, group binding `uccc-genomics-dashboard`, and one Strict
+redirect URI `<APP_BASE_URL>/auth/callback` per deployment). Settings in `.env` (placeholders in
+`.env.example`; the app refuses to start naming every missing or invalid one):
+
+| Variable | Meaning |
+|---|---|
+| `AUTHENTIK_ISSUER` | `https://<authentik-host>/application/o/uccc-genomics/` (ends with `/`) |
+| `AUTHENTIK_CLIENT_ID` | `uccc-genomics` |
+| `AUTHENTIK_CLIENT_SECRET` | the provider's client secret (below) |
+| `APP_BASE_URL` | the URL users open, e.g. `http://<tailnet-addr>:8092`; must match the redirect URI (an `https://` base makes the cookies `Secure`, so reaching the app over `http://` then loops through sign-in) |
+| `SESSION_SECRET` | signs the app's cookies, at least 32 characters |
+| `AUTHENTIK_GROUP` | optional, default `uccc-genomics-dashboard` |
+
+    # client secret: from Secret Manager into .env, never printed
+    printf 'AUTHENTIK_CLIENT_SECRET=%s\n' "$(gcloud secrets versions access latest \
+      --secret=uccc-genomics-authentik-client-secret --project=<gsm-project>)" >> .env
+    python -c "import secrets; print('SESSION_SECRET=' + secrets.token_urlsafe(48))" >> .env
+    uv run genomics-app --auth authentik --host <tailnet-addr> --port 8092 --static web/dist
+
+The flow is authorization code with PKCE, `state` and `nonce`. Access is the `groups` claim of the
+ID token and nothing else (never email or domain), and fails closed. The app then keeps the user in
+its own signed cookie for at most 8 hours (not extended on use), so removing someone from the group
+takes effect at their next sign-in, up to 8 hours later. `/api/*` and `/mcp` also accept
+`Authorization: Bearer <access token>` from the same provider, checked on every call like the ID
+token; how a local MCP client obtains one is not built here. `/api/*` and `/mcp` answer 401 without
+a login; a browser opening the site gets a page that sends it to `/auth/login` and back to the same address, a
+`#d=` share link included. `GET /api/me` returns the
+caller's own `sub`, `email` and whether Discover shows "Sign out". Check it once as the contract
+asks: a member gets in (`/api/me` answers), a non-member is refused at Authentik or on the callback.
+
+Users are keyed on `sub`; saved cohorts and snapshots belong to it, and the rate limit counts per
+`sub`. Rows saved under an earlier backend (owner = `APP_USER` or an email) stay unreachable until a
+person moves them once: sign in, read your `sub` from `/api/me`, then (`cohort_version.created_by`
+is provenance and stays):
+
+```bash
+psql "$DATABASE_URL" -v old='<old owner>' -v new='<sub from /api/me>' <<'SQL'
+BEGIN;
+UPDATE cohort   SET owner      = :'new' WHERE owner      = :'old';
+UPDATE snapshot SET created_by = :'new' WHERE created_by = :'old';
+COMMIT;
+SQL
+```
 
 **Saved cohorts** (`saved.py`, #36). A logged-in user can save a cohort definition, edit it with
 operations (each edit is a new immutable revision), list and delete their cohorts, read the history,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { App, FeasibilityPanel, SharePanel, SummaryBar } from "./App.tsx";
+import { App, FeasibilityPanel, SharePanel, SummaryBar, Who } from "./App.tsx";
 import { EMPTY } from "./cohort.ts";
 import type { Transport } from "./transport.ts";
 import type { CountResult, Options } from "./types.ts";
@@ -119,4 +119,17 @@ describe("SummaryBar", () => {
     expect(html).toContain('class="tier tier-high"');
   });
   test("no answer, no bar", () => expect(renderToStaticMarkup(<SummaryBar answer={null} options={options} />)).toBe(""));
+});
+
+describe("Who", () => {
+  const html = (sign_out: boolean) =>
+    renderToStaticMarkup(<Who me={{sub: "s", email: "a@example.edu", sign_out}} onSignOut={() => {}} />);
+  test("shows the email and, when the backend has a session, Sign out", () => {
+    expect(html(true)).toContain("a@example.edu");
+    expect(html(true)).toContain(">Sign out</button>");
+  });
+  test("no Sign out button without a session", () => {
+    expect(html(false)).toContain("a@example.edu");
+    expect(html(false)).not.toContain("Sign out");
+  });
 });

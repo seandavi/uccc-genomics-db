@@ -1,4 +1,4 @@
-import type { ApplyResult, CountResult, Definition, Operation, Options, PivotResult } from "./types.ts";
+import type { ApplyResult, CountResult, Definition, Me, Operation, Options, PivotResult } from "./types.ts";
 
 export interface OptionsQuery { q?: string; field?: string; parent?: string; limit?: number }
 
@@ -39,8 +39,13 @@ export function describeError(e: unknown): string {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-export function fetchTransport(fetchImpl: FetchLike = fetch): Transport {
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** Send the browser to sign in, back to this page afterwards (the fragment, e.g. a #d= share link, is kept). */
+export function signInAt(login: string): void {
+  window.location.assign(`${login}?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+}
+
+function requester(fetchImpl: FetchLike, signIn: (login: string) => void) {
+  return async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {accept: "application/json"};
     if (init.body !== undefined) headers["content-type"] = "application/json";
     let res: Response;
@@ -51,11 +56,17 @@ export function fetchTransport(fetchImpl: FetchLike = fetch): Transport {
     }
     const body: unknown = await res.json().catch(() => null);
     if (!res.ok) {
+      const login = (body as {login?: unknown} | null)?.login;
+      if (res.status === 401 && typeof login === "string" && login.startsWith("/")) signIn(login);
       const retry = res.status === 429 ? Number(res.headers.get("retry-after")) : NaN;
       throw new TransportError(errorMessage(res.status, body), res.status, Number.isFinite(retry) ? retry : null);
     }
     return body as T;
-  }
+  };
+}
+
+export function fetchTransport(fetchImpl: FetchLike = fetch, signIn: (login: string) => void = signInAt): Transport {
+  const request = requester(fetchImpl, signIn);
   const post = <T>(path: string, body: unknown) => request<T>(path, {method: "POST", body: JSON.stringify(body)});
 
   return {
@@ -67,5 +78,20 @@ export function fetchTransport(fetchImpl: FetchLike = fetch): Transport {
       for (const [k, v] of Object.entries(query)) if (v !== undefined) p.set(k, String(v));
       return request(`/api/options?${p}`);
     },
+  };
+}
+
+/** Who is signed in, and signing out. `sign_out` is false when the backend has no session to end. */
+export interface Account {
+  me(): Promise<Me>;         // GET /api/me
+  signOut(): Promise<void>;  // POST /auth/logout, then the browser goes to the returned url
+}
+
+export function fetchAccount(fetchImpl: FetchLike = fetch, signIn: (login: string) => void = signInAt,
+                             navigate: (url: string) => void = (u) => window.location.assign(u)): Account {
+  const request = requester(fetchImpl, signIn);
+  return {
+    me: () => request("/api/me"),
+    signOut: async () => navigate((await request<{url: string}>("/auth/logout", {method: "POST"})).url),
   };
 }

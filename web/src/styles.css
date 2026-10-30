@@ -59,6 +59,7 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .actions .hint { margin: 0; }
 .more { display: none; }
 .panel .link { flex: 1; min-width: 0; max-width: 40rem; }
+.top .who { color: var(--muted); }
 
 .cols { display: grid; grid-template-columns: minmax(18rem, 22rem) 1fr; gap: var(--s6); padding: var(--s4); align-items: start; }
 @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
