@@ -212,7 +212,7 @@ def suppress(out: dict) -> dict:
 def authed(request: Request):
     """The caller's email, or a 401 response to return instead."""
     try:
-        return authen.user(request), None
+        return authen.user(request).email, None
     except PermissionError as e:
         return None, JSONResponse({"error": str(e)}, status_code=401, headers=authen.challenge())
 
@@ -268,7 +268,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="UCCC cohort feasibility API")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8090)
-    ap.add_argument("--auth", choices=authen.MODES, default="access",
+    ap.add_argument("--auth", choices=[m for m in authen.MODES if m != "authentik"], default="access",
                     help="access: Cloudflare Access JWT (production); password: one local account; none: local dev only")
     ap.add_argument("--static", help="also serve this built dashboard directory at / (local dev only)")
     args = ap.parse_args(argv)

@@ -1094,6 +1094,29 @@
         "title": "Margin",
         "type": "object"
       },
+      "Me": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "sign_out": {
+            "title": "Sign Out",
+            "type": "boolean"
+          },
+          "sub": {
+            "title": "Sub",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub",
+          "email",
+          "sign_out"
+        ],
+        "title": "Me",
+        "type": "object"
+      },
       "Option": {
         "properties": {
           "field": {
@@ -2245,6 +2268,24 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/me": {
+      "get": {
+        "operationId": "get_me_api_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Me"
       }
     },
     "/api/options": {

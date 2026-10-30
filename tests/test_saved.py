@@ -72,7 +72,8 @@ def clean(pg_url, monkeypatch):
 def sclient(ids, clean, monkeypatch):
     def fake(request):
         try:
-            return request.headers["x-test-user"]
+            h = request.headers["x-test-user"]
+            return authen.User(h, h)
         except KeyError:
             raise PermissionError("no test user") from None
     monkeypatch.setattr(authen, "user", fake)
@@ -356,3 +357,14 @@ def test_database_url(monkeypatch):
 
 def test_data_date_is_a_date(ids):
     assert isinstance(cohort.data_date(), datetime.date)
+
+
+def test_owner_is_sub(sclient, monkeypatch):
+    users = {"a": authen.User("sub-a", "a@example.edu"), "b": authen.User("sub-b", "a@example.edu")}
+    monkeypatch.setattr(authen, "user", lambda request: users[request.headers["x-test-user"]])
+    id = ok(Rest(sclient, "a").save(COUNTED))["id"]
+    assert sql("SELECT owner FROM cohort WHERE id = :id", id=id) == [{"owner": "sub-a"}]
+    assert Rest(sclient, "a").get(id).code == 200
+    assert Rest(sclient, "b").get(id).code == 404 and ok(Rest(sclient, "b").list())["cohorts"] == []
+    ok(Rest(sclient, "a").snapshot(id))
+    assert sql("SELECT created_by FROM snapshot") == [{"created_by": "sub-a"}]

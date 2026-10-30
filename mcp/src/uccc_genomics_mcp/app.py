@@ -3,7 +3,8 @@
 One process, two surfaces, one set of shared calls (`run_*`): the routes and tools add only
 transport and error mapping. Every number comes out of `cohort.count` / `cohort.pivot`, already
 suppressed; nothing here post-processes counts. `RequireUser` authenticates every request but
-GET /api/health, once, outside FastAPI and the MCP SDK.
+GET /api/health (and, under --auth authentik, the /auth/* sign-in endpoints), once, outside FastAPI and
+the MCP SDK.
 """
 import argparse
 import collections
@@ -15,10 +16,11 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
+from urllib.parse import quote
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -62,37 +64,48 @@ INSTRUCTIONS = (
 # --- auth ----------------------------------------------------------------------------------------
 
 class RequireUser:
-    """Pure ASGI middleware around the whole app: every HTTP request except GET /api/health is
-    authenticated once with authen.user(); the email goes into the request's scope state."""
+    """Pure ASGI middleware around the whole app: every HTTP request except GET /api/health and the open
+    sign-in paths is authenticated once with authen.user(); the authen.User goes into the request's
+    scope state. A failed browser navigation to the static site is redirected to sign in; /api/* and
+    /mcp answer 401."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "lifespan" or (scope["type"] == "http" and scope["path"] == "/api/health"):
+        if scope["type"] == "lifespan" or (scope["type"] == "http" and (
+                scope["path"] == "/api/health" or authen.open_path(scope["path"]))):
             await self.app(scope, receive, send)
             return
         if scope["type"] != "http":   # no websocket routes
             return
         try:   # scrypt and the JWKS fetch block
-            email = await run_in_threadpool(authen.user, Request(scope))
+            u = await run_in_threadpool(authen.user, Request(scope))
         except PermissionError as e:
-            await JSONResponse({"detail": str(e)}, status_code=401, headers=authen.challenge())(scope, receive, send)
+            path, login = scope["path"], authen.login_path()
+            if login and scope["method"] == "GET" and not path.startswith("/api/") and path != "/mcp":
+                query = scope["query_string"].decode("latin-1")
+                response = RedirectResponse(login + "?next=" + quote(path + ("?" + query if query else ""), safe=""),
+                                            status_code=302)
+            else:
+                response = JSONResponse({"detail": str(e)} | ({"login": login} if login else {}), status_code=401,
+                                        headers=authen.challenge())
+            await response(scope, receive, send)
             return
-        scope["state"] = {**scope.get("state", {}), "user": email}   # a fresh dict per request
+        scope["state"] = {**scope.get("state", {}), "user": u}   # a fresh dict per request
         await self.app(scope, receive, send)
 
 
-def user(request: Request) -> str:
-    """FastAPI dependency: the email RequireUser stored; HTTPException(401) if it is missing."""
-    email = getattr(request.state, "user", None)
-    if email is None:
+def user(request: Request) -> authen.User:
+    """FastAPI dependency: the User RequireUser stored; HTTPException(401) if it is missing."""
+    u = getattr(request.state, "user", None)
+    if u is None:
         raise HTTPException(401, "not authenticated", headers=authen.challenge())
-    return email
+    return u
 
 
-def _mcp_user(ctx: Context) -> str:
-    """The email RequireUser stored for this MCP POST; ToolError if there is no HTTP request or
+def _mcp_user(ctx: Context) -> authen.User:
+    """The User RequireUser stored for this MCP POST; ToolError if there is no HTTP request or
     no user (an in-process call that bypassed the middleware)."""
     try:
         return ctx.request_context.request.state.user
@@ -137,6 +150,12 @@ class Options(BaseModel):
     min_cell: int
 
 
+class Me(BaseModel):
+    sub: str
+    email: str
+    sign_out: bool   # true under --auth authentik: Discover shows "Sign out"
+
+
 class SchemaInfo(BaseModel):
     version: int
     definition: dict
@@ -161,10 +180,10 @@ class RateLimited(Exception):
         super().__init__(f"rate limit: {RATE_LIMIT} queries per {int(RATE_WINDOW)} s; retry in {retry_after} s")
 
 
-def rate_limit(email: str) -> None:
+def rate_limit(key: str) -> None:
     now = time.monotonic()
     with _calls_lock:
-        q = _calls.setdefault(email, collections.deque())
+        q = _calls.setdefault(key, collections.deque())
         while q and now - q[0] >= RATE_WINDOW:
             q.popleft()
         if len(q) >= RATE_LIMIT:
@@ -172,26 +191,27 @@ def rate_limit(email: str) -> None:
         q.append(now)
 
 
-def audit(email: str, surface: Surface, endpoint: Literal["count", "pivot"], d: Definition,
+def audit(u: authen.User, surface: Surface, endpoint: Literal["count", "pivot"], d: Definition,
           patients: int | None) -> None:
-    print(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "email": email, "surface": surface,
+    print(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "sub": u.sub, "email": u.email,
+                      "surface": surface,
                       "endpoint": endpoint, "cohort_id": cohort.cohort_id(d),
                       "definition": d.model_dump(mode="json"), "patients": patients}), flush=True)
 
 
 # --- shared calls --------------------------------------------------------------------------------
 
-def run_count(email: str, surface: Surface, d: Definition) -> CountResult:
-    rate_limit(email)
+def run_count(u: authen.User, surface: Surface, d: Definition) -> CountResult:
+    rate_limit(u.sub)
     r = cohort.count(d)
-    audit(email, surface, "count", d, r.patients)
+    audit(u, surface, "count", d, r.patients)
     return r
 
 
-def run_pivot(email: str, surface: Surface, d: Definition) -> PivotResult:
-    rate_limit(email)
+def run_pivot(u: authen.User, surface: Surface, d: Definition) -> PivotResult:
+    rate_limit(u.sub)
     r = cohort.pivot(d)
-    audit(email, surface, "pivot", d, r.patients)
+    audit(u, surface, "pivot", d, r.patients)
     return r
 
 
@@ -213,22 +233,22 @@ def run_schema() -> SchemaInfo:
                       min_cell=cohort.MIN_CELL)
 
 
-async def run_save(email: str, d: Definition) -> SavedCohort:
+async def run_save(u: authen.User, d: Definition) -> SavedCohort:
     await run_in_threadpool(lambda: cohort.vocabulary().check(d))
-    return await saved.create(email, d)
+    return await saved.create(u.sub, d)
 
 
-async def run_saved_apply(email: str, id: uuid.UUID, op: Operation) -> SavedCohort:
-    c = await saved.get(email, id)
+async def run_saved_apply(u: authen.User, id: uuid.UUID, op: Operation) -> SavedCohort:
+    c = await saved.get(u.sub, id)
     new = await run_in_threadpool(lambda: cohort.apply(c.head.definition, op, cohort.vocabulary()))
-    return await saved.append(email, id, new, op.model_dump(mode="json", by_alias=True), after=c.head.seq)
+    return await saved.append(u.sub, id, new, op.model_dump(mode="json", by_alias=True), after=c.head.seq)
 
 
-async def run_snapshot(email: str, surface: Surface, id: uuid.UUID) -> Snapshot:
-    c = await saved.get(email, id)
+async def run_snapshot(u: authen.User, surface: Surface, id: uuid.UUID) -> Snapshot:
+    c = await saved.get(u.sub, id)
     day = cohort.data_date()
-    result = await run_in_threadpool(run_count, email, surface, c.head.definition)   # rate-limited + audited
-    return await saved.add_snapshot(email, c.head.definition, day, result)
+    result = await run_in_threadpool(run_count, u, surface, c.head.definition)   # rate-limited + audited
+    return await saved.add_snapshot(u.sub, c.head.definition, day, result)
 
 
 # --- MCP -----------------------------------------------------------------------------------------
@@ -321,7 +341,7 @@ async def save_cohort(definition: Definition, ctx: Context) -> SavedCohort:
 async def list_saved_cohorts(ctx: Context) -> SavedList:
     """The logged-in user's saved cohorts with their current definition, most recently edited first."""
     try:
-        return await saved.list_cohorts(_mcp_user(ctx))
+        return await saved.list_cohorts(_mcp_user(ctx).sub)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -330,7 +350,7 @@ async def list_saved_cohorts(ctx: Context) -> SavedList:
 async def get_saved_cohort(id: uuid.UUID, ctx: Context) -> SavedCohort:
     """One saved cohort of the logged-in user, with its current (head) revision."""
     try:
-        return await saved.get(_mcp_user(ctx), id)
+        return await saved.get(_mcp_user(ctx).sub, id)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -349,7 +369,7 @@ async def apply_saved_op(id: uuid.UUID, op: Operation, ctx: Context) -> SavedCoh
 async def saved_cohort_history(id: uuid.UUID, ctx: Context) -> History:
     """Every revision of a saved cohort, oldest first, with the operation that made each."""
     try:
-        return await saved.history(_mcp_user(ctx), id)
+        return await saved.history(_mcp_user(ctx).sub, id)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -358,7 +378,7 @@ async def saved_cohort_history(id: uuid.UUID, ctx: Context) -> History:
 async def revert_saved_cohort(id: uuid.UUID, to: Annotated[int, Field(ge=1)], ctx: Context) -> SavedCohort:
     """Make a saved cohort's definition equal to revision `to` again, as a new revision (history is kept)."""
     try:
-        return await saved.revert(_mcp_user(ctx), id, to)
+        return await saved.revert(_mcp_user(ctx).sub, id, to)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -377,7 +397,7 @@ async def snapshot_saved_cohort(id: uuid.UUID, ctx: Context) -> Snapshot:
 async def delete_saved_cohort(id: uuid.UUID, ctx: Context) -> Deleted:
     """Delete a saved cohort and its revisions. Snapshots already taken are kept."""
     try:
-        return await saved.delete(_mcp_user(ctx), id)
+        return await saved.delete(_mcp_user(ctx).sub, id)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -386,7 +406,7 @@ async def delete_saved_cohort(id: uuid.UUID, ctx: Context) -> Deleted:
 async def list_snapshots(ctx: Context) -> Snapshots:
     """The logged-in user's snapshots, newest first."""
     try:
-        return await saved.list_snapshots(_mcp_user(ctx))
+        return await saved.list_snapshots(_mcp_user(ctx).sub)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -444,16 +464,20 @@ def app(static_dir: str | None = None) -> FastAPI:
     def saved_unavailable(request: Request, e: saved.Unavailable):
         return JSONResponse({"detail": str(e)}, status_code=503)
 
+    @application.get("/api/me")
+    def get_me(u: authen.User = Depends(user)) -> Me:
+        return Me(sub=u.sub, email=u.email, sign_out=authen.AUTH["mode"] == "authentik")
+
     @application.post("/api/cohort")
-    def post_cohort(d: Definition, email: str = Depends(user)) -> CountResult:
-        return run_count(email, "rest", d)
+    def post_cohort(d: Definition, u: authen.User = Depends(user)) -> CountResult:
+        return run_count(u, "rest", d)
 
     @application.post("/api/pivot")
-    def post_pivot(d: Definition, email: str = Depends(user)) -> PivotResult:
-        return run_pivot(email, "rest", d)
+    def post_pivot(d: Definition, u: authen.User = Depends(user)) -> PivotResult:
+        return run_pivot(u, "rest", d)
 
     @application.post("/api/apply")
-    def post_apply(body: ApplyRequest, email: str = Depends(user)) -> ApplyResult:
+    def post_apply(body: ApplyRequest, u: authen.User = Depends(user)) -> ApplyResult:
         return run_apply(body.definition, body.op)
 
     @application.get("/api/options")
@@ -462,51 +486,51 @@ def app(static_dir: str | None = None) -> FastAPI:
                     parent: Annotated[str | None, Query(description=(
                         "With field: only values under this parent (alteration.aa: gene; "
                         "biomarker.call: TMB/MSI/LOH; ihc.clone, ihc.call: marker)"))] = None,
-                    email: str = Depends(user)) -> Options:
+                    u: authen.User = Depends(user)) -> Options:
         return run_options(q, limit, field, parent)
 
     @application.get("/api/schema")
-    def get_schema(email: str = Depends(user)) -> SchemaInfo:
+    def get_schema(u: authen.User = Depends(user)) -> SchemaInfo:
         return run_schema()
 
     @application.post("/api/saved")
-    async def post_saved(d: Definition, email: str = Depends(user)) -> SavedCohort:
-        return await run_save(email, d)
+    async def post_saved(d: Definition, u: authen.User = Depends(user)) -> SavedCohort:
+        return await run_save(u, d)
 
     @application.get("/api/saved")
-    async def get_saved_list(email: str = Depends(user)) -> SavedList:
-        return await saved.list_cohorts(email)
+    async def get_saved_list(u: authen.User = Depends(user)) -> SavedList:
+        return await saved.list_cohorts(u.sub)
 
     @application.get("/api/saved/{id}")
-    async def get_saved(id: uuid.UUID, email: str = Depends(user)) -> SavedCohort:
-        return await saved.get(email, id)
+    async def get_saved(id: uuid.UUID, u: authen.User = Depends(user)) -> SavedCohort:
+        return await saved.get(u.sub, id)
 
     @application.post("/api/saved/{id}/apply")
-    async def post_saved_apply(id: uuid.UUID, body: SavedApplyRequest, email: str = Depends(user)) -> SavedCohort:
-        return await run_saved_apply(email, id, body.op)
+    async def post_saved_apply(id: uuid.UUID, body: SavedApplyRequest, u: authen.User = Depends(user)) -> SavedCohort:
+        return await run_saved_apply(u, id, body.op)
 
     @application.get("/api/saved/{id}/history")
-    async def get_saved_history(id: uuid.UUID, email: str = Depends(user)) -> History:
-        return await saved.history(email, id)
+    async def get_saved_history(id: uuid.UUID, u: authen.User = Depends(user)) -> History:
+        return await saved.history(u.sub, id)
 
     @application.post("/api/saved/{id}/revert")
-    async def post_saved_revert(id: uuid.UUID, body: RevertRequest, email: str = Depends(user)) -> SavedCohort:
-        return await saved.revert(email, id, body.to)
+    async def post_saved_revert(id: uuid.UUID, body: RevertRequest, u: authen.User = Depends(user)) -> SavedCohort:
+        return await saved.revert(u.sub, id, body.to)
 
     @application.post("/api/saved/{id}/snapshot")
-    async def post_saved_snapshot(id: uuid.UUID, email: str = Depends(user)) -> Snapshot:
-        return await run_snapshot(email, "rest", id)
+    async def post_saved_snapshot(id: uuid.UUID, u: authen.User = Depends(user)) -> Snapshot:
+        return await run_snapshot(u, "rest", id)
 
     @application.delete("/api/saved/{id}")
-    async def delete_saved(id: uuid.UUID, email: str = Depends(user)) -> Deleted:
-        return await saved.delete(email, id)
+    async def delete_saved(id: uuid.UUID, u: authen.User = Depends(user)) -> Deleted:
+        return await saved.delete(u.sub, id)
 
     @application.get("/api/snapshots")
-    async def get_snapshots(email: str = Depends(user)) -> Snapshots:
-        return await saved.list_snapshots(email)
+    async def get_snapshots(u: authen.User = Depends(user)) -> Snapshots:
+        return await saved.list_snapshots(u.sub)
 
     @application.get("/api/versions/{cohort_id}")
-    async def get_version(cohort_id: str, email: str = Depends(user)) -> CohortVersion:
+    async def get_version(cohort_id: str, u: authen.User = Depends(user)) -> CohortVersion:
         return await saved.get_version(cohort_id)
 
     @application.get("/api/health")
@@ -529,6 +553,13 @@ def app(static_dir: str | None = None) -> FastAPI:
         return JSONResponse({"detail": "Method Not Allowed"}, status_code=405, headers={"Allow": "POST"})
 
     application.router.routes.extend(sub.routes)   # exactly /mcp; mounting would 307 to /mcp/
+    if authen.AUTH["mode"] == "authentik":
+        application.add_api_route("/auth/login", authen.login, methods=["GET"], include_in_schema=False,
+                                  response_model=None)
+        application.add_api_route("/auth/callback", authen.callback, methods=["GET"], include_in_schema=False,
+                                  response_model=None)
+        application.add_api_route("/auth/logout", authen.logout, methods=["POST"], include_in_schema=False,
+                                  response_model=None)
     if static_dir:   # last, so lowest precedence
         application.mount("/", StaticFiles(directory=static_dir, html=True))
     application.add_middleware(RequireUser)
@@ -540,7 +571,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8092)
     ap.add_argument("--auth", choices=authen.MODES, required=True,
-                    help="access: Cloudflare Access JWT; password: one local account; none: local dev only")
+                    help="access: Cloudflare Access JWT; password: one local account; none: local dev only; "
+                         "authentik: campus sign-in through Authentik (AUTHENTIK_*, APP_BASE_URL, SESSION_SECRET in .env)")
     ap.add_argument("--static", help="also serve this built front-end directory at / (local dev only)")
     args = ap.parse_args(argv)
     authen.configure(args.auth)
