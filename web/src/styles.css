@@ -151,8 +151,8 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .example h4 { margin: 0; font-size: var(--fs-md); line-height: var(--lh-md); }
 .example button { align-self: flex-end; margin-top: auto; }
 .start .total { color: var(--muted); margin: 0 0 var(--s2); }
-.spark { max-width: 16rem; }
-.spark-bars { display: flex; align-items: flex-end; gap: 2px; height: 2rem; }
+.spark { max-width: 36rem; }
+.spark-bars { display: flex; align-items: flex-end; gap: 3px; height: 7rem; }
 .spark .vbar { flex: 1; }
 .spark .vbar.partial:not(.hatched) { background: var(--bar-partial); }
 .suppressed { font-style: italic; color: var(--muted); }
