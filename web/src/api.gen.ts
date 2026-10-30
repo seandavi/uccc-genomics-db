@@ -126,6 +126,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/irb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Irb Lookup */
+        get: operations["get_irb_lookup_api_irb_get"];
+        put?: never;
+        /** Post Irb */
+        post: operations["post_irb_api_irb_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/irb/{irb_number}/{version}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Irb Document */
+        post: operations["post_irb_document_api_irb__irb_number___version__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -208,7 +243,8 @@ export interface paths {
         /** Get Requests */
         get: operations["get_requests_api_requests_get"];
         put?: never;
-        post?: never;
+        /** Post Request */
+        post: operations["post_request_api_requests_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -224,8 +260,27 @@ export interface paths {
         };
         /** Get Request */
         get: operations["get_request_api_requests__id__get"];
-        put?: never;
+        /** Put Request */
+        put: operations["put_request_api_requests__id__put"];
         post?: never;
+        /** Delete Request */
+        delete: operations["delete_request_api_requests__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/requests/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Request Submit */
+        post: operations["post_request_submit_api_requests__id__submit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -489,6 +544,20 @@ export interface components {
             cohort_id: string;
             definition: components["schemas"]["Definition"];
         };
+        /** Attestation */
+        Attestation: {
+            /** Attestation Version */
+            attestation_version: string;
+            /** Signed As */
+            signed_as: string;
+            /**
+             * Signed At
+             * Format: date-time
+             */
+            signed_at: string;
+            /** Text */
+            text: string;
+        };
         /** Biomarker */
         Biomarker: {
             /** At Least */
@@ -682,8 +751,11 @@ export interface components {
         };
         /** IdentifierReason */
         IdentifierReason: {
-            /** Identifier */
-            identifier: string;
+            /**
+             * Identifier
+             * @enum {string}
+             */
+            identifier: "mrn" | "name" | "dob" | "true_dates" | "vendor_report_id";
             /** Reason */
             reason: string;
         };
@@ -755,6 +827,24 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** IrbCreate */
+        IrbCreate: {
+            /**
+             * Approval Date
+             * Format: date
+             */
+            approval_date: string;
+            /** Approved Population */
+            approved_population: string;
+            /** Expiration Date */
+            expiration_date?: string | null;
+            /** Hipaa Pathway */
+            hipaa_pathway: string;
+            /** Irb Number */
+            irb_number: string;
+            /** Pi */
+            pi: string;
+        };
         /** IrbDocument */
         IrbDocument: {
             /**
@@ -779,12 +869,35 @@ export interface components {
             /** Section Cited */
             section_cited?: string | null;
             /** Sha256 */
-            sha256: string;
+            sha256?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** IrbDocumentCreate */
+        IrbDocumentCreate: {
+            /**
+             * Doc Type
+             * @enum {string}
+             */
+            doc_type: "approval_letter" | "personnel_list" | "protocol_excerpt" | "consent_form";
+            /** File Ref */
+            file_ref: string;
+            /** Protocol Version */
+            protocol_version?: string | null;
+            /** Section Cited */
+            section_cited?: string | null;
+            /** Title */
+            title: string;
         };
         /** IrbList */
         IrbList: {
             /** Authorizations */
             authorizations: components["schemas"]["IrbAuthorization"][];
+        };
+        /** IrbLookup */
+        IrbLookup: {
+            /** Authorizations */
+            authorizations: components["schemas"]["IrbStatus"][];
         };
         /** IrbPerson */
         IrbPerson: {
@@ -794,6 +907,24 @@ export interface components {
             person_id: string;
             /** Role */
             role: string;
+        };
+        /** IrbStatus */
+        IrbStatus: {
+            /** Doc Types */
+            doc_types: ("approval_letter" | "personnel_list" | "protocol_excerpt" | "consent_form")[];
+            /** Expiration Date */
+            expiration_date?: string | null;
+            /** Irb Number */
+            irb_number: string;
+            /** Registered By You */
+            registered_by_you: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "suspended" | "closed";
+            /** Version */
+            version: number;
         };
         /** IrbVersion */
         IrbVersion: {
@@ -854,6 +985,10 @@ export interface components {
         };
         /** MyRequestDetail */
         MyRequestDetail: {
+            /** Attestation */
+            attestation?: string | null;
+            /** Attestations */
+            attestations: components["schemas"]["Attestation"][];
             /**
              * Cohort
              * Format: uuid
@@ -876,11 +1011,13 @@ export interface components {
             id: string;
             /** Identifiers */
             identifiers: components["schemas"]["IdentifierReason"][];
-            irb?: components["schemas"]["IrbAuthorization"] | null;
+            irb?: components["schemas"]["IrbStatus"] | null;
             /** Irb Number */
             irb_number?: string | null;
             /** Irb Version */
             irb_version?: number | null;
+            /** Missing */
+            missing: string[];
             /** Purpose */
             purpose: string;
             /** Recipients */
@@ -1143,8 +1280,22 @@ export interface components {
              */
             updated_at: string;
         };
+        /** RequestCreate */
+        RequestCreate: {
+            /**
+             * Cohort
+             * Format: uuid
+             */
+            cohort: string;
+            /** Seq */
+            seq: number;
+        };
         /** RequestDetail */
         RequestDetail: {
+            /** Attestation */
+            attestation?: string | null;
+            /** Attestations */
+            attestations: components["schemas"]["Attestation"][];
             /**
              * Cohort
              * Format: uuid
@@ -1172,6 +1323,8 @@ export interface components {
             irb_number?: string | null;
             /** Irb Version */
             irb_version?: number | null;
+            /** Missing */
+            missing: string[];
             /** Purpose */
             purpose: string;
             /** Recipients */
@@ -1200,6 +1353,40 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** RequestDraft */
+        RequestDraft: {
+            /**
+             * Fields
+             * @default []
+             */
+            fields: ("demographics" | "diagnosis" | "specimen" | "test" | "variants" | "copy_number" | "fusions" | "biomarkers" | "ihc" | "expression" | "genes_tested")[];
+            /**
+             * Identifiers
+             * @default []
+             */
+            identifiers: components["schemas"]["IdentifierReason"][];
+            /** Irb Number */
+            irb_number?: string | null;
+            /** Irb Version */
+            irb_version?: number | null;
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /**
+             * Recipients
+             * @default []
+             */
+            recipients: components["schemas"]["Recipient"][];
+            /** Retention End */
+            retention_end?: string | null;
+            /**
+             * Storage Location
+             * @default
+             */
+            storage_location: string;
         };
         /** Requests */
         Requests: {
@@ -1436,6 +1623,11 @@ export interface components {
             site_type: string[];
             /** Vendor */
             vendor?: ("caris" | "fmi") | null;
+        };
+        /** SubmitRequest */
+        SubmitRequest: {
+            /** Attestation */
+            attestation: string;
         };
         /** UpdateCriterion */
         UpdateCriterion: {
@@ -1679,6 +1871,106 @@ export interface operations {
             };
         };
     };
+    get_irb_lookup_api_irb_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrbLookup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_irb_api_irb_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IrbCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrbStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_irb_document_api_irb__irb_number___version__documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                irb_number: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IrbDocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrbStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_me_api_me_get: {
         parameters: {
             query?: never;
@@ -1808,6 +2100,39 @@ export interface operations {
             };
         };
     };
+    post_request_api_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_request_api_requests__id__get: {
         parameters: {
             query?: never;
@@ -1818,6 +2143,107 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_request_api_requests__id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_request_api_requests__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Deleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_request_submit_api_requests__id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

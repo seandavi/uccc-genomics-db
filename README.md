@@ -406,13 +406,21 @@ Every revision records `snapshot_id`, the id of the de-id build it was saved aga
 in `genomics.duckdb`, written by `deid`; NULL for revisions saved before #132). Deleting a saved cohort
 that a request for identified data references answers 409 (the database refuses too).
 
-**Honest broker records (#132)**, read-only here (design: `docs/HONEST_BROKER.md`). Migration `0002` adds
-seven tables: `irb_authorization`, `irb_document`, `irb_personnel`, `request`, `review`, `release` and
-`release_patient` (study ids, `research_id`, only; never returned). Requesters read their own requests,
+**Honest broker records and the requester flow (#132, #133)** (design: `docs/HONEST_BROKER.md`). Migration `0002`
+adds seven tables: `irb_authorization`, `irb_document`, `irb_personnel`, `request`, `review`, `release` and
+`release_patient` (study ids, `research_id`, only; never returned); `0004` adds `request_attestation` and makes
+`irb_document` hold references (a `title`, a nullable `sha256`). Requesters read and write their own requests,
 the `uccc-genomics-broker` Authentik group (the `groups` claim, never an email) reads all requests and
-the IRB registry:
+the IRB registry. The portal stops at submission: no sample rows, nothing identified, no file upload (the
+requester gives a link or location for each IRB document, and the broker files copies in SharePoint with a host
+script). Any signed-in user who accepted the portal terms may request. REST only for writes; MCP stays read-only
+for requests:
 
-- `GET /api/requests` / `list_my_requests`; `GET /api/requests/{id}` / `get_my_request` (the IRB's status only, no personnel or documents)
+- `GET /api/irb?q=` (latest version of each IRB number starting with `q`: status, expiry, document types)
+- `POST /api/irb` (register the next version of an IRB number); `POST /api/irb/{irb_number}/{version}/documents` (add a document reference, creator only)
+- `POST /api/requests` (draft on a saved cohort revision you own); `PUT /api/requests/{id}` (replace the editable columns of a draft or returned request)
+- `POST /api/requests/{id}/submit` (signs the requester attestation, status `submitted`); `DELETE /api/requests/{id}` (drafts only)
+- `GET /api/requests` / `list_my_requests`; `GET /api/requests/{id}` / `get_my_request` (the IRB's status, expiry and referenced document types; what is `missing` before submission; the attestation text to sign; no personnel, no document locations)
 - `GET /api/broker/requests?status=` / `broker_list_requests`; `GET /api/broker/requests/{id}` / `broker_get_request`
 - `GET /api/broker/irb` / `broker_list_irb`; `GET /api/broker/irb/{irb_number}` / `broker_get_irb`
 
@@ -435,9 +443,12 @@ The cohort builder (COHORT_DISCOVERY.md §3.3), a React + TypeScript app built w
 It sends only cohort definitions and edit operations to `/api/*` (never SQL), shows every
 suppressed count as "<5", keeps versions in the browser's local storage and shares a cohort as a
 link holding its definition. Compare (2-4 local versions side by side) and the Feasibility statement
-are in the top bar. No third-party requests; the build sets a same-origin CSP. The build has two
+are in the top bar. No third-party requests; the build sets a same-origin CSP. The build has three
 pages: the public landing page (`index.html`, `/`) and Discover (`discover.html`, `/discover`). An
-old share link `/#d=…` is sent on to `/discover#d=…` by the landing page's script.
+old share link `/#d=…` is sent on to `/discover#d=…` by the landing page's script. A third page, My requests
+(`requests.html`, `/requests`), is the requester flow: Discover's **Request identified data** button saves the
+cohort and opens a draft there; the page lists the user's requests and holds the intake form, document
+references and attestation (README § Honest broker records).
 
     (cd web && bun install && bun run build)
     uv run genomics-app --auth password --host <tailnet-addr> --port 8092 --static web/dist

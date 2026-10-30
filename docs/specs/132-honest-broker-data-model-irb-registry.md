@@ -1,5 +1,9 @@
 # #132 Honest broker: data model, IRB registry and snapshot ids
 
+> Superseded in part by #133: a requester's `irb` is an `IrbStatus` (status, expiry and document types only,
+> as the README says), `irb_document.sha256` is nullable and gains `title` (references, not files), and
+> `request_attestation` is a ninth table.
+
 Design record: `docs/HONEST_BROKER.md` (Sean's decisions at the top). Part of #16. Follow-on issues
 build on this: #133 requester flow, #134 review queue, #135 fulfillment, #136 expiry and closeout.
 

@@ -3,7 +3,7 @@ import { Answer, Count, TierPill, type Counted, type Tab } from "./Answer.tsx";
 import { Builder } from "./Builder.tsx";
 import { Compare } from "./Compare.tsx";
 import { EMPTY, HISTORY_KEY, accrualPerYear, feasibility, pushVersion, readShareHash, shareHash, type History } from "./cohort.ts";
-import { describeError, type Account, type Transport } from "./transport.ts";
+import { describeError, type Account, type RequestsApi, type Transport } from "./transport.ts";
 import type { Definition, Me, Operation, Options } from "./types.ts";
 
 function loadHistory(): History {
@@ -130,7 +130,7 @@ export async function applyShareHash(hash: string, history: () => History, trans
   }
 }
 
-export function App({transport, account}: {transport: Transport; account?: Account}) {
+export function App({transport, account, requests}: {transport: Transport; account?: Account; requests?: Pick<RequestsApi, "start">}) {
   const [me, setMe] = useState<Me | null>(null);
   const [hist, setHistState] = useState<History>(loadHistory);
   const histRef = useRef(hist);
@@ -146,6 +146,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
   const [copied, setCopied] = useState(false);
   const [panel, setPanel] = useState<"compare" | "feasibility" | "share" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const shareRef = useRef<HTMLButtonElement>(null);
   const compareRef = useRef<HTMLButtonElement>(null);
@@ -268,6 +269,17 @@ export function App({transport, account}: {transport: Transport; account?: Accou
     }
   };
 
+  const startRequest = async () => {
+    if (!requests) return;
+    setStarting(true);
+    try {
+      window.location.assign("/requests#" + (await requests.start(current)).id);
+    } catch (e) {
+      setEditError({at: "builder", message: `Could not start a request: ${describeError(e)}`});
+      setStarting(false);
+    }
+  };
+
   const stale = !!answer && answer.d !== current;
   const statement = answer && !stale ? feasibility(answer.d, answer.r, answer.d.population.years ?? options?.years ?? null) : "";
   useEffect(() => setStatementCopied(false), [statement]);
@@ -314,6 +326,13 @@ export function App({transport, account}: {transport: Transport; account?: Accou
           {single && <span id="compare-why" className="sr-only">{COMPARE_WHY}</span>}
           <button type="button" ref={feasibilityRef} className="btn-primary" aria-expanded={panel === "feasibility"}
             disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
+          {requests && (
+            <>
+              <button type="button" className="btn-secondary" disabled={starting} onClick={startRequest}
+                title="Saves this cohort and opens a request form; identified data comes only from the honest broker">Request identified data</button>
+              <a className="btn-tertiary" href="/requests">My requests</a>
+            </>
+          )}
           {me && account && <Who me={me} onSignOut={() => { account.signOut().catch((e) => setEditError({at: "builder", message: `Sign-out failed: ${describeError(e)}`})); }} />}
         </div>
       </header>

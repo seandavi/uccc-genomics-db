@@ -62,6 +62,7 @@ def client(ids, tmp_path, monkeypatch):
     (tmp_path / "static").mkdir()
     (tmp_path / "static" / "index.html").write_text("<p>site</p>")
     (tmp_path / "static" / "discover.html").write_text("<p>discover</p>")
+    (tmp_path / "static" / "requests.html").write_text("<p>requests</p>")
     (tmp_path / "static" / "assets").mkdir()
     (tmp_path / "static" / "assets" / "app.js").write_text("console.log(1)")
     with TestClient(app.app(str(tmp_path / "static"))) as c:
@@ -272,7 +273,8 @@ GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply")
          ("GET", "/no/such/path"),
          ("POST", "/api/saved"), ("GET", "/api/saved"), ("GET", "/api/snapshots"),
          ("GET", "/api/versions/v1-0000000000000000"), ("GET", "/api/me"),
-         ("GET", "/api/requests"), ("GET", "/api/broker/irb")]
+         ("GET", "/api/requests"), ("GET", "/api/broker/irb"),
+         ("GET", "/requests"), ("GET", "/api/irb?q=x"), ("POST", "/api/irb"), ("POST", "/api/requests")]
 
 
 @pytest.mark.parametrize("method, path", GATED)
@@ -291,6 +293,14 @@ def test_public_paths_open(client):
     assert client.get("/assets/app.js").status_code == 200
     assert client.get("/api/public/summary").status_code == 200
     assert client.get("/discover", auth=AUTH).text == "<p>discover</p>"
+    assert client.get("/requests", auth=AUTH).text == "<p>requests</p>"
+
+
+@pytest.mark.parametrize("page, body", [("discover", "<p>discover</p>"), ("requests", "<p>requests</p>")])
+def test_static_page_takes_no_path_from_the_query(client, tmp_path, page, body):
+    secret = tmp_path / "static" / "index.html"
+    r = client.get(f"/{page}", params={"html": str(secret), "path": str(secret)}, auth=AUTH)
+    assert r.text == body
 
 
 @pytest.mark.parametrize("path, expected", [

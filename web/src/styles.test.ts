@@ -203,3 +203,7 @@ test("criterion card header is one row: no wrap, the label shrinks, the mode pil
 test("typeahead rows have a gap, so the ' · ' separator keeps its spaces", () => {
   expect(rule(".typeahead li")).toContain("gap: var(--s1)");
 });
+
+test("My requests keeps its header actions on a phone (it has no menu toggle to open them)", () => {
+  expect(css).toMatch(/@media \(max-width: 600px\) \{[^@]*\.requests \.actions \{ display: flex; \}/);
+});

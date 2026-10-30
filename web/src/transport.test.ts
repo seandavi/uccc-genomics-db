@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EMPTY } from "./cohort.ts";
-import { TransportError, describeError, errorMessage, fetchAccount, fetchPublicSummary, fetchTransport, type FetchLike } from "./transport.ts";
+import { TransportError, describeError, errorMessage, fetchAccount, fetchPublicSummary, fetchRequests, fetchTransport, type FetchLike } from "./transport.ts";
 
 interface Call { url: string; init: RequestInit }
 
@@ -169,5 +169,61 @@ describe("public summary", () => {
     } finally {
       (globalThis as {window?: unknown}).window = orig;
     }
+  });
+});
+
+describe("requests api", () => {
+  function requests(responses: unknown[]) {
+    const calls: Call[] = [];
+    const impl: FetchLike = async (url, init = {}) => {
+      calls.push({url, init});
+      return new Response(JSON.stringify(responses.shift() ?? {}), {status: 200});
+    };
+    return {calls, api: fetchRequests(impl)};
+  }
+  test("start saves the cohort, then opens a request on its first revision", async () => {
+    const {calls, api} = requests([{id: "c-1", head: {seq: 1}}, {id: "r-1"}]);
+    expect(await api.start(EMPTY)).toEqual({id: "r-1"} as never);
+    expect(calls.map((c) => [c.url, c.init.method])).toEqual([["/api/saved", "POST"], ["/api/requests", "POST"]]);
+    expect(JSON.parse(calls[0].init.body as string)).toEqual(EMPTY);
+    expect(JSON.parse(calls[1].init.body as string)).toEqual({cohort: "c-1", seq: 1});
+  });
+  test("start stops when saving fails", async () => {
+    const calls: Call[] = [];
+    const api = fetchRequests(async (url, init = {}) => { calls.push({url, init}); return new Response(JSON.stringify({detail: "at most 100"}), {status: 409}); });
+    const e = await api.start(EMPTY).catch((x) => x);
+    expect(e).toBeInstanceOf(TransportError);
+    expect(calls.length).toBe(1);
+  });
+  test("addDocument encodes the IRB number", async () => {
+    const {calls, api} = requests([{}]);
+    await api.addDocument("A/B 1", 2, {doc_type: "approval_letter", title: "t", file_ref: "f"});
+    expect(calls[0].url).toBe("/api/irb/A%2FB%201/2/documents");
+    expect(calls[0].init.method).toBe("POST");
+  });
+  test("remove sends DELETE with no body; update PUTs; submit posts the text", async () => {
+    const {calls, api} = requests([{id: "x"}, {}, {}]);
+    await api.remove("r 1");
+    await api.update("r-1", {} as never);
+    await api.submit("r-1", "the text");
+    expect(calls[0].url).toBe("/api/requests/r%201");
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(calls[0].init.body).toBeUndefined();
+    expect([calls[1].url, calls[1].init.method]).toEqual(["/api/requests/r-1", "PUT"]);
+    expect([calls[2].url, calls[2].init.method]).toEqual(["/api/requests/r-1/submit", "POST"]);
+    expect(JSON.parse(calls[2].init.body as string)).toEqual({attestation: "the text"});
+  });
+  test("list, get and lookupIrb are GETs", async () => {
+    const {calls, api} = requests([{}, {}, {}]);
+    await api.list();
+    await api.get("r-1");
+    await api.lookupIrb("T%X &");
+    expect(calls.map((c) => c.url)).toEqual(["/api/requests", "/api/requests/r-1", "/api/irb?q=T%25X+%26"]);
+    expect(calls.every((c) => c.init.method === undefined)).toBe(true);
+  });
+  test("a 409 on submit carries the server's message", async () => {
+    const api = fetchRequests(async () => new Response(JSON.stringify({detail: "read it again"}), {status: 409}));
+    const e = await api.submit("r-1", "x").catch((x) => x);
+    expect([e.status, e.message]).toEqual([409, "read it again"]);
   });
 });

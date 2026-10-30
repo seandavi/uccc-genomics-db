@@ -15,8 +15,10 @@ Oct 30, 2026 · @Sean Davis
 >    superseded by this.
 > 3. **The Tier 1 gate is terms acceptance.** Campus sign-in (Authentik, `@cuanschutz.edu`
 >    Google accounts) plus acceptance of the portal terms at first login, recorded per user.
-> 4. **IRB documents live in SharePoint**, written from the secure host with rclone (an rclone
->    SharePoint remote already works there), not in Postgres or the repository.
+> 4. **IRB documents live in SharePoint.** The portal records references only (type, title or
+>    version, and a link or location the requester gives). No file passes through the app, which
+>    has no SharePoint access. The broker files copies in SharePoint with a host script outside the
+>    app. (Supersedes the earlier "written with rclone by a server-side uploader"; #133.)
 > 5. **One SharePoint folder per request**, reused for refreshes of that request. Granting named
 >    recipients access programmatically (Microsoft Graph) is unverified; until it is, the broker
 >    shares the folder by hand and the system records it.
@@ -50,7 +52,7 @@ Out of scope: bulk exports, recurring feeds, and releases to parties outside the
 A request moves from cohort to closeout in seven steps. The target turnaround is 10 business days from a complete submission.
 
 1. **Build the cohort in the portal.** The requester defines the cohort in Tier 1 and saves the query. The saved query is frozen with its hash and the database snapshot it ran against.
-2. **Register or select the IRB authorization.** The requester enters the IRB number. If it is new to the system, they upload:
+2. **Register or select the IRB authorization.** The requester enters the IRB number. If it is new to the system, they register it and reference (type, title or version, and a link or location; nothing is uploaded):
    - the current IRB approval letter or determination;
    - the approved personnel list;
    - the protocol excerpt that justifies the request, cited by section and page, with the protocol version;
@@ -73,7 +75,7 @@ A request moves from cohort to closeout in seven steps. The target turnaround is
 
 ### Renewal and amendments
 
-The system flags authorizations 30 days before expiration and blocks new releases after it. An amended protocol or personnel change requires uploading the new documents; earlier releases keep their link to the version that was in force.
+The system flags authorizations 30 days before expiration and blocks new releases after it. An amended protocol or personnel change requires referencing the new documents; earlier releases keep their link to the version that was in force.
 
 ## Policy and form language
 
@@ -106,8 +108,19 @@ The portal makes the saved query the unit of work. The same query a requester se
 - **Cohort builder** filters on diagnosis, tumor site, gene and variant, biomarkers (MSI, TMB, PD-L1), vendor, and shifted date ranges. It shows counts, with small cells suppressed below a set threshold, and a capped sample.
 - **Saved queries** carry a canonical form, a hash, the snapshot ID, the author, and a plain-language description. Editing a saved query creates a new version rather than changing the old one.
 - **Request identification** is a button on any saved query. It opens the intake form with the query attached and prompts for the IRB number.
-- **IRB registry lookup** autocompletes known IRB numbers and shows status and expiration. It lets the requester upload documents for a new or amended authorization.
+- **IRB registry lookup** autocompletes known IRB numbers and shows status and expiration. It lets the requester register a new or amended authorization and reference its documents.
 - **My requests** shows status (draft, submitted, returned, approved, fulfilled, closed), messages from the broker, release dates, and retention deadlines with closeout attestation.
+
+As built (#133): the requester flow is the `/requests` page (`web/requests.html`), reached from Discover's
+**Request identified data** button, which saves the current definition as a new saved cohort and opens a draft
+on its first revision. The portal goes as far as **submission**: it never shows sample rows or anything
+identified, and review, fulfillment, exports and deliveries run outside the app. Any signed-in user who has
+accepted the portal terms may request; the broker's IRB personnel check is the gate. The intake records each IRB
+document as a reference (type, title or version, link or location); the requester can add references only to
+an IRB version they registered, and the broker files copies in SharePoint with a host script. The requester
+attestation is filled in from the request, shown, and stored with the text signed. The closeout attestation is
+not in the portal (#136), and `irb_personnel` is not entered by requesters: the broker transcribes it from the
+referenced personnel list, if at all. MCP stays read-only for requests.
 
 ### For the honest broker
 
@@ -129,7 +142,7 @@ A custom portal over the existing Parquet files supports this workflow directly.
 
 ## Data model
 
-Eight tables carry the whole audit trail. A release joins to exactly one request, one IRB authorization version, and one frozen query, so any release can be explained from the database alone.
+Nine tables carry the whole audit trail. A release joins to exactly one request, one IRB authorization version, and one frozen query, so any release can be explained from the database alone.
 
 | Table | Key fields | Notes |
 | --- | --- | --- |
@@ -141,6 +154,11 @@ Eight tables carry the whole audit trail. A release joins to exactly one request
 | review | request\_id, reviewer, checklist\_json, decision, notes, decided\_at | One or more per request |
 | release | release\_id, request\_id, file\_name, sha256, row\_count, fields\_released, recipients, sharepoint\_link, released\_at, removed\_at, closeout\_attested\_at | The answer to "where did the data go" |
 | release\_patient | release\_id, study\_id | Supports per-patient disclosure accounting; MRNs are not stored here |
+
+As built in #133: `request_attestation` is a ninth table (`request_id`, `attestation_version`, `text`, `signed_by`
+= `sub`, `signed_as` = email, `signed_at`), one row for each signature of the requester attestation, kept for
+every submission of a request. `irb_document` gains `title`, and `sha256` is nullable: a document the requester
+referenced has no hash because no file passes through the app.
 
 As built in #132 (`mcp/src/uccc_genomics_mcp/broker.py`, migration `0002`): `saved_query` is not a table, it
 maps onto `cohort_revision` (`query_id` = `cohort.id`, `version` = `seq`, `canonical_sql` = the canonical

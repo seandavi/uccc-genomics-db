@@ -6,6 +6,7 @@ Every scripted case goes through both surfaces and must give the same JSON.
 """
 import asyncio
 import datetime
+import itertools
 import json
 import os
 import re
@@ -65,7 +66,7 @@ def sql(statement, **params):
 def clean(pg_url, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", pg_url)
     monkeypatch.setattr(terms, "_accepted", set())
-    sql("TRUNCATE release_patient, release, review, request, irb_personnel, irb_document, irb_authorization, "
+    sql("TRUNCATE release_patient, release, review, request_attestation, request, irb_personnel, irb_document, irb_authorization, "
         "snapshot, cohort_revision, cohort, cohort_version, terms_acceptance")
     return pg_url
 
@@ -204,14 +205,16 @@ def test_revisions(sclient):
 
 
 @pytest.mark.parametrize("surface", [Rest, Mcp])
-def test_revision_snapshot_id(sclient, surface):
+def test_revision_snapshot_id(sclient, surface, monkeypatch):
+    builds = itertools.count(1)   # a new build id on every call, so a copied id shows
+    monkeypatch.setattr(cohort, "snapshot_id", lambda: f"synthetic-build-{next(builds)}")
     s = surface(sclient)
     id = ok(s.save(START))["id"]
     ok(s.apply(id, {"op": "rename", "name": "y"}))
     ok(s.revert(id, 1))
     revisions = ok(s.history(id))["revisions"]
-    assert len(revisions) == 3 and {r["snapshot_id"] for r in revisions} == {"synthetic-build-1"}
-    assert ok(s.get(id))["head"]["snapshot_id"] == "synthetic-build-1"
+    assert [r["snapshot_id"] for r in revisions] == ["synthetic-build-1", "synthetic-build-2", "synthetic-build-3"]
+    assert ok(s.get(id))["head"]["snapshot_id"] == "synthetic-build-3"
 
 
 def test_ownership(sclient):
@@ -384,8 +387,8 @@ def test_owner_is_sub(sclient, monkeypatch):
     assert sql("SELECT created_by FROM snapshot") == [{"created_by": "sub-a"}]
 
 
-BROKER_TABLES = ("irb_authorization", "irb_document", "irb_personnel", "request", "review", "release",
-                 "release_patient")
+BROKER_TABLES = ("irb_authorization", "irb_document", "irb_personnel", "request", "request_attestation", "review",
+                 "release", "release_patient")
 
 
 def test_migration_down_and_up(pg_url, monkeypatch):
@@ -405,3 +408,21 @@ def test_migration_down_and_up(pg_url, monkeypatch):
         command.upgrade(cfg, "head")
     command.check(cfg)
     assert sql(column)
+
+
+def test_migration_0004_down_and_up(pg_url, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", pg_url)
+    cfg = Config(str(REPO / "mcp" / "alembic.ini"))
+    table = ("SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() "
+             "AND table_name = 'request_attestation'")
+    columns = ("SELECT column_name, is_nullable FROM information_schema.columns WHERE table_schema = current_schema() "
+               "AND table_name = 'irb_document' AND column_name IN ('title', 'sha256') ORDER BY column_name")
+    assert sql(table) and sql(columns) == [{"column_name": "sha256", "is_nullable": "YES"},
+                                           {"column_name": "title", "is_nullable": "YES"}]
+    try:
+        command.downgrade(cfg, "0003")
+        assert sql(table) == [] and sql(columns) == [{"column_name": "sha256", "is_nullable": "NO"}]
+    finally:
+        command.upgrade(cfg, "head")
+    command.check(cfg)
+    assert sql(table) and len(sql(columns)) == 2
