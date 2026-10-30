@@ -51,10 +51,12 @@ export function isEmptyDefinition(d: Definition): boolean {
   return d.criteria.length === 0 && d.population.years == null && POP_DIMS.every((k) => d.population[k].length === 0);
 }
 
-/** Bar length in percent of `max` (the largest shown count, at least 1). A suppressed count is drawn
- *  as if it were `minCell`, so it is never longer than a shown bar of `minCell` or more; 0 is no bar. */
+/** Bar length in percent of `max` (the largest shown count, 0 if none is shown). A suppressed count is
+ *  drawn as if it were `minCell`, so it is never longer than a shown bar of `minCell` or more; 0 is no
+ *  bar. With nothing shown there is no scale, so a suppressed bar is the 2% stub. */
 export function barPct(n: number | null, max: number, minCell: number): number {
   if (n === 0) return 0;
+  if (max <= 0) return 2;
   return Math.min(100, Math.max(2, ((n ?? minCell) / max) * 100));
 }
 

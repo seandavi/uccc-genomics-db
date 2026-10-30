@@ -67,7 +67,7 @@ function DataFootnote({onTab}: {onTab: (t: Tab) => void}) {
 }
 
 function Funnel({r, d}: {r: CountResult; d: Definition}) {
-  const max = Math.max(1, ...r.funnel.map((s) => s.patients ?? 0));
+  const max = Math.max(0, ...r.funnel.map((s) => s.patients ?? 0));
   return (
     <section aria-labelledby="funnel-h">
       <h3 id="funnel-h">How each criterion narrows the cohort</h3>

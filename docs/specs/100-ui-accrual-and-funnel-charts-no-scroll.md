@@ -74,10 +74,12 @@ export type YearCount = S["YearCount"];
 ### `web/src/cohort.ts` (two helpers in the `// --- numbers` section, after `isEmptyDefinition`)
 
 ```ts
-/** Bar length in percent of `max` (the largest shown count, at least 1). A suppressed count is drawn
- *  as if it were `minCell`, so it is never longer than a shown bar of `minCell` or more; 0 is no bar. */
+/** Bar length in percent of `max` (the largest shown count, 0 if none is shown). A suppressed count is
+ *  drawn as if it were `minCell`, so it is never longer than a shown bar of `minCell` or more; 0 is no
+ *  bar. With nothing shown there is no scale, so a suppressed bar is the 2% stub. */
 export function barPct(n: number | null, max: number, minCell: number): number {
   if (n === 0) return 0;
+  if (max <= 0) return 2;
   return Math.min(100, Math.max(2, ((n ?? minCell) / max) * 100));
 }
 
@@ -93,7 +95,9 @@ export function yearSlots(byYear: readonly YearCount[]): {year: number; row: Yea
 
 The 2% floor is shared by shown and suppressed bars; with a different floor for each, a hatched
 bar could again be taller than a small shown one. The `Math.min(100, …)` only matters for a funnel
-whose top step is hidden while a later one is shown (see `Funnel`).
+whose top step is hidden while a later one is shown (see `Funnel`). When no step is shown (a
+population under `min_cell`, or hidden by the neighbour check) there is no scale: `max` is 0 and
+every hatched bar is the 2% stub, as before this change, never a full-width bar.
 
 `cohort.ts` imports `YearCount` from `./types.ts`.
 
@@ -104,7 +108,7 @@ Imports add `barPct` and `yearSlots` from `./cohort.ts`.
 **`Funnel`**: replace `top` with the largest shown step and draw every bar through `barPct`:
 
 ```tsx
-const max = Math.max(1, ...r.funnel.map((s) => s.patients ?? 0));
+const max = Math.max(0, ...r.funnel.map((s) => s.patients ?? 0));
 …
 <span className="track" aria-hidden="true">
   <span className={s.patients == null ? "bar hatched" : "bar"} style={{width: `${barPct(s.patients, max, r.min_cell)}%`}} />
@@ -268,7 +272,8 @@ README, ARCHITECTURE, PLAN and COHORT_TOOL don't describe the chart.
        hatched legend line, and an sr-only row per year reading `&lt;5`. Empty `by_year`
        renders "No years to show." and no chart.
 7. [ ] The funnel's hatched bar width is `barPct(null, max, min_cell)` (e.g. `width:10%` for a
-       synthetic top step of 50 and `min_cell` 5); a known 0 is still `width:0%`.
+       synthetic top step of 50 and `min_cell` 5); a known 0 is still `width:0%`. A funnel of only suppressed steps renders `width:2%` and never
+       `width:100%`.
 8. [ ] (#105) `styles.test.ts` computes `--muted` against the `td.hatched` stripe (mix parsed
        from the rule, composited over `--suppressed-bg`) and against `--suppressed-bg`, and
        requires ≥ 4.5:1 in both themes; it passes at 15% and would fail at 35%.

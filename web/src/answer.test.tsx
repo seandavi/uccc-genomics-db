@@ -233,6 +233,11 @@ describe("accrual chart", () => {
     expect(html).toContain('class="bar hatched" style="width:10%"');
     expect(html).toContain('class="bar" style="width:10%"');
   });
+  test("a funnel with every step suppressed draws stubs, not full bars", () => {
+    const html = render(result({funnel: [{criterion: null, patients: null}, {criterion: "c1", patients: null}]}));
+    expect(html).toContain('class="bar hatched" style="width:2%"');
+    expect(html).not.toContain("width:100%");
+  });
   test("every year hidden is one hatched strip", () => {
     const html = render(result({by_year: [yr(2023, null), yr(2024, null)]}));
     expect(html).toContain('class="strip"');

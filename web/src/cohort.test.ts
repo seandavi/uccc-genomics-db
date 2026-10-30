@@ -23,6 +23,7 @@ describe("numbers", () => {
     expect(barPct(null, 50, 5)).toBe(10);
     expect(barPct(0, 50, 5)).toBe(0);
     expect(barPct(3, 10000, 5)).toBe(2);
+    expect(barPct(null, 0, 5)).toBe(2);   // nothing shown: no scale, a stub rather than a full bar
   });
   test("yearSlots fills the gaps between the first and last year only", () => {
     const y = (year: number) => ({year, patients: 6, complete: true});
