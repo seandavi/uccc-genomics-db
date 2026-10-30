@@ -10,6 +10,7 @@ export type Mode = Criterion["mode"];
 export type Operation = S["ApplyRequest"]["op"];
 export type ApplyResult = S["ApplyResult"];
 export type CountResult = S["CountResult"];
+export type YearCount = S["YearCount"];
 export type PivotResult = S["PivotResult"];
 export type Me = S["Me"];
 export type Options = S["Options"];

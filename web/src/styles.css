@@ -137,7 +137,7 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 @media (max-width: 600px) { .cards { grid-template-columns: 1fr 1fr; } }   /* after .cards: same specificity, later wins */
 .card.hero .big { font-size: var(--fs-hero); line-height: var(--lh-hero); }
 .footnote { margin: 0 0 var(--s4); }
-.footnote .btn-tertiary { min-height: 0; padding: 0; font-size: inherit; }
+.footnote .btn-tertiary { min-height: 0; padding: 0; }
 .sub { color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-sm); }
 .tier { display: inline-block; font-weight: 600; font-size: var(--fs-xs); line-height: var(--lh-xs); padding: 2px var(--s2); border-radius: 999px; }
 .tier-high { color: var(--high); background: var(--high-bg); }
@@ -152,19 +152,24 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .funnel .num { text-align: right; font-variant-numeric: tabular-nums; }
 .track { display: block; height: .9rem; }
 .bar { display: block; height: 100%; background: var(--bar); border-radius: 2px; }
-.legend { color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-xs); display: flex; gap: .4rem; align-items: center; }
+.legend { color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-xs); display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.legend > span:not(.swatch) { display: inline-flex; align-items: center; gap: .4rem; margin-right: var(--s3); }
 .swatch { display: inline-block; width: 1.2rem; height: .8rem; border-radius: 2px; }
 
 .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin: 1rem 0 .75rem; }
 .tabs button { background: var(--bg); border-bottom: 0; border-radius: 6px 6px 0 0; }
 .tabs button[aria-selected="true"] { background: var(--surface); font-weight: 600; border-color: var(--accent); }
 
-.accrual .bars { display: flex; align-items: flex-end; gap: .5rem; height: 12rem; overflow-x: auto; max-width: 100%; }
-.accrual .col { flex: 1; display: flex; flex-direction: column; height: 100%; min-width: 2.5rem; }
-.accrual .barbox { flex: 1; display: flex; align-items: flex-end; }
+.accrual .bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--s1); height: 12rem; }
+.accrual .col { display: grid; grid-template-rows: minmax(0, 1fr) calc(2 * var(--lh-xs)); min-width: 0; }
+.accrual .barbox { display: flex; align-items: flex-end; min-height: 0; }
 .vbar { width: 100%; background: var(--bar); border-radius: 2px 2px 0 0; }
 .col.partial .vbar:not(.hatched) { background: var(--bar-partial); }
-.barlabel { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; font-size: var(--fs-xs); line-height: var(--lh-xs); }
+.barlabel { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; white-space: nowrap; font-size: var(--fs-xs); line-height: var(--lh-xs); }
+/* phones: columns too narrow for every label, so label alternate columns (the last year always keeps its label); the sr-only table has every value */
+@media (max-width: 600px) { .accrual .dense .col:nth-last-child(even) .barlabel > span { visibility: hidden; } }
+.accrual .strip { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--s3); margin: 0; }
+.accrual .strip .bar { height: var(--s4); }
 figcaption { color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-sm); margin-top: .4rem; }
 figure { margin: 0; }
 
@@ -183,7 +188,7 @@ table.grid th[scope="row"], table.grid thead th:first-child { text-align: left; 
 }
 td.hatched, .summary-count.hatched {
   background-color: var(--suppressed-bg);
-  background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--suppressed-stripe) 35%, transparent) 0 2px, transparent 2px 6px);
+  background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--suppressed-stripe) 15%, transparent) 0 2px, transparent 2px 6px);
 }
 .panel { padding: .6rem 1rem; border-bottom: 1px solid var(--line); background: var(--surface); }
 .panel textarea { width: 100%; max-width: 60rem; }
