@@ -1,5 +1,6 @@
 """Pins what keeps PHI and /mcp off the public route of the production container (#129)."""
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,8 @@ def _service() -> dict:
         ["docker", "compose", "-f", str(COMPOSE), "--env-file", str(ROOT / "deploy" / ".env.example"),
          "config", "--format", "json"],
         check=True, capture_output=True, text=True,
+        # ponytail: minimal env so shell/.env secrets never reach the rendered config or assert output
+        env={"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", "/tmp")},
     ).stdout
     return json.loads(out)["services"]["genomics-app"]
 
@@ -70,3 +73,9 @@ def test_dockerfile_runs_authentik_as_non_root():
     assert "\nUSER 10001\n" in text
     cmd = next(ln for ln in text.splitlines() if ln.startswith("CMD "))
     assert '"--auth", "authentik"' in cmd
+
+
+def test_dockerignore_excludes_secret_patterns():
+    lines = (ROOT / ".dockerignore").read_text().splitlines()
+    for pat in ("**/.env*", "**/*.duckdb*", "**/.db_key*", "**/.deid_key*", "**/*.key"):
+        assert pat in lines

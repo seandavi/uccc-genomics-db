@@ -424,7 +424,7 @@ secrets, data or keys inside; `.dockerignore` is an allowlist). `deploy/compose.
 pipeline host behind the host's Traefik (`proxy` network, Let's Encrypt through the `cloudflare`
 resolver, grey-cloud DNS) with Authentik sign-in, and on `pg_main_stack_default` for Postgres. Every
 route but the open ones needs a login in the Authentik group. `/mcp` is not routed (MCP stays on the
-tailnet, `genomics-mcp`), and the container publishes no port. Traefik rate-limits each client address (average 20/s, burst 50) on the open routes.
+tailnet, `genomics-mcp`), and the container publishes no port. Traefik rate-limits each client address (average 20/s, burst 50) on every route; it exists for the open ones (`/`, `/assets/*`, `/auth/*`, `/api/public/summary`), and signed-in traffic from a shared campus NAT address shares it.
 
 It mounts only `genomics.duckdb` and `.db_key` from `$DATA`, read-only, and runs as the uid:gid that
 owns `.db_key` (mode 600). The PHI file, its key, `.deid_key` and `raw/` are never mounted. `deid.py`

@@ -9,3 +9,9 @@
 web/node_modules/
 web/dist/
 **/__pycache__/
+**/.env*
+**/*.duckdb*
+**/.db_key*
+**/.deid_key*
+**/.duckdb_init_*
+**/*.key
