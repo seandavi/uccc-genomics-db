@@ -317,7 +317,7 @@ that range with fewer shows null). It is cached per de-id file and sent with `Ca
 max-age=3600`.
 
 `--static` serves a built front end: the landing page at `/` and Discover (below) at `/discover`.
-Development only: no systemd unit or deploy yet.
+Production runs it in a container ([Production (container)](#production-container)).
 
 **Campus sign-in (Authentik)** (#95). `--auth authentik` signs members of one Authentik group in
 through the central Authentik run from seandavi/monode (`infrastructure/compose/authentik/README.md`
@@ -416,6 +416,72 @@ old share link `/#d=…` is sent on to `/discover#d=…` by the landing page's s
 `bun run dev` serves the app with hot reload and proxies `/api` to a genomics-app on
 127.0.0.1:8092. After changing a model in `cohort/` or `app.py`, run `bun run gen` (rewrites
 `web/openapi.json` and `web/src/api.gen.ts`); pytest and `bun run typecheck` fail until you do.
+
+### Production (container)
+
+`Dockerfile` builds `genomics-app` and the built `web/` into one image (non-root uid 10001, no
+secrets, data or keys inside; `.dockerignore` is an allowlist). `deploy/compose.yaml` runs it on the
+pipeline host behind the host's Traefik (`proxy` network, Let's Encrypt through the `cloudflare`
+resolver, grey-cloud DNS) with Authentik sign-in, and on `pg_main_stack_default` for Postgres. Every
+route but the open ones needs a login in the Authentik group. `/mcp` is not routed (MCP stays on the
+tailnet, `genomics-mcp`), and the container publishes no port.
+
+It mounts only `genomics.duckdb` and `.db_key` from `$DATA`, read-only, and runs as the uid:gid that
+owns `.db_key` (mode 600). The PHI file, its key, `.deid_key` and `raw/` are never mounted. `deid.py`
+replaces `genomics.duckdb` by rename and a file bind mount keeps the old inode, so `genomics.service`
+runs `docker restart uccc_genomics_app` right after `genomics all` (skipped while the container does
+not exist). The app serves the previous file until then, and a few seconds of downtime a night is the
+cost.
+
+**Settings, once.** `deploy/.env` (gitignored; placeholders in `deploy/.env.example`), created with
+`umask 077`. Secrets come from Secret Manager and are never echoed:
+
+    cd deploy && umask 077 && cp .env.example .env     # then edit the non-secret values: APP_HOST, HOST_DATA, AUTHENTIK_ISSUER, DATABASE_URL role/database
+    stat -c '%u %g' "$DATA/.db_key"                    # -> APP_UID APP_GID
+    for s in authentik-client-secret:AUTHENTIK_CLIENT_SECRET session-secret:SESSION_SECRET; do   # printf is a builtin: no secret in `ps`
+      printf '%s=%s\n' "${s#*:}" "$(gcloud secrets versions access latest \
+        --secret="uccc-genomics-${s%:*}" --project=<gsm-project>)" >> .env    # a later line overrides the placeholder
+    done
+    # the database password (uccc-genomics-db-password-onclappc02), URL-encoded into DATABASE_URL:
+    printf 'DATABASE_URL=postgresql://<role>:%s@pg_main:5432/<database>\n' "$(gcloud secrets versions access latest \
+      --secret=uccc-genomics-db-password-onclappc02 --project=<gsm-project> \
+      | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read().strip(), safe=""))')" >> .env
+
+`uccc-genomics-session-secret` does not exist until a person creates it, once:
+
+    python3 -c "import secrets; print(secrets.token_urlsafe(48), end='')" \
+      | gcloud secrets create uccc-genomics-session-secret --data-file=- --project=<gsm-project>
+
+**Migrations** are unchanged: `uv run alembic -c mcp/alembic.ini upgrade head` from the host
+checkout when a release adds one (the app never migrates on start).
+
+**Build, validate, up.** Agents never run `up`, `restart` or `down` against production.
+
+    git pull && docker build -t uccc-genomics-app:$(git rev-parse --short HEAD) .
+    # set APP_TAG in deploy/.env to that sha
+    docker compose -f deploy/compose.yaml config -q    # -q: plain `config` prints the secrets
+    docker compose -f deploy/compose.yaml up -d
+    docker compose -f deploy/compose.yaml ps           # wait for "healthy"
+    curl -sS https://<APP_HOST>/api/health             # {"status":"Healthy"}
+
+Then sign in once: a group member gets in and `/api/me` answers; `/mcp` gives Traefik's 404.
+
+**Logs.** `docker compose -f deploy/compose.yaml logs -f genomics-app`. The audit lines (one JSON
+line per count or pivot) are on stdout; Docker rotates them at 10 x 50 MB.
+
+**Rollback.** `docker image ls uccc-genomics-app`, set `APP_TAG` in `deploy/.env` to the previous
+tag, `docker compose -f deploy/compose.yaml up -d`.
+
+**monode follow-ups, for a person, before the first `up`:**
+
+1. An A record for `<APP_HOST>` to the host's public IP, `proxied = false`, in
+   `terraform/apps/dns/cancerdatasci_org.tf` (check with `dig` first; TLS-ALPN-01 cannot issue a
+   certificate without it).
+2. A second uptime check and alert policy in `terraform/apps/uccc_genomics/` on
+   `https://<APP_HOST>/api/health` (status 200, body contains `Healthy`), like the existing one.
+3. The GSM session secret above.
+
+The Authentik redirect URI `https://<APP_HOST>/auth/callback` is already registered.
 
 ## Cleanup
 

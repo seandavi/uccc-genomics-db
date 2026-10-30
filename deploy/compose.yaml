@@ -1,0 +1,51 @@
+# genomics-app, the campus cohort site (README "Production (container)", #129).
+# Networks: proxy (Traefik, monode compose/traefik) and pg_main_stack_default (Postgres as pg_main).
+# Values come from deploy/.env (gitignored; deploy/.env.example lists them). The image bakes in no secrets.
+name: uccc-genomics
+services:
+  genomics-app:
+    image: uccc-genomics-app:${APP_TAG:?set APP_TAG in deploy/.env}
+    pull_policy: never                 # built on this host; never look for it on a registry
+    container_name: uccc_genomics_app  # genomics.service restarts it by this name after the nightly rebuild
+    restart: unless-stopped
+    user: "${APP_UID:?set APP_UID in deploy/.env}:${APP_GID:?set APP_GID in deploy/.env}"   # owner of the host data dir's .db_key (mode 600)
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    networks: [proxy, pg_main_stack_default]
+    volumes:
+      # Only the de-id file and its key, read-only. Never the whole data dir: it holds the identified file, its key,
+      # the de-id hashing key and the raw mirror. A file mount keeps the old inode after deid's rename, hence the nightly restart.
+      # Long syntax: a missing source fails the start instead of becoming an empty directory.
+      - {type: bind, source: "${HOST_DATA:?set HOST_DATA in deploy/.env}/genomics.duckdb", target: /data/genomics.duckdb, read_only: true}
+      - {type: bind, source: "${HOST_DATA:?set HOST_DATA in deploy/.env}/.db_key", target: /data/.db_key, read_only: true}
+    environment:
+      APP_BASE_URL: https://${APP_HOST:?set APP_HOST in deploy/.env}
+      AUTHENTIK_ISSUER: ${AUTHENTIK_ISSUER:?set AUTHENTIK_ISSUER in deploy/.env}
+      AUTHENTIK_CLIENT_ID: ${AUTHENTIK_CLIENT_ID:-uccc-genomics}
+      AUTHENTIK_CLIENT_SECRET: ${AUTHENTIK_CLIENT_SECRET:?set AUTHENTIK_CLIENT_SECRET in deploy/.env}
+      AUTHENTIK_GROUP: ${AUTHENTIK_GROUP:-uccc-genomics-dashboard}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in deploy/.env}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in deploy/.env}
+      TZ: America/Denver               # data_date() is the local date of the de-id file's mtime
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      # /mcp is not routed: MCP stays on the tailnet (genomics-mcp). Everything else still needs a login.
+      - "traefik.http.routers.uccc-genomics.rule=Host(`${APP_HOST}`) && !PathPrefix(`/mcp`)"
+      - "traefik.http.routers.uccc-genomics.entrypoints=websecure"
+      - "traefik.http.routers.uccc-genomics.tls=true"
+      - "traefik.http.routers.uccc-genomics.tls.certresolver=cloudflare"   # grey cloud: LE via TLS-ALPN-01
+      - "traefik.http.services.uccc-genomics.loadbalancer.server.port=8092"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(b'Healthy' not in urllib.request.urlopen('http://127.0.0.1:8092/api/health', timeout=5).read())"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:                           # stdout carries the query audit log (one JSON line per count/pivot)
+      driver: json-file
+      options: {max-size: 50m, max-file: "10"}
+
+networks:
+  proxy: {external: true}
+  pg_main_stack_default: {external: true}

@@ -80,7 +80,9 @@ and the decisions behind it. Tracking issue: #23.
 The app runs on the pipeline host, bound to its tailnet address, with `--auth password` or
 `--auth authentik` (campus sign-in through Authentik, `APP_BASE_URL` set to the tailnet URL), so
 progress is visible at `http://<host>:<port>` from the tailnet (Discover at `/discover`, the landing page at `/`). No `tailscale serve`, no
-deploys. The service is `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35). Production hosting (Docker Compose behind Traefik) comes after the app works.
+deploys. The service is `genomics-app` (`mcp/src/uccc_genomics_mcp/app.py`, #35). Production runs the same app in a container behind
+Traefik (`Dockerfile`, `deploy/compose.yaml`, #129; README § Production (container)); its public
+router does not route `/mcp`, so remote MCP (decision 10) needs a routing change when it lands.
 
 The app (Discover) is built from `web/` and served by `genomics-app --static web/dist` (#37), so it
 shares the origin and the login of `/api/*`.
