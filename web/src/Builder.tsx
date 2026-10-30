@@ -382,7 +382,10 @@ function CriterionCard({c, scope, transport, options, onOp}: {
           onChange={(e) => onOp({op: "set_mode", id, mode: e.target.value as Mode})}>
           {modesFor(c).map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
         </select>
-        <span aria-hidden="true"> · </span><span className="clabel">{label}</span>
+        <span className="sep" aria-hidden="true">·</span>
+        <span className="clabel">{label}</span>
+        <button type="button" className="btn-icon remove" aria-label={`Remove ${label}`} title="Remove this criterion"
+          onClick={() => onOp({op: "remove_criterion", id})}>✕</button>
       </header>
       {c.kind === "any_of" && (
         <ul className="members">{c.of.map((m, i) => (
@@ -390,11 +393,7 @@ function CriterionCard({c, scope, transport, options, onOp}: {
         ))}</ul>
       )}
       {c.kind === "sequence" && <SequenceMembers c={c} transport={transport} onChange={update} />}
-      <div className="row card-actions">
-        {actions}
-        <button type="button" className="btn-icon remove" aria-label={`Remove ${label}`} title="Remove this criterion"
-          onClick={() => onOp({op: "remove_criterion", id})}>✕</button>
-      </div>
+      {actions.length > 0 && <div className="row card-actions">{actions}</div>}
       {mode === "edit" && <Editor c={c} transport={transport} options={options} onSave={update} onCancel={() => setMode(null)} />}
       {mode === "or" && <Typeahead label="Or any of" placeholder="Search another finding… e.g. NRAS" search={(q) => searchAll(transport, q).then((r) => r.filter((e) => !e.field.startsWith("population.") && e.field !== "data.has"))} onPick={orIn} />}
       {mode === "then" && <Typeahead label="Then, on a later report" placeholder="Search a finding on the later report… e.g. liquid biopsy" search={(q) => searchAll(transport, q).then((r) => r.filter(seqEntry))} onPick={thenIn} />}
