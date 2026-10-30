@@ -538,14 +538,19 @@ def test_public_summary_values(tmp_path, monkeypatch):
     monkeypatch.setattr(public, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
     monkeypatch.setattr(public, "DEID_DB", path)
     monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
+    # unrounded first, so a broken filter cannot hide behind rounding
+    coarse = public.coarse
+    monkeypatch.setattr(public, "coarse", lambda k: k)
+    raw = public.summary()
+    assert (raw.patients, raw.reports) == (n, n + 1)   # p1 has a second report
+    assert raw.tumor_types == 2   # NSCLC, COADREAD: OTHER, NULL, RARE (3) and BRCA (2) are left out
+    assert raw.vendors == ["caris", "fmi"]
+    assert [(y.year, y.patients, y.complete) for y in raw.by_year] == [(2022, 12, True), (2023, 2, False),
+                                                                        (2024, 33, True)]
+    monkeypatch.setattr(public, "coarse", coarse)
+    monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
     s = public.summary()
-    con = duckdb.connect(path, read_only=True)
-    patients, reports = con.execute("SELECT count(DISTINCT research_id), count(*) FROM mart.report").fetchone()
-    assert (s.patients, s.reports) == (public.coarse(patients), public.coarse(reports))
-    assert s.reports == public.coarse(patients + 1)
-    assert s.tumor_types == public.coarse(con.execute(
-        "SELECT count(*) FROM (SELECT oncotree FROM mart.report WHERE oncotree <> 'OTHER' GROUP BY 1 "
-        "HAVING count(DISTINCT research_id) >= 5)").fetchone()[0]) == public.coarse(2)   # NSCLC, COADREAD
+    assert (s.patients, s.reports, s.tumor_types) == (50, 50, None)
     assert s.vendors == ["caris", "fmi"]
     assert (s.first_year, s.last_year) == (2022, 2024)
     assert [(y.year, y.patients, y.complete) for y in s.by_year] == [(2022, 10, True), (2023, None, False),
