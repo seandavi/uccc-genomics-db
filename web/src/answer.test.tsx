@@ -193,6 +193,13 @@ describe("states", () => {
     expect(render(result(), "Accrual", {busy: true})).toContain('class="answer-body dim"');
     expect(render(result(), "Accrual", {busy: false})).not.toContain("dim");
   });
+  test("the accrual tier renders as a pill class per tier", () => {
+    for (const [patients, cls, label] of [[400, "tier-high", "High"], [60, "tier-moderate", "Moderate"], [8, "tier-low", "Low / pilot"]] as const) {
+      const html = render(result({patients}));
+      expect(html).toContain(`class="tier ${cls}"`);
+      expect(html).toContain(`>${label}<`);
+    }
+  });
   test("tablist roles", () => {
     const html = render(result());
     expect(html).toContain('role="tablist"');
