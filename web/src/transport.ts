@@ -1,4 +1,7 @@
-import type { ApplyResult, CountResult, Definition, Me, Operation, Options, PivotResult, PublicSummary } from "./types.ts";
+import type {
+  ApplyResult, CountResult, Definition, IrbCreate, IrbDocumentCreate, IrbLookup, IrbStatus, Me, MyRequestDetail,
+  Operation, Options, PivotResult, PublicSummary, RequestDraft, Requests,
+} from "./types.ts";
 
 export interface OptionsQuery { q?: string; field?: string; parent?: string; limit?: number }
 
@@ -103,5 +106,40 @@ export function fetchAccount(fetchImpl: FetchLike = fetch, signIn: (login: strin
   return {
     me: () => request("/api/me"),
     signOut: async () => navigate((await request<{url: string}>("/auth/logout", {method: "POST"})).url),
+  };
+}
+
+/** Requests for identified data: intake and submission only. Nothing here returns a patient or a count. */
+export interface RequestsApi {
+  start(definition: Definition): Promise<MyRequestDetail>;               // POST /api/saved, then POST /api/requests {cohort, seq}
+  list(): Promise<Requests>;                                             // GET /api/requests
+  get(id: string): Promise<MyRequestDetail>;                             // GET /api/requests/{id}
+  update(id: string, draft: RequestDraft): Promise<MyRequestDetail>;     // PUT /api/requests/{id}
+  submit(id: string, attestation: string): Promise<MyRequestDetail>;     // POST /api/requests/{id}/submit
+  remove(id: string): Promise<void>;                                     // DELETE /api/requests/{id}
+  lookupIrb(q: string): Promise<IrbLookup>;                              // GET /api/irb?q=
+  registerIrb(a: IrbCreate): Promise<IrbStatus>;                         // POST /api/irb
+  addDocument(irbNumber: string, version: number, d: IrbDocumentCreate): Promise<IrbStatus>;   // POST /api/irb/{n}/{v}/documents
+}
+
+export function fetchRequests(fetchImpl: FetchLike = fetch, signIn: (login: string) => void = signInAt): RequestsApi {
+  const request = requester(fetchImpl, signIn);
+  const send = <T>(method: string, path: string, body?: unknown) =>
+    request<T>(path, body === undefined ? {method} : {method, body: JSON.stringify(body)});
+  const path = (id: string) => `/api/requests/${encodeURIComponent(id)}`;
+  return {
+    start: async (definition) => {
+      const saved = await send<{id: string; head: {seq: number}}>("POST", "/api/saved", definition);
+      return send("POST", "/api/requests", {cohort: saved.id, seq: saved.head.seq});
+    },
+    list: () => request("/api/requests"),
+    get: (id) => request(path(id)),
+    update: (id, draft) => send("PUT", path(id), draft),
+    submit: (id, attestation) => send("POST", `${path(id)}/submit`, {attestation}),
+    remove: async (id) => { await send("DELETE", path(id)); },
+    lookupIrb: (q) => request(`/api/irb?${new URLSearchParams({q})}`),
+    registerIrb: (a) => send("POST", "/api/irb", a),
+    addDocument: (irbNumber, version, d) =>
+      send("POST", `/api/irb/${encodeURIComponent(irbNumber)}/${version}/documents`, d),
   };
 }

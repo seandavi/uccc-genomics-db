@@ -143,6 +143,21 @@ describe("header", () => {
   });
 });
 
+describe("header: requests for identified data", () => {
+  const requests = {start: async () => ({}) as never};
+  test("with the requests api: the button and a My requests link", () => {
+    const h = headerOf(renderToStaticMarkup(<App transport={stalled} requests={requests} />));
+    expect(h).toMatch(/<button[^>]*class="btn-secondary"[^>]*>Request identified data<\/button>/);
+    expect(h).toContain('<a class="btn-tertiary" href="/requests">My requests</a>');
+    expect(h.match(/btn-primary/g)?.length).toBe(1);
+  });
+  test("without it, neither", () => {
+    const h = headerOf(renderToStaticMarkup(<App transport={stalled} />));
+    expect(h).not.toContain("Request identified data");
+    expect(h).not.toContain("/requests");
+  });
+});
+
 describe("SharePanel", () => {
   const share = (cohortId: string | null, copied = false) =>
     renderToStaticMarkup(<SharePanel link="http://x/#d=abc" cohortId={cohortId} copied={copied} onClose={() => {}} />);

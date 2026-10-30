@@ -232,3 +232,17 @@ td.hatched, .summary-count.hatched {
 .totals .text dd { font-size: var(--fs-md); line-height: var(--lh-md); font-weight: 600; }
 a.btn-primary { display: inline-block; padding: var(--s2) var(--s4); border-radius: 6px; text-decoration: none; background: var(--accent); color: var(--accent-fg); border: 1px solid var(--accent); font-weight: 600; }
 a.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, var(--fg)); }
+
+a.btn-tertiary { text-decoration: none; display: inline-flex; align-items: center; min-height: 36px; }
+.requests main { padding: var(--s4); max-width: 60rem; }
+.requests .intro { max-width: 65ch; }
+.requests table.list { border-collapse: collapse; }
+.requests table.list th, .requests table.list td { border-bottom: 1px solid var(--line); padding: var(--s2) var(--s3); text-align: left; font-weight: normal; }
+.intake fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 var(--s4); padding: var(--s3); display: grid; gap: var(--s2); }
+.intake legend { font-weight: 600; padding-inline: var(--s1); }
+.intake label { display: block; }
+.intake .checks label, .intake .row label { display: inline-block; }
+.intake textarea { width: 100%; max-width: 65ch; }
+blockquote { border-left: 4px solid var(--accent); margin: 0 0 var(--s3); padding: var(--s2) var(--s3); background: var(--surface); max-width: 65ch; }
+dl.summary dt { font-weight: 600; margin-top: var(--s2); }
+dl.summary dd { margin: 0; }
