@@ -77,6 +77,28 @@ export function Who({me, onSignOut}: {me: Me; onSignOut: () => void}) {
   );
 }
 
+/** What a URL hash does to the history. null: it is the current version's share hash (setHist wrote it),
+ *  nothing to do. {history}: the history with the link's definition as a new version, or the history read
+ *  after the request (unchanged) when the server's form equals the current version or the hash is not a
+ *  share link. {error}: the text to show. history() is read again after the request, so an edit made
+ *  meanwhile is kept. */
+export async function applyShareHash(hash: string, history: () => History, transport: Pick<Transport, "apply">):
+    Promise<{history: History} | {error: string} | null> {
+  const before = history();
+  if (hash === shareHash(before.versions[before.current].definition)) return null;
+  if (!hash.startsWith("#d=")) return {history: before};
+  try {
+    const decoded = readShareHash(hash);
+    if (decoded === null) throw new Error("it could not be read");
+    const n = (decoded as {name?: unknown}).name;
+    const r = await transport.apply(decoded as Definition, {op: "rename", name: typeof n === "string" ? n : ""});
+    const h = history();
+    return {history: JSON.stringify(r.definition) === JSON.stringify(h.versions[h.current].definition) ? h : pushVersion(h, r.definition)};
+  } catch (e) {
+    return {error: `This link does not hold a valid cohort: ${describeError(e)}`};
+  }
+}
+
 export function App({transport, account}: {transport: Transport; account?: Account}) {
   const [me, setMe] = useState<Me | null>(null);
   const [hist, setHistState] = useState<History>(loadHistory);
@@ -152,18 +174,9 @@ export function App({transport, account}: {transport: Transport; account?: Accou
     if (started.current) return;   // StrictMode runs effects twice in dev
     started.current = true;
     (async () => {
-      const decoded = readShareHash(window.location.hash);
-      if (window.location.hash.startsWith("#d=")) {
-        try {
-          if (decoded === null) throw new Error("it could not be read");
-          const n = (decoded as {name?: unknown}).name;
-          const r = await transport.apply(decoded as Definition, {op: "rename", name: typeof n === "string" ? n : ""});
-          const h = histRef.current;
-          if (JSON.stringify(r.definition) !== JSON.stringify(h.versions[h.current].definition)) setHist(pushVersion(h, r.definition));
-        } catch (e) {
-          setEditError({at: "builder", message: `This link does not hold a valid cohort: ${describeError(e)}`});
-        }
-      }
+      const loaded = await applyShareHash(window.location.hash, () => histRef.current, transport);
+      if (loaded && "error" in loaded) setEditError({at: "builder", message: loaded.error});
+      else if (loaded && "history" in loaded && loaded.history !== histRef.current) setHist(loaded.history);
       try {
         setOptions(await transport.options({}));
       } catch (e) {
@@ -172,6 +185,18 @@ export function App({transport, account}: {transport: Transport; account?: Accou
       setHist(histRef.current);   // puts the current version's share hash in the address bar
       refresh();
     })();
+  }, [transport, setHist, refresh]);
+
+  useEffect(() => {
+    const onHashChange = async () => {
+      const loaded = await applyShareHash(window.location.hash, () => histRef.current, transport);
+      if (loaded === null) return;   // the app's own hash
+      setEditError("error" in loaded ? {at: "builder", message: loaded.error} : null);
+      setHist("history" in loaded ? loaded.history : histRef.current);   // the address bar shows the current version's share hash again
+      refresh();
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, [transport, setHist, refresh]);
 
   useEffect(() => { account?.me().then(setMe, () => {}); }, [account]);   // a failed me() shows nothing extra
