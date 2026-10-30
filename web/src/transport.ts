@@ -39,6 +39,11 @@ export function describeError(e: unknown): string {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** A same-site path: starts with "/", not "//" (protocol-relative) and no backslash (browsers read "/\" as "//"). */
+export function sameSitePath(p: unknown): p is string {
+  return typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !p.includes("\\");
+}
+
 /** Send the browser to sign in, back to this page afterwards (the fragment, e.g. a #d= share link, is kept). */
 export function signInAt(login: string): void {
   window.location.assign(`${login}?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
@@ -57,7 +62,7 @@ function requester(fetchImpl: FetchLike, signIn: (login: string) => void) {
     const body: unknown = await res.json().catch(() => null);
     if (!res.ok) {
       const login = (body as {login?: unknown} | null)?.login;
-      if (res.status === 401 && typeof login === "string" && login.startsWith("/")) signIn(login);
+      if (res.status === 401 && sameSitePath(login)) signIn(login);
       const retry = res.status === 429 ? Number(res.headers.get("retry-after")) : NaN;
       throw new TransportError(errorMessage(res.status, body), res.status, Number.isFinite(retry) ? retry : null);
     }

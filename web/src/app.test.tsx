@@ -29,7 +29,7 @@ describe("Who", () => {
   const html = (sign_out: boolean) =>
     renderToStaticMarkup(<Who me={{sub: "s", email: "a@example.edu", sign_out}} onSignOut={() => {}} />);
   test("shows the email and, when the backend has a session, Sign out", () => {
-    expect(html(true)).toContain("a@example.edu");
+    expect(html(true)).toContain('<span class="sr-only">Signed in as </span>a@example.edu');
     expect(html(true)).toContain(">Sign out</button>");
   });
   test("no Sign out button without a session", () => {

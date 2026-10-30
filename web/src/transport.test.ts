@@ -89,7 +89,8 @@ describe("sign-in", () => {
     expect(e.status).toBe(401);
   });
   test("a 401 without one, or with an off-site one, does not", async () => {
-    for (const body of [{detail: "bad credentials"}, {detail: "x", login: "https://evil.example/"}, {detail: "x", login: 1}]) {
+    for (const body of [{detail: "bad credentials"}, {detail: "x", login: "https://evil.example/"}, {detail: "x", login: 1},
+      {detail: "x", login: "//evil.example"}, {detail: "x", login: "/\\evil.example"}]) {
       const {seen, transport} = signIns(401, body);
       await transport.count(EMPTY).catch(() => {});
       expect(seen).toEqual([]);

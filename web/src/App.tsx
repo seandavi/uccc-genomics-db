@@ -35,7 +35,7 @@ export function FeasibilityPanel({statement, copied, onCopy, onClose, textareaRe
 export function Who({me, onSignOut}: {me: Me; onSignOut: () => void}) {
   return (
     <>
-      <span className="who">{me.email}</span>
+      <span className="who"><span className="sr-only">Signed in as </span>{me.email}</span>
       {me.sign_out && <button type="button" onClick={onSignOut}>Sign out</button>}
     </>
   );
@@ -185,7 +185,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
         <button type="button" aria-expanded={panel === "compare"} onClick={() => togglePanel("compare")}>Compare</button>
         <button type="button" aria-expanded={panel === "feasibility"} disabled={panel !== "feasibility" && (!answer || stale)}
           onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
-        {me && account && <Who me={me} onSignOut={() => { account.signOut().catch(() => {}); }} />}
+        {me && account && <Who me={me} onSignOut={() => { account.signOut().catch((e) => setEditError({at: "builder", message: `Sign-out failed: ${describeError(e)}`})); }} />}
       </header>
       {panel === "compare" && (
         <Compare versions={hist.versions} transport={transport} years={options?.years ?? null} onClose={() => setPanel(null)} />
