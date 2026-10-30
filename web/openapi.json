@@ -1865,6 +1865,100 @@
         "title": "Population",
         "type": "object"
       },
+      "PublicSummary": {
+        "properties": {
+          "by_year": {
+            "items": {
+              "$ref": "#/components/schemas/YearCount"
+            },
+            "title": "By Year",
+            "type": "array"
+          },
+          "first_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Year"
+          },
+          "last_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Year"
+          },
+          "min_cell": {
+            "title": "Min Cell",
+            "type": "integer"
+          },
+          "patients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patients"
+          },
+          "reports": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reports"
+          },
+          "round_to": {
+            "title": "Round To",
+            "type": "integer"
+          },
+          "tumor_types": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tumor Types"
+          },
+          "vendors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Vendors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "patients",
+          "reports",
+          "tumor_types",
+          "vendors",
+          "first_year",
+          "last_year",
+          "by_year",
+          "min_cell",
+          "round_to"
+        ],
+        "title": "PublicSummary",
+        "type": "object"
+      },
       "Recipient": {
         "properties": {
           "email": {
@@ -3512,6 +3606,25 @@
           }
         },
         "summary": "Post Pivot"
+      }
+    },
+    "/api/public/summary": {
+      "get": {
+        "description": "Open: fixed coarse totals for the landing page. No parameters; every count is floored at 5\nand rounded to the nearest 10 (public.coarse).",
+        "operationId": "get_public_summary_api_public_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Public Summary"
       }
     },
     "/api/requests": {

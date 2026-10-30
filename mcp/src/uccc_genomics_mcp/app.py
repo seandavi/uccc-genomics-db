@@ -2,14 +2,16 @@
 
 One process, two surfaces, one set of shared calls (`run_*`): the routes and tools add only
 transport and error mapping. Every number comes out of `cohort.count` / `cohort.pivot`, already
-suppressed; nothing here post-processes counts. `RequireUser` authenticates every request but
-GET /api/health (and, under --auth authentik, the /auth/* sign-in endpoints), once, outside FastAPI and
-the MCP SDK.
+suppressed; nothing here post-processes counts. `RequireUser` authenticates every request but the open
+routes (/api/health, /api/public/summary, the landing page /, /assets/* and, under --auth authentik, the
+/auth/* sign-in endpoints), once, outside FastAPI and the MCP SDK.
 """
 import argparse
 import collections
 import json
 import math
+import os
+import posixpath
 import sys
 import threading
 import time
@@ -18,8 +20,8 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -29,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PASSWORD_HASH, ACCESS_*)
-from uccc_genomics_mcp import authen, broker, cohort, saved
+from uccc_genomics_mcp import authen, broker, cohort, public, saved
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
 from uccc_genomics_mcp.broker import Irb, IrbList, MyRequestDetail, RequestDetail, Requests, RequestStatus
@@ -65,9 +67,20 @@ INSTRUCTIONS = (
 
 # --- auth ----------------------------------------------------------------------------------------
 
+PUBLIC_PATHS = ("/api/health", "/api/public/summary", "/")   # open under every --auth mode
+
+
+def public_path(path: str) -> bool:
+    """True for the routes anyone may call: health, the public summary, the landing page and the
+    built assets (hashed JS/CSS from the public repo; no data). normpath first, so
+    /assets/../discover.html is not an asset."""
+    return path in PUBLIC_PATHS or posixpath.normpath(path).startswith("/assets/")
+
+
 class RequireUser:
-    """Pure ASGI middleware around the whole app: every HTTP request except GET /api/health and the open
-    sign-in paths is authenticated once with authen.user(); the authen.User goes into the request's
+    """Pure ASGI middleware around the whole app: every HTTP request except the open routes
+    (/api/health, /api/public/summary, /, /assets/*) and the open sign-in paths (/auth/*, authentik only)
+    is authenticated once with authen.user(); the authen.User goes into the request's
     scope state. A failed browser navigation to the static site gets the sign-in page (authen.signin_page,
     which keeps the #fragment); /api/* and /mcp answer 401; a Bearer token that can't be checked because the
     provider is unreachable gets 503."""
@@ -77,7 +90,7 @@ class RequireUser:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan" or (scope["type"] == "http" and (
-                scope["path"] == "/api/health" or authen.open_path(scope["path"]))):
+                public_path(scope["path"]) or authen.open_path(scope["path"]))):
             await self.app(scope, receive, send)
             return
         if scope["type"] != "http":   # no websocket routes
@@ -656,6 +669,18 @@ def app(static_dir: str | None = None) -> FastAPI:
             return JSONResponse({"status": "unhealthy"}, status_code=503)
         return {"status": "Healthy"}
 
+    @application.get("/api/public/summary")
+    def get_public_summary(response: Response) -> public.PublicSummary:
+        """Open: fixed coarse totals for the landing page. No parameters; every count is floored at 5
+        and rounded to the nearest 10 (public.coarse)."""
+        try:
+            s = public.summary()
+        except Exception as e:
+            print(f"public summary: {e}", file=sys.stderr, flush=True)
+            return JSONResponse({"detail": "totals unavailable"}, status_code=503)
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return s
+
     @application.get("/mcp", include_in_schema=False)
     def get_mcp():
         """No standalone SSE stream (stateless JSON): the MCP spec's answer is 405."""
@@ -670,6 +695,10 @@ def app(static_dir: str | None = None) -> FastAPI:
         application.add_api_route("/auth/logout", authen.logout, methods=["POST"], include_in_schema=False,
                                   response_model=None)
     if static_dir:   # last, so lowest precedence
+        discover = os.path.join(static_dir, "discover.html")
+        if os.path.isfile(discover):   # not a discover/ directory: StaticFiles would redirect to an absolute http:// URL
+            application.add_api_route("/discover", lambda: FileResponse(discover), methods=["GET"],
+                                      include_in_schema=False, response_model=None)
         application.mount("/", StaticFiles(directory=static_dir, html=True))
     application.add_middleware(RequireUser)
     return application
@@ -682,7 +711,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--auth", choices=authen.MODES, required=True,
                     help="access: Cloudflare Access JWT; password: one local account; none: local dev only; "
                          "authentik: campus sign-in through Authentik (AUTHENTIK_*, APP_BASE_URL, SESSION_SECRET in .env)")
-    ap.add_argument("--static", help="also serve this built front-end directory at / (local dev only)")
+    ap.add_argument("--static", help="also serve this built front-end directory (landing page at /, Discover at /discover; local dev only)")
     args = ap.parse_args(argv)
     authen.configure(args.auth)
     uvicorn.run(app(args.static), host=args.host, port=args.port, access_log=False)

@@ -1,6 +1,6 @@
 import { Count } from "./Answer.tsx";
 import { EXAMPLES, exampleLabel } from "./cohort.ts";
-import type { CountResult, Definition } from "./types.ts";
+import type { CountResult, Definition, YearCount } from "./types.ts";
 
 export interface StartProps {
   total: CountResult | null;   // the count of the current (empty) definition; null while it is counted
@@ -9,21 +9,20 @@ export interface StartProps {
   onExample: (d: Definition) => void;
 }
 
-function Sparkline({r}: {r: CountResult}) {
-  if (r.by_year.length === 0) return null;
-  const years = r.by_year.map((y) => y.year);
-  const max = Math.max(1, ...r.by_year.map((y) => y.patients ?? 0));
+export function Sparkline({years, minCell, label}: {years: YearCount[]; minCell: number; label: string}) {
+  if (years.length === 0) return null;
+  const max = Math.max(1, ...years.map((y) => y.patients ?? 0));
   // same rule as barPct (issue 100: the one that encodes this rule)
-  const height = (n: number | null) => Math.min(100, Math.max(2, ((n ?? r.min_cell) / max) * 100));
+  const height = (n: number | null) => Math.min(100, Math.max(2, ((n ?? minCell) / max) * 100));
   return (
     <figure className="spark">
       <div className="spark-bars" aria-hidden="true">
-        {r.by_year.map((y) => (
+        {years.map((y) => (
           <span key={y.year} className={["vbar", y.patients == null && "hatched", !y.complete && "partial"].filter(Boolean).join(" ")}
             style={{height: `${height(y.patients)}%`}} />
         ))}
       </div>
-      <figcaption>Patients by year of first qualifying report, {Math.min(...years)}–{Math.max(...years)}</figcaption>
+      <figcaption>{label}, {Math.min(...years.map((y) => y.year))}–{Math.max(...years.map((y) => y.year))}</figcaption>
     </figure>
   );
 }
@@ -48,7 +47,7 @@ export function Start({total, busy, minCell, onExample}: StartProps) {
       {total
         ? <p className="total">Discover covers <Count n={total.patients} minCell={total.min_cell} /> patients sequenced by Caris and FMI.</p>
         : busy && <p className="total">Counting…</p>}
-      {total && <Sparkline r={total} />}
+      {total && <Sparkline years={total.by_year} minCell={total.min_cell} label="Patients by year of first qualifying report" />}
     </section>
   );
 }

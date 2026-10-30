@@ -8,5 +8,6 @@ const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self
 export default defineConfig({
   plugins: [react(), {name: "csp", apply: "build", transformIndexHtml: () =>
     [{tag: "meta", attrs: {"http-equiv": "Content-Security-Policy", content: CSP}, injectTo: "head-prepend"}]}],
+  build: {rolldownOptions: {input: {landing: "index.html", discover: "discover.html"}}},
   server: {proxy: {"/api": "http://127.0.0.1:8092"}},
 });

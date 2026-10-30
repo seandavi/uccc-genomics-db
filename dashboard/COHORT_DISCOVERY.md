@@ -296,6 +296,7 @@ storage, and the share link carries the definition in the URL fragment (saved co
 only the cohorts a user saves; Discover does not call `/api/saved*` yet, so a link carries the
 definition, and `/c/<cohort_id>` comes when Discover uses saved cohorts). Opening a share link in a tab where Discover is already open adds it as a new edit, as on load. Drag-to-reorder and Request data are not built (no operation yet, and #16), and
 there is no assistant column: it was removed until chat ships (owner decision 2026-10-30, #98). The header holds History (↶/↷ and "Edit n"), Share, Compare and Feasibility statement; at 600 px and below they sit behind a ⋯ menu, and a sticky bar at the bottom shows the patient count.
+Discover is served at `/discover` (#41); the landing page owns `/`, and an old `/#d=` share link is sent on to `/discover#d=`.
 
 **Phase 2 (#38).** Discover gains the include / exclude / tested-negative select on each card, one
 "Match all criteria on the same report" switch for the definition (not a lock per card; since
@@ -494,6 +495,7 @@ The phase 1 controls in `COHORT_TOOL.md` stay as they are. New exposure:
 | Pivot labels from `sub`/`val` axes | They are vendor free text (protein change, fusion partner, therapy name) that the vocabulary floor keeps out. | A label held by fewer than 5 cohort patients becomes `other`; `key` axes are vocabulary values the caller chose. |
 | Vocabulary counts | Any shown count lets a nested list (a parent and its children, organ and OncoTree code) give back a floored-out value by subtraction. | No counts are returned; the floor decides which values appear and counts only rank search. |
 | `loosen[]` suggestions | Each suggestion is itself a count. | Floored; shown only if at least 5 above the current cohort's raw count, not 1 to 4 from a shown funnel step and not equal to a hidden one (§3.3); logged with the `count` request that computed it. Not offered at all for a definition with neighbours (`loosen_offered` is false), because a suggestion would need its own neighbour checks. |
+| Public summary (#41) | Anyone can read it, with no login. | Fixed aggregates, no parameters, floored at 5 and rounded to 10; years and categories limited to those with at least 5 patients. |
 | Chat | Prompts and counts leave the host. | Only floored counts; audit log; open question 2. |
 
 ## 4. Phases
