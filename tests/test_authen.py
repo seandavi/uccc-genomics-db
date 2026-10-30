@@ -17,6 +17,7 @@ from contextlib import ExitStack
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from test_app import GATED, MCP_HEADERS, ids, mart_file  # noqa: F401  (fixtures)
@@ -224,7 +225,7 @@ def test_member_signs_in(c, issuer, capsys):
     low = cookie.lower()
     assert "httponly" in low and "samesite=lax" in low and "max-age=28800" in low and "secure" not in low
     s = jwt.decode(c.cookies["uccc_session"], SESSION_SECRET, algorithms=["HS256"], audience="uccc-genomics-session")
-    assert set(s) == {"aud", "sub", "email", "iat", "exp"} and s["exp"] - s["iat"] == 28800
+    assert set(s) == {"aud", "sub", "email", "broker", "iat", "exp"} and s["exp"] - s["iat"] == 28800
     assert (s["sub"], s["email"]) == ("synthetic-sub-1", "member@example.edu")
     assert me(c).json() == {"sub": "synthetic-sub-1", "email": "member@example.edu", "sign_out": True}
     capsys.readouterr()
@@ -376,6 +377,55 @@ def test_callback_when_the_token_endpoint_fails_is_502(c, issuer):
 def test_next_is_same_site_only(c, issuer, next, landing):
     r = sign_in(c, issuer, next=next)
     assert r.status_code == 303 and r.headers["location"] == landing
+
+
+# --- the broker group ----------------------------------------------------------------------------
+
+def user_of(**headers) -> authen.User:
+    return authen.user(Request({"type": "http", "headers": [(k.encode(), v.encode()) for k, v in headers.items()]}))
+
+
+def test_bearer_groups_decide_broker(c, issuer):
+    assert user_of(authorization=f"Bearer {issuer.token()}").broker is False
+    both = issuer.token(groups=[GROUP, authen.BROKER_GROUP])
+    assert user_of(authorization=f"Bearer {both}") == authen.User("synthetic-sub-1", "member@example.edu", True)
+
+
+def test_broker_is_the_groups_claim_not_the_email(c, issuer):
+    # the dashboard group plus an email that names the broker group is still not a broker
+    token = issuer.token(email=authen.BROKER_GROUP + "@example.edu", preferred_username=authen.BROKER_GROUP)
+    assert user_of(authorization=f"Bearer {token}").broker is False
+
+
+def test_session_cookie_carries_broker(c, issuer):
+    sign_in(c, issuer, groups=[GROUP, authen.BROKER_GROUP])
+    s = jwt.decode(c.cookies["uccc_session"], SESSION_SECRET, algorithms=["HS256"], audience="uccc-genomics-session")
+    assert s["broker"] is True
+    assert user_of(cookie=f"uccc_session={c.cookies['uccc_session']}").broker is True
+    c.cookies.clear()
+    sign_in(c, issuer)
+    assert user_of(cookie=f"uccc_session={c.cookies['uccc_session']}").broker is False
+
+
+def test_old_session_cookie_without_broker_is_not_a_broker(c, issuer):
+    now = int(time.time())
+    old = jwt.encode({"aud": "uccc-genomics-session", "sub": "s", "email": "e", "iat": now, "exp": now + 60},
+                     SESSION_SECRET, algorithm="HS256")
+    assert user_of(cookie=f"uccc_session={old}") == authen.User("s", "e", False)
+
+
+@pytest.mark.parametrize("mode", ["none", "password"])
+@pytest.mark.parametrize("value, broker", [("1", True), (None, False), ("0", False)])
+def test_app_broker_env_for_local_dev(issuer, monkeypatch, mode, value, broker):
+    if value is None:
+        monkeypatch.delenv("APP_BROKER", raising=False)
+    else:
+        monkeypatch.setenv("APP_BROKER", value)
+    monkeypatch.setenv("APP_USER", "dev")
+    monkeypatch.setenv("APP_PASSWORD_HASH", authen.hash_password("pw"))
+    authen.configure(mode)
+    basic = {"authorization": "Basic " + base64.b64encode(b"dev:pw").decode()}
+    assert user_of(**basic).broker is broker
 
 
 # --- the session cookie --------------------------------------------------------------------------

@@ -140,6 +140,13 @@ Eight tables carry the whole audit trail. A release joins to exactly one request
 | release | release\_id, request\_id, file\_name, sha256, row\_count, fields\_released, recipients, sharepoint\_link, released\_at, removed\_at, closeout\_attested\_at | The answer to "where did the data go" |
 | release\_patient | release\_id, study\_id | Supports per-patient disclosure accounting; MRNs are not stored here |
 
+As built in #132 (`mcp/src/uccc_genomics_mcp/broker.py`, migration `0002`): `saved_query` is not a table, it
+maps onto `cohort_revision` (`query_id` = `cohort.id`, `version` = `seq`, `canonical_sql` = the canonical
+definition JSON, `sha256` = `cohort_id`, `snapshot_id` = the new `cohort_revision.snapshot_id`, `author` =
+`cohort.owner`, `description` = `definition.name`). `release_patient.study_id` is `research_id`.
+`request.status` adds `denied`. `irb_authorization.status` is `active|suspended|closed`; "expired" is derived
+from `expiration_date`, never stored. The build id is `meta.build.build_id` in the de-id file.
+
 The crosswalk from study ID to MRN lives only in the secure environment, outside these tables. The portal and its logs never hold MRNs.
 
 ## Open questions for COMIRB and the privacy office

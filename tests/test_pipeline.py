@@ -416,6 +416,23 @@ def test_deid_replaces_file_only_after_leak_check(tmp_path):
     assert con.execute("SELECT vendor, research_id FROM unified.report ORDER BY ALL").fetchall() == ids
 
 
+def test_deid_writes_build_id(tmp_path):
+    data = str(tmp_path)
+    con = pipeline(data, {"ORD-0001234-01.xml": FMI})
+    ids = "SELECT vendor, research_id, report_id FROM db.unified.report ORDER BY ALL"
+    first_ids = con.execute(ids).fetchall()
+    first = con.execute("SELECT build_id FROM db.meta.build").fetchall()
+    con.close()
+    assert len(first) == 1 and re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{8}", first[0][0])
+    genomics(data, "deid")
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{data}/genomics.duckdb' AS db (ENCRYPTION_KEY '{open(f'{data}/.db_key').read().strip()}', READ_ONLY)")
+    second = con.execute("SELECT build_id FROM db.meta.build").fetchall()
+    assert len(second) == 1 and second != first   # a new build, a new id
+    assert con.execute(ids).fetchall() == first_ids   # same patients and reports
+    con.close()
+
+
 def test_same_mrn_is_one_patient_across_vendors(db):
     assert one(db, "SELECT count(*), max(n_vendors) FROM db.unified.patient") == (1, 2)
     assert one(db, "SELECT count(DISTINCT research_id), count(*) FROM db.unified.report") == (1, 2)

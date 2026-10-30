@@ -21,6 +21,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/broker/irb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Broker Irb List */
+        get: operations["get_broker_irb_list_api_broker_irb_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/irb/{irb_number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Broker Irb */
+        get: operations["get_broker_irb_api_broker_irb__irb_number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Broker Requests */
+        get: operations["get_broker_requests_api_broker_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/broker/requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Broker Request */
+        get: operations["get_broker_request_api_broker_requests__id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cohort": {
         parameters: {
             query?: never;
@@ -122,6 +190,40 @@ export interface paths {
          *     and rounded to the nearest 10 (public.coarse).
          */
         get: operations["get_public_summary_api_public_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Requests */
+        get: operations["get_requests_api_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Request */
+        get: operations["get_request_api_requests__id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -578,6 +680,13 @@ export interface components {
             /** Revisions */
             revisions: components["schemas"]["Revision"][];
         };
+        /** IdentifierReason */
+        IdentifierReason: {
+            /** Identifier */
+            identifier: string;
+            /** Reason */
+            reason: string;
+        };
         /** Ihc */
         Ihc: {
             /** At Least */
@@ -609,6 +718,117 @@ export interface components {
             /** Vendor */
             vendor?: ("caris" | "fmi") | null;
         };
+        /** Irb */
+        Irb: {
+            /** Irb Number */
+            irb_number: string;
+            /** Versions */
+            versions: components["schemas"]["IrbVersion"][];
+        };
+        /** IrbAuthorization */
+        IrbAuthorization: {
+            /**
+             * Approval Date
+             * Format: date
+             */
+            approval_date: string;
+            /** Approved Population */
+            approved_population: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Expiration Date */
+            expiration_date?: string | null;
+            /** Hipaa Pathway */
+            hipaa_pathway: string;
+            /** Irb Number */
+            irb_number: string;
+            /** Pi */
+            pi: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "suspended" | "closed";
+            /** Version */
+            version: number;
+        };
+        /** IrbDocument */
+        IrbDocument: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Doc Type
+             * @enum {string}
+             */
+            doc_type: "approval_letter" | "personnel_list" | "protocol_excerpt" | "consent_form";
+            /** File Ref */
+            file_ref: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Protocol Version */
+            protocol_version?: string | null;
+            /** Section Cited */
+            section_cited?: string | null;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** IrbList */
+        IrbList: {
+            /** Authorizations */
+            authorizations: components["schemas"]["IrbAuthorization"][];
+        };
+        /** IrbPerson */
+        IrbPerson: {
+            /** Name */
+            name: string;
+            /** Person Id */
+            person_id: string;
+            /** Role */
+            role: string;
+        };
+        /** IrbVersion */
+        IrbVersion: {
+            /**
+             * Approval Date
+             * Format: date
+             */
+            approval_date: string;
+            /** Approved Population */
+            approved_population: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Documents */
+            documents: components["schemas"]["IrbDocument"][];
+            /** Expiration Date */
+            expiration_date?: string | null;
+            /** Hipaa Pathway */
+            hipaa_pathway: string;
+            /** Irb Number */
+            irb_number: string;
+            /** Personnel */
+            personnel: components["schemas"]["IrbPerson"][];
+            /** Pi */
+            pi: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "suspended" | "closed";
+            /** Version */
+            version: number;
+        };
         /** Loosen */
         Loosen: {
             /** Drop */
@@ -631,6 +851,64 @@ export interface components {
             sign_out: boolean;
             /** Sub */
             sub: string;
+        };
+        /** MyRequestDetail */
+        MyRequestDetail: {
+            /**
+             * Cohort
+             * Format: uuid
+             */
+            cohort: string;
+            /** Cohort Id */
+            cohort_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["Definition"];
+            /** Fields */
+            fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identifiers */
+            identifiers: components["schemas"]["IdentifierReason"][];
+            irb?: components["schemas"]["IrbAuthorization"] | null;
+            /** Irb Number */
+            irb_number?: string | null;
+            /** Irb Version */
+            irb_version?: number | null;
+            /** Purpose */
+            purpose: string;
+            /** Recipients */
+            recipients: components["schemas"]["Recipient"][];
+            /** Releases */
+            releases: components["schemas"]["Release"][];
+            /** Requester */
+            requester: string;
+            /** Retention End */
+            retention_end?: string | null;
+            /** Reviews */
+            reviews: components["schemas"]["Review"][];
+            /** Seq */
+            seq: number;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "submitted" | "returned" | "approved" | "denied" | "fulfilled" | "closed";
+            /** Storage Location */
+            storage_location: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** Option */
         Option: {
@@ -756,6 +1034,42 @@ export interface components {
             /** Vendors */
             vendors: string[];
         };
+        /** Recipient */
+        Recipient: {
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+        };
+        /** Release */
+        Release: {
+            /** Closeout Attested At */
+            closeout_attested_at?: string | null;
+            /** Fields Released */
+            fields_released: string[];
+            /** File Name */
+            file_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Recipients */
+            recipients: components["schemas"]["Recipient"][];
+            /**
+             * Released At
+             * Format: date-time
+             */
+            released_at: string;
+            /** Removed At */
+            removed_at?: string | null;
+            /** Row Count */
+            row_count: number;
+            /** Sha256 */
+            sha256: string;
+            /** Sharepoint Link */
+            sharepoint_link: string;
+        };
         /** RemoveCriterion */
         RemoveCriterion: {
             /** Id */
@@ -776,10 +1090,152 @@ export interface components {
              */
             op: "rename";
         };
+        /** Request */
+        Request: {
+            /**
+             * Cohort
+             * Format: uuid
+             */
+            cohort: string;
+            /** Cohort Id */
+            cohort_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["Definition"];
+            /** Fields */
+            fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identifiers */
+            identifiers: components["schemas"]["IdentifierReason"][];
+            /** Irb Number */
+            irb_number?: string | null;
+            /** Irb Version */
+            irb_version?: number | null;
+            /** Purpose */
+            purpose: string;
+            /** Recipients */
+            recipients: components["schemas"]["Recipient"][];
+            /** Requester */
+            requester: string;
+            /** Retention End */
+            retention_end?: string | null;
+            /** Seq */
+            seq: number;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "submitted" | "returned" | "approved" | "denied" | "fulfilled" | "closed";
+            /** Storage Location */
+            storage_location: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RequestDetail */
+        RequestDetail: {
+            /**
+             * Cohort
+             * Format: uuid
+             */
+            cohort: string;
+            /** Cohort Id */
+            cohort_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            definition: components["schemas"]["Definition"];
+            /** Fields */
+            fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Identifiers */
+            identifiers: components["schemas"]["IdentifierReason"][];
+            irb?: components["schemas"]["IrbVersion"] | null;
+            /** Irb Number */
+            irb_number?: string | null;
+            /** Irb Version */
+            irb_version?: number | null;
+            /** Purpose */
+            purpose: string;
+            /** Recipients */
+            recipients: components["schemas"]["Recipient"][];
+            /** Releases */
+            releases: components["schemas"]["Release"][];
+            /** Requester */
+            requester: string;
+            /** Retention End */
+            retention_end?: string | null;
+            /** Reviews */
+            reviews: components["schemas"]["Review"][];
+            /** Seq */
+            seq: number;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "submitted" | "returned" | "approved" | "denied" | "fulfilled" | "closed";
+            /** Storage Location */
+            storage_location: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** Requests */
+        Requests: {
+            /** Requests */
+            requests: components["schemas"]["Request"][];
+        };
         /** RevertRequest */
         RevertRequest: {
             /** To */
             to: number;
+        };
+        /** Review */
+        Review: {
+            /** Checklist */
+            checklist: {
+                [key: string]: boolean;
+            };
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "return" | "deny";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notes */
+            notes: string;
+            /** Reviewer */
+            reviewer: string;
         };
         /** Revision */
         Revision: {
@@ -797,6 +1253,8 @@ export interface components {
             } | null;
             /** Seq */
             seq: number;
+            /** Snapshot Id */
+            snapshot_id: string | null;
         };
         /** SavedApplyRequest */
         SavedApplyRequest: {
@@ -1055,6 +1513,119 @@ export interface operations {
             };
         };
     };
+    get_broker_irb_list_api_broker_irb_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IrbList"];
+                };
+            };
+        };
+    };
+    get_broker_irb_api_broker_irb__irb_number__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                irb_number: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Irb"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_broker_requests_api_broker_requests_get: {
+        parameters: {
+            query?: {
+                status?: ("draft" | "submitted" | "returned" | "approved" | "denied" | "fulfilled" | "closed") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Requests"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_broker_request_api_broker_requests__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_cohort_api_cohort_post: {
         parameters: {
             query?: never;
@@ -1213,6 +1784,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicSummary"];
+                };
+            };
+        };
+    };
+    get_requests_api_requests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Requests"];
+                };
+            };
+        };
+    };
+    get_request_api_requests__id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRequestDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

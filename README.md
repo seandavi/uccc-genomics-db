@@ -388,6 +388,22 @@ without it the saved routes answer 503 and everything else works. REST and MCP t
   `GET /api/snapshots` / `list_snapshots`
 - `GET /api/versions/{cohort_id}` / `get_cohort_version`
 
+Every revision records `snapshot_id`, the id of the de-id build it was saved against (`meta.build.build_id`
+in `genomics.duckdb`, written by `deid`; NULL for revisions saved before #132). Deleting a saved cohort
+that a request for identified data references answers 409 (the database refuses too).
+
+**Honest broker records (#132)**, read-only here (design: `docs/HONEST_BROKER.md`). Migration `0002` adds
+seven tables: `irb_authorization`, `irb_document`, `irb_personnel`, `request`, `review`, `release` and
+`release_patient` (study ids, `research_id`, only; never returned). Requesters read their own requests,
+the `uccc-genomics-broker` Authentik group (the `groups` claim, never an email) reads all requests and
+the IRB registry:
+
+- `GET /api/requests` / `list_my_requests`; `GET /api/requests/{id}` / `get_my_request` (the IRB's status only, no personnel or documents)
+- `GET /api/broker/requests?status=` / `broker_list_requests`; `GET /api/broker/requests/{id}` / `broker_get_request`
+- `GET /api/broker/irb` / `broker_list_irb`; `GET /api/broker/irb/{irb_number}` / `broker_get_irb`
+
+Under `--auth none|password` (development), `APP_BROKER=1` makes the local user a broker.
+
 ```
 # once, by a person, on the host's shared cluster: create a database and role for the app, then
 uv run alembic -c mcp/alembic.ini upgrade head

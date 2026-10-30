@@ -8,13 +8,16 @@ column is copied with
   - every DATE/TIMESTAMP column shifted by a stable per-patient offset (±182 d),
   - any column named *age* capped at 89.
 Also builds `mart.*` (cohort report/fact tables) from `unified.*` (sql/mart.sql).
+Also writes `meta.build` (the build id the app reads as `snapshot_id`).
 Tables without the key column (e.g. load-error logs naming files) are not copied.
 Key in $DATA/.deid_key (mode 600); same key => same IDs on rebuild.
 Built into genomics.duckdb.tmp and renamed onto genomics.duckdb only after the leak check passes:
 it fails (AssertionError) if any text column in the vendor or mart schemas still contains an
 ID_PATTERN token, in any case, and a failed run leaves the previous genomics.duckdb in place.
 """
+import datetime
 import os
+import secrets
 
 from .config import DEID_DB, DEID_DB_KEY, KEY_FILE, PHI_DB, PHI_DB_KEY, connect, data_file, read_key, sql
 
@@ -34,6 +37,11 @@ DROP = {
 }
 HASH = {"specimen_id", "accession_id"}  # vendor ids that embed the accession; hashed to stay joinable
 ID_PATTERN = r"TN[0-9]{2}-[0-9]{5,}|ORD-[0-9]{6,}|TRF[0-9]{5,}|CRF[0-9]{5,}|QRF[0-9]{5,}|US[0-9]{6,}\.[0-9]{2}"
+
+
+def new_build_id() -> str:
+    """UTC build time plus 8 random hex digits, e.g. '20261030T061502Z-3fa9c2d1': unique per build."""
+    return datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
 
 
 def find_leaks(con, schemas):
@@ -116,8 +124,13 @@ def build(path):
         for t in ("report", "fact"):
             print(f"mart.{t:12s} {con.execute(f'SELECT count(*) FROM mart.{t}').fetchone()[0]:>12,}")
 
+        build_id = new_build_id()
+        con.execute("CREATE SCHEMA meta")
+        con.execute("CREATE TABLE meta.build AS SELECT ?::VARCHAR AS build_id", [build_id])
+        print("meta.build", build_id)
+
         # ponytail: leak check — no vendor accession / sample id may survive in any text column
-        leaks = find_leaks(con, [*present, "mart"])
+        leaks = find_leaks(con, [*present, "mart", "meta"])
         if leaks:  # not `assert`: python -O would strip it, and this check is what gates the rename
             raise AssertionError("identifier-like tokens survived de-identification: " + "; ".join(leaks))
 

@@ -246,7 +246,8 @@ def test_tools_list(client):
     assert set(tools) == {"search_vocabulary", "apply_op", "count", "pivot", "describe_definition", "save_cohort",
                           "list_saved_cohorts", "get_saved_cohort", "apply_saved_op", "saved_cohort_history",
                           "revert_saved_cohort", "snapshot_saved_cohort", "delete_saved_cohort", "list_snapshots",
-                          "get_cohort_version"}
+                          "get_cohort_version", "list_my_requests", "get_my_request", "broker_list_requests",
+                          "broker_get_request", "broker_list_irb", "broker_get_irb"}
     assert "definition" in tools["count"]["inputSchema"]["properties"]
     assert "definition" in tools["pivot"]["inputSchema"]["properties"]
     assert "patients" not in json.dumps(tools["search_vocabulary"]["outputSchema"])
@@ -264,7 +265,8 @@ GATED = [("POST", "/api/cohort"), ("POST", "/api/pivot"), ("POST", "/api/apply")
          ("GET", "/mcp"), ("GET", "/discover"), ("GET", "/discover.html"), ("GET", "/index.html"),
          ("GET", "/no/such/path"),
          ("POST", "/api/saved"), ("GET", "/api/saved"), ("GET", "/api/snapshots"),
-         ("GET", "/api/versions/v1-0000000000000000"), ("GET", "/api/me")]
+         ("GET", "/api/versions/v1-0000000000000000"), ("GET", "/api/me"),
+         ("GET", "/api/requests"), ("GET", "/api/broker/irb")]
 
 
 @pytest.mark.parametrize("method, path", GATED)

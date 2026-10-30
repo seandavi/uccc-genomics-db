@@ -39,6 +39,7 @@ LOGIN_SECONDS = 600
 LEEWAY_SECONDS = 60   # provider clock skew on iat/exp; the provider runs on another host
 OPEN_PATHS = ("/auth/login", "/auth/callback", "/auth/logout")   # open under authentik only
 DEFAULT_GROUP = "uccc-genomics-dashboard"
+BROKER_GROUP = "uccc-genomics-broker"   # honest brokers (docs/HONEST_BROKER.md); read from the `groups` claim only
 PROVIDER_RETRY_SECONDS = 30   # at most one discovery or JWKS fetch per this long (#107)
 ACCESS_HELP = ("Access is limited to members of the {group} group; "
                "ask the UCCC genomics team to be added.")
@@ -57,11 +58,13 @@ class ProviderUnavailable(PermissionError):
 class User:
     sub: str     # stable key: owner of saved cohorts and snapshots, rate-limit key
     email: str   # display label and audit log; may not be an email (ORCID sign-ins have none)
+    broker: bool = False   # member of BROKER_GROUP; authentik only, or APP_BROKER=1 under none|password
 
 
 AUTH = {"mode": "none", "team": None, "aud": None, "jwks": None, "user": None, "hash": None,
         "issuer": None, "client_id": None, "client_secret": None, "base_url": None,
-        "session_secret": None, "group": None, "oidc": None, "oidc_failed_at": None}
+        "session_secret": None, "group": None, "oidc": None, "oidc_failed_at": None,
+        "broker": False}
 
 
 def configure(mode: str) -> None:
@@ -93,6 +96,7 @@ def configure(mode: str) -> None:
         AUTH.update(issuer=issuer, client_id=env("AUTHENTIK_CLIENT_ID"), client_secret=env("AUTHENTIK_CLIENT_SECRET"),
                     base_url=base.rstrip("/"), session_secret=env("SESSION_SECRET"),
                     group=env("AUTHENTIK_GROUP") or DEFAULT_GROUP, oidc=None, jwks=None, oidc_failed_at=None)
+    AUTH["broker"] = os.environ.get("APP_BROKER") == "1"   # development stand-in for the broker group
     AUTH["mode"] = mode
 
 
@@ -117,10 +121,10 @@ def open_path(path: str) -> bool:
 
 def user(request: Request) -> User:
     if AUTH["mode"] == "none":
-        return User("dev@localhost", "dev@localhost")
+        return User("dev@localhost", "dev@localhost", AUTH["broker"])
     if AUTH["mode"] == "password":
         name = _basic(request.headers.get("authorization", ""))
-        return User(name, name)
+        return User(name, name, AUTH["broker"])
     if AUTH["mode"] == "authentik":
         return _authentik(request)
     email = _access(request)
@@ -261,6 +265,10 @@ def _verify(token: str, nonce: str | None) -> dict:
     return claims
 
 
+def _is_broker(claims: dict) -> bool:
+    return BROKER_GROUP in claims.get("groups", [])   # after _require_group, so groups is a list
+
+
 def _display(claims: dict) -> str:
     # ORCID sign-ins carry no email. A label only: nothing verifies it and it never authorizes.
     return claims.get("email") or claims.get("preferred_username") or claims["sub"]
@@ -292,7 +300,7 @@ def _authentik(request: Request) -> User:
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() == "bearer" and token.strip():
         claims = _verify(token.strip(), None)   # a bad Bearer token is refused, never falls back to the cookie
-        return User(claims["sub"], _display(claims))
+        return User(claims["sub"], _display(claims), _is_broker(claims))
     cookie = request.cookies.get(SESSION_COOKIE)
     if not cookie:
         raise PermissionError("not signed in")
@@ -300,7 +308,7 @@ def _authentik(request: Request) -> User:
         s = _unsign(cookie, SESSION_AUD)
     except jwt.PyJWTError:
         raise PermissionError("session expired") from None
-    return User(s["sub"], s["email"])
+    return User(s["sub"], s["email"], s.get("broker") is True)
 
 
 _HEAD = ('<!doctype html><html lang="en"><meta charset="utf-8">'
@@ -376,7 +384,7 @@ def callback(request: Request) -> Response:
     except PermissionError:
         return _refuse(403, "Sign-in failed; try again.")
     r = RedirectResponse(login_claims["next"], status_code=303)
-    _cookie(r, SESSION_COOKIE, _sign({"sub": claims["sub"], "email": _display(claims)}, SESSION_AUD,
+    _cookie(r, SESSION_COOKIE, _sign({"sub": claims["sub"], "email": _display(claims), "broker": _is_broker(claims)}, SESSION_AUD,
                                      SESSION_HOURS * 3600), SESSION_HOURS * 3600, "/")
     r.delete_cookie(LOGIN_COOKIE, path="/auth")
     return r

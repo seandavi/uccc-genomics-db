@@ -45,9 +45,10 @@ mcp/src/uccc_genomics_mcp/
   server.py     genomics-mcp: read-only SQL over the de-id file (hardened connection)
   cohort_api.py genomics-cohort-api: fixed-parameter, floored patient counts, Access JWT auth
   app.py        genomics-app: FastAPI REST (/api/*) + MCP (/mcp) over cohort/, behind authen
-  authen.py     who is calling, `user(request) -> User(sub, email)`: access|password|none|authentik backends
+  authen.py     who is calling, `user(request) -> User(sub, email, broker)`: access|password|none|authentik backends
                 (authentik: campus sign-in, owns the /auth/* routes)
   saved.py      saved cohorts in Postgres (SQLAlchemy async): revisions, snapshots; migrations/ is Alembic (mcp/alembic.ini)
+  broker.py     honest-broker records in Postgres (IRB registry, requests, reviews, releases): read-only here
   cohort/       cohort definition + operations + cohort_id, compile to SQL over mart.*, suppression (the seam REST/MCP/chat sit on)
 dashboard/      Observable site; src/data/summary.json.py is the build-time loader (MIN_CELL = 5);
                 src/components/cohort.js + test/; worker.js proxies /api/* to the cohort API

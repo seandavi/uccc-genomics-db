@@ -5,6 +5,8 @@ Results are typed and suppressed (`suppress.py`); nothing row-level comes back.
 import datetime
 import os
 
+import duckdb
+
 from uccc_genomics_mcp.server import DEID_DB, get_db
 
 from .compile import compile, compile_pivot
@@ -30,6 +32,18 @@ def vocabulary() -> Vocabulary:
         _vocab["v"] = Vocabulary(entries=entries, years=tuple(years) if years and years[0] is not None else None)
         _vocab["mtime"] = mtime
     return _vocab["v"]
+
+
+def snapshot_id() -> str | None:
+    """The de-id build's id (meta.build, written by deid), or None for a file built before #132."""
+    con = get_db()
+    try:
+        row = con.execute("SELECT build_id FROM meta.build").fetchone()
+    except duckdb.CatalogException:
+        return None
+    finally:
+        con.close()
+    return row[0] if row else None
 
 
 def data_date() -> datetime.date:
