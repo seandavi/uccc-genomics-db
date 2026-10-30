@@ -51,6 +51,18 @@ export function isEmptyDefinition(d: Definition): boolean {
   return d.criteria.length === 0 && d.population.years == null && POP_DIMS.every((k) => d.population[k].length === 0);
 }
 
+/** Synthetic example cohorts for the guided start: generic public terms, shown by name and label only (no counts). */
+export const EXAMPLES: Definition[] = [
+  {...EMPTY, name: "EGFR-mutant lung cancer", population: {...EMPTY.population, oncotree: ["NSCLC"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "alteration", gene: ["EGFR"], aa: [], class: ["mutation"], tier: []}]},
+  {...EMPTY, name: "KRAS-mutant pancreatic cancer", population: {...EMPTY.population, oncotree: ["PAAD"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "alteration", gene: ["KRAS"], aa: [], class: ["mutation"], tier: []}]},
+  {...EMPTY, name: "MSI-high colorectal cancer", population: {...EMPTY.population, oncotree: ["COADREAD"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "biomarker", name: "MSI", call: ["high"], at_least: null}]},
+  {...EMPTY, name: "BRAF-mutant melanoma", population: {...EMPTY.population, oncotree: ["MEL"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "alteration", gene: ["BRAF"], aa: [], class: ["mutation"], tier: []}]},
+];
+
 export const TIERS = [
   {min: 50, name: "High", desc: "≥ 50 patients/yr: observational cohorts, outcomes linkage, biomarker-stratified trials"},
   {min: 10, name: "Moderate", desc: "10–49 patients/yr: multi-year retrospective cohorts; prospective accrual takes 2–4 years"},
@@ -116,6 +128,10 @@ const vendorSuffix = (c: Criterion | Leaf | SeqMember): string => "vendor" in c 
 
 /** What the criterion matches, without the mode word ("no", "tested negative"): the funnel row supplies its own prefix. */
 export const criterionBody = (c: Criterion | Leaf | SeqMember): string => baseLabel(c) + vendorSuffix(c);
+
+/** An example card's second line: its population, then each criterion, e.g. "NSCLC + EGFR mutation". */
+export const exampleLabel = (d: Definition): string =>
+  [populationLabel(d.population), ...d.criteria.map(criterionLabel)].join(" + ");
 
 function baseLabel(c: Criterion | Leaf | SeqMember): string {
   switch (c.kind) {

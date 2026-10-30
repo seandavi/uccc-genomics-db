@@ -97,18 +97,55 @@ describe("cards", () => {
     expect(html).toContain('<p class="big">30</p>');
     expect(html).not.toContain("30.0");
   });
-  test("an empty definition shows no share card and no funnel", () => {
+  test("an empty definition shows the guided start; a non-empty one shows the answer", () => {
     const html = render(result(), "Accrual", {}, EMPTY);
-    expect(html).not.toContain("Share of population");
-    expect(html).not.toContain("funnel-h");
-    expect(html).not.toContain('class="funnel"');
-    for (const text of ["Patients", "Accrual", DATA_FOOTNOTE]) expect(html).toContain(text);
+    for (const text of ["Start from an example", 'class="examples"', "Discover covers 8", 'class="spark"']) expect(html).toContain(text);
+    expect(html.match(/Use example: /g)?.length).toBe(4);
+    for (const text of ["Share of population", "funnel-h", 'class="card hero"', 'role="tablist"', DATA_FOOTNOTE]) {
+      expect(html).not.toContain(text);
+    }
+    expect(html).not.toMatch(/>[^<]*100%/);   // no text says 100%; the first sparkline bar is height:100%
     const withYears = {...EMPTY, population: {...EMPTY.population, years: [2024, 2025] as [number, number]}};
     for (const d of [withYears, {...EMPTY, criteria: [kras]}]) {
       const shown = render(result(), "Accrual", {}, d);
       expect(shown).toContain("Share of population");
       expect(shown).toContain("funnel-h");
+      expect(shown).not.toContain('class="examples"');
     }
+  });
+});
+
+describe("guided start", () => {
+  const strip = (s: string) => s.replace(/<[^>]*>/g, "").replace(/\b(19|20)\d{2}\b/g, "");
+  test("a suppressed total renders <5, never 0", () => {
+    const html = render(result({patients: null}), "Accrual", {}, EMPTY);
+    expect(html).toContain('Discover covers <span class="suppressed"');
+    expect(html).toContain("&lt;5</span> patients");
+    expect(html).not.toContain(">0<");
+  });
+  test("an answer counted for another definition shows Counting…, not a total", () => {
+    const html = renderToStaticMarkup(<Answer definition={EMPTY} answer={{d: def, r: result(), p: null}} busy
+      options={null} tab="Accrual" onTab={() => {}} onOp={() => {}} />);
+    expect(html).toContain("Counting…");
+    expect(html).not.toContain("Discover covers");
+  });
+  test("the sparkline draws a suppressed year hatched at the min_cell height, and a partial year", () => {
+    const bars = render(result(), "Accrual", {}, EMPTY).match(/<span class="vbar[^"]*" style="[^"]*"><\/span>/g) ?? [];
+    expect(bars.length).toBe(3);
+    expect(bars[0]).toContain("height:100%");
+    expect(bars[1]).toContain("vbar hatched");
+    expect(bars[1]).toContain(`height:${(5 / 6) * 100}%`);
+    expect(bars[2]).toContain("vbar partial");
+    expect(bars[2]).toContain("height:50%");
+    const html = render(result(), "Accrual", {}, EMPTY);
+    expect(html).toContain("2023–2025");
+    const inner = html.slice(html.indexOf('class="spark-bars"'), html.indexOf("</figure>"));
+    expect(inner.slice(0, inner.indexOf("<figcaption")).replace(/<[^>]*>/g, "")).not.toMatch(/\d/);
+  });
+  test("no example card shows a number", () => {
+    const cards = render(result(), "Accrual", {}, EMPTY).match(/<li class="card example">.*?<\/li>/g) ?? [];
+    expect(cards.length).toBe(4);
+    for (const c of cards) expect(strip(c)).not.toMatch(/\d/);
   });
 });
 
