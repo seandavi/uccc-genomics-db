@@ -44,7 +44,7 @@ and the decisions behind it. Tracking issue: #23.
 7. **Postgres** for saved cohorts, versions and the audit log: one database on the host's shared
    cluster, SQLAlchemy async + asyncpg. Definitions hold no patient data; counts are recomputed
    against today's data, except grant snapshots, which store counts with the data date. Tables
-   (#36, Alembic migrations, URL from `DATABASE_URL`): `cohort_version` (content-addressed),
+   (#36, Alembic migrations, URL from `DATABASE_URL`): `terms_acceptance` (#131), `cohort_version` (content-addressed),
    `cohort`, `cohort_revision` (append-only chain; revert appends a copy) and `snapshot` (the
    suppressed `CountResult`). Every read and write is scoped to the owner. The exception is
    `cohort_version`: any logged-in user can resolve a `cohort_id`, so the lookup shows whether
@@ -61,6 +61,8 @@ and the decisions behind it. Tracking issue: #23.
    (the Authentik contract forbids deciding on email or domain), so campus-only (decision 12) is
    enforced by who is in the group, not by an email check in the backend. Users are keyed on
    `sub`; email is a display label. `authen.user` returns `User(sub, email)`; callers use `sub`.
+   After sign-in, the app refuses a user who hasn't accepted the current portal terms
+   (HONEST_BROKER.md decision 3; `terms.py`, #131).
    This replaces the earlier Zitadel plan (#40).
 9. **Chat inside the site** (`/api/chat`): a server-side model loop whose only tools are the
    cohort module's operations and queries. It never states a number a tool did not return. The

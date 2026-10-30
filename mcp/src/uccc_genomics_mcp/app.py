@@ -4,7 +4,9 @@ One process, two surfaces, one set of shared calls (`run_*`): the routes and too
 transport and error mapping. Every number comes out of `cohort.count` / `cohort.pivot`, already
 suppressed; nothing here post-processes counts. `RequireUser` authenticates every request but the open
 routes (/api/health, /api/public/summary, the landing page /, /assets/* and, under --auth authentik, the
-/auth/* sign-in endpoints), once, outside FastAPI and the MCP SDK.
+/auth/* sign-in endpoints), once, outside FastAPI and the MCP SDK, then refuses a signed-in user who has not
+accepted the current portal terms (`terms.py`): the terms page for a browser navigation, 403 for /api/* and
+/mcp; only `POST /api/terms/accept` is exempt.
 """
 import argparse
 import collections
@@ -31,7 +33,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PASSWORD_HASH, ACCESS_*)
-from uccc_genomics_mcp import authen, broker, cohort, public, saved
+from uccc_genomics_mcp import authen, broker, cohort, public, saved, terms
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
 from uccc_genomics_mcp.broker import Irb, IrbList, MyRequestDetail, RequestDetail, Requests, RequestStatus
@@ -62,7 +64,9 @@ INSTRUCTIONS = (
     "revert_saved_cohort undoes). Saved cohorts hold no counts; count the head definition. Snapshots store "
     "the suppressed count with its data date for grant text. "
     "Requests for identified data are read-only here: list_my_requests and get_my_request show the caller's own; "
-    "the broker_* tools are for the honest broker group only.")
+    "the broker_* tools are for the honest broker group only. "
+    "A 403 saying the portal terms are not accepted means the user must open /discover in a browser and "
+    "accept them; tools can't do it.")
 
 
 # --- auth ----------------------------------------------------------------------------------------
@@ -83,7 +87,10 @@ class RequireUser:
     is authenticated once with authen.user(); the authen.User goes into the request's
     scope state. A failed browser navigation to the static site gets the sign-in page (authen.signin_page,
     which keeps the #fragment); /api/* and /mcp answer 401; a Bearer token that can't be checked because the
-    provider is unreachable gets 503."""
+    provider is unreachable gets 503. A signed-in user who hasn't accepted the current portal terms gets the
+    terms page (browser GET of a non-/api, non-/mcp path) or 403 {"detail": terms.TERMS_REQUIRED}, except on
+    terms.ACCEPT_PATH; with no database the gate fails closed (503) under --auth access|authentik and is off
+    under --auth none|password (terms.gate_on)."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -110,6 +117,21 @@ class RequireUser:
             await response(scope, receive, send)
             return
         scope["state"] = {**scope.get("state", {}), "user": u}   # a fresh dict per request
+        path = scope["path"]
+        if not (path == terms.ACCEPT_PATH and scope["method"] == "POST") and terms.gate_on():
+            try:
+                ok = await terms.accepted(u.sub)
+            except saved.Unavailable as e:   # --auth access|authentik built without a database: closed
+                await JSONResponse({"detail": "portal terms acceptance needs a database (DATABASE_URL)"},
+                                   status_code=503)(scope, receive, send)
+                return
+            if not ok:
+                if scope["method"] == "GET" and not path.startswith("/api/") and path != "/mcp":
+                    response = terms.page(sign_out=authen.AUTH["mode"] == "authentik")
+                else:
+                    response = JSONResponse({"detail": terms.TERMS_REQUIRED}, status_code=403)
+                await response(scope, receive, send)
+                return
         await self.app(scope, receive, send)
 
 
@@ -185,6 +207,10 @@ class Me(BaseModel):
     sub: str
     email: str
     sign_out: bool   # true under --auth authentik: Discover shows "Sign out"
+
+
+class TermsAccept(BaseModel):
+    version: str = Field(max_length=64)   # the TERMS_VERSION the page showed
 
 
 class SchemaInfo(BaseModel):
@@ -564,6 +590,13 @@ def app(static_dir: str | None = None) -> FastAPI:
     def get_me(u: authen.User = Depends(user)) -> Me:
         return Me(sub=u.sub, email=u.email, sign_out=authen.AUTH["mode"] == "authentik")
 
+    @application.post(terms.ACCEPT_PATH, include_in_schema=False)
+    async def post_terms_accept(body: TermsAccept, u: authen.User = Depends(user)) -> TermsAccept:
+        if body.version != terms.TERMS_VERSION:
+            raise HTTPException(409, "the portal terms have changed; reload the page to read the current version")
+        await terms.accept(u.sub)
+        return TermsAccept(version=terms.TERMS_VERSION)
+
     @application.post("/api/cohort")
     def post_cohort(d: Definition, u: authen.User = Depends(user)) -> CountResult:
         return run_count(u, "rest", d)
@@ -714,6 +747,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--static", help="also serve this built front-end directory (landing page at /, Discover at /discover)")
     args = ap.parse_args(argv)
     authen.configure(args.auth)
+    if args.auth in ("access", "authentik") and saved.database_url() is None:
+        raise SystemExit(f"--auth {args.auth} needs DATABASE_URL (in .env): portal terms acceptance is "
+                         "recorded in Postgres")
     uvicorn.run(app(args.static), host=args.host, port=args.port, access_log=False)
 
 
