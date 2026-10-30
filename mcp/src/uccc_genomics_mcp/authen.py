@@ -168,15 +168,19 @@ def _access(request: Request) -> str:
 
 # --- authentik -----------------------------------------------------------------------------------
 
+# Cloudflare in front of the identity provider refuses Python's default "Python-urllib" agent (403).
+USER_AGENT = "uccc-genomics-app"
+
+
 def _get_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers={"accept": "application/json"})
+    req = urllib.request.Request(url, headers={"accept": "application/json", "user-agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.load(r)
 
 
 def _post_form(url: str, form: dict[str, str]) -> dict:
     req = urllib.request.Request(url, data=urllib.parse.urlencode(form).encode(), headers={
-        "accept": "application/json", "content-type": "application/x-www-form-urlencoded"})
+        "accept": "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=10) as r:
         return json.load(r)
 
@@ -187,7 +191,7 @@ class _JWKS(jwt.PyJWKClient):
     server hammer the provider (#107). Lookups take a lock, so a burst waits for one fetch."""
 
     def __init__(self, uri: str) -> None:
-        super().__init__(uri, timeout=10)
+        super().__init__(uri, timeout=10, headers={"user-agent": USER_AGENT})
         self.fetched_at, self.failed = float("-inf"), False
         self._lock = threading.Lock()
 
