@@ -44,7 +44,8 @@ def test_compose_routes_no_mcp_and_publishes_no_port():
     assert "ports" not in service
     labels = service["labels"]
     assert "!PathPrefix(`/mcp`)" in labels["traefik.http.routers.uccc-genomics.rule"]
-    assert labels["traefik.http.routers.uccc-genomics.tls.certresolver"] == "cloudflare"
+    assert "traefik.http.routers.uccc-genomics.tls.certresolver" not in labels   # orange cloud: Origin Cert
+    assert labels["traefik.http.middlewares.uccc-genomics-rl.ratelimit.sourcecriterion.requestheadername"] == "CF-Connecting-IP"
     assert labels["traefik.http.routers.uccc-genomics.middlewares"] == "uccc-genomics-rl"
     assert int(labels["traefik.http.middlewares.uccc-genomics-rl.ratelimit.average"]) > 0
     assert int(labels["traefik.http.middlewares.uccc-genomics-rl.ratelimit.burst"]) > 0

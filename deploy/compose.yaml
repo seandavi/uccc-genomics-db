@@ -34,8 +34,12 @@ services:
       - "traefik.http.routers.uccc-genomics.rule=Host(`${APP_HOST}`) && !PathPrefix(`/mcp`)"
       - "traefik.http.routers.uccc-genomics.entrypoints=websecure"
       - "traefik.http.routers.uccc-genomics.tls=true"
-      - "traefik.http.routers.uccc-genomics.tls.certresolver=cloudflare"   # grey cloud: LE via TLS-ALPN-01
-      # Per-IP limit on every route; it exists for the open ones (/api/public/summary, /auth/*, /, /assets/*; spec 41). Grey cloud: the remote address is the client.
+      # Orange cloud: no certresolver. Traefik serves its default Cloudflare Origin Certificate
+      # (*.cancerdatasci.org) on the Cloudflare-to-origin leg; LE TLS-ALPN-01 cannot work behind the proxy.
+      # Per-client limit on every route; it exists for the open ones (/api/public/summary, /auth/*, /, /assets/*; spec 41).
+      # Behind the proxy the remote address is a Cloudflare edge, so key on the client address Cloudflare sends.
+      # ponytail: a direct-to-origin request can forge this header, which only dodges the rate limit.
+      - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.sourcecriterion.requestheadername=CF-Connecting-IP"
       - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.average=20"
       - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.burst=50"
       - "traefik.http.routers.uccc-genomics.middlewares=uccc-genomics-rl"
