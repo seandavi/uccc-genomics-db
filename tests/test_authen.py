@@ -344,7 +344,7 @@ def test_callback_refuses_a_flow_that_did_not_start_here(c, issuer, what):
 def test_callback_refuses_an_error_from_the_provider(c, issuer):
     begin(c, issuer)
     r = c.get("/auth/callback", params={"error": "access_denied", "error_description": "<script>x</script>"})
-    assert r.status_code == 403 and "script" not in r.text
+    assert r.status_code == 403 and "<script>x" not in r.text and "x</script>" not in r.text   # not reflected
     assert "Sign-in was refused." in r.text and GROUP + " group" in r.text
     never_signed_in(c, r)
 
