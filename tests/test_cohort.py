@@ -169,7 +169,9 @@ def write_mart(path, m):
           disease VARCHAR, assay_class VARCHAR, assay_name VARCHAR, purity DOUBLE, site_type VARCHAR, site VARCHAR,
           has_wts BOOLEAN, collected_on DATE);
         CREATE TABLE mart.fact (research_id VARCHAR, vendor VARCHAR, report_id VARCHAR, kind VARCHAR, key VARCHAR,
-          sub VARCHAR, val VARCHAR, num DOUBLE, unit VARCHAR, tier VARCHAR);""")
+          sub VARCHAR, val VARCHAR, num DOUBLE, unit VARCHAR, tier VARCHAR);
+        CREATE SCHEMA meta;
+        CREATE TABLE meta.build AS SELECT 'synthetic-build-1' AS build_id;""")
     con.executemany("INSERT INTO mart.report VALUES (" + ", ".join("?" * 18) + ")", m.reports)
     con.executemany("INSERT INTO mart.fact VALUES (" + ", ".join("?" * 10) + ")", m.facts)
     con.close()
@@ -461,6 +463,18 @@ def test_pivot_margins_count_only_patients_in_a_cell(tmp_path, monkeypatch):
     assert pcells(r) == {("2022", "KRAS"): 6} and margins(r.row_totals) == {"2022": 6}
     for line in line_nones(r):
         assert sum(v is None for v in line) != 1, line
+
+
+def test_snapshot_id(mart_file, tmp_path, monkeypatch):
+    path, m = mart_file
+    use_mart(path, m, monkeypatch)
+    assert queries.snapshot_id() == "synthetic-build-1"
+    old = str(tmp_path / "old.duckdb")   # built before #132: mart.* only
+    con = duckdb.connect(old)
+    con.execute("CREATE SCHEMA mart; CREATE TABLE mart.report (research_id VARCHAR)")
+    con.close()
+    use_mart(old, m, monkeypatch)
+    assert queries.snapshot_id() is None
 
 
 def test_unlisted_small_remainder_is_a_hidden_value(tmp_path, monkeypatch):
