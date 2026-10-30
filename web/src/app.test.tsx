@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { App, FeasibilityPanel, SharePanel, SummaryBar, Who } from "./App.tsx";
-import { EMPTY } from "./cohort.ts";
-import type { Transport } from "./transport.ts";
-import type { CountResult, Options } from "./types.ts";
+import { App, FeasibilityPanel, applyShareHash, SharePanel, SummaryBar, Who } from "./App.tsx";
+import { EMPTY, pushVersion, shareHash, type History } from "./cohort.ts";
+import { TransportError, type Transport } from "./transport.ts";
+import type { ApplyResult, CountResult, Options } from "./types.ts";
 
 const render = (statement: string, copied = false) =>
   renderToStaticMarkup(<FeasibilityPanel statement={statement} copied={copied} onCopy={() => {}} onClose={() => {}} textareaRef={{current: null}} />);
@@ -131,5 +131,74 @@ describe("Who", () => {
   test("no Sign out button without a session", () => {
     expect(html(false)).toContain("a@example.edu");
     expect(html(false)).not.toContain("Sign out");
+  });
+});
+
+describe("applyShareHash", () => {
+  const b = {...EMPTY, name: "b", population: {...EMPTY.population, sex: ["Female"]}};
+  const c = {...EMPTY, name: "c", population: {...EMPTY.population, sex: ["Male"]}};
+  const h: History = {versions: [{n: 1, definition: EMPTY}], current: 0};
+  const fake = (result: unknown) => {
+    const calls: unknown[][] = [];
+    const apply = async (...args: unknown[]) => {
+      calls.push(args);
+      if (result instanceof Error) throw result;
+      return {definition: result} as ApplyResult;
+    };
+    return {calls, transport: {apply} as unknown as Pick<Transport, "apply">};
+  };
+  const prefix = "This link does not hold a valid cohort: ";
+
+  test("a valid link adds a version", async () => {
+    const t = fake(b);
+    const r = await applyShareHash(shareHash(b), () => h, t.transport) as {history: History};
+    expect(r.history.versions.length).toBe(2);
+    expect(r.history.current).toBe(1);
+    expect(r.history.versions[1].n).toBe(2);
+    expect(r.history.versions[1].definition).toEqual(b);
+    expect(t.calls.length).toBe(1);
+    expect(t.calls[0][1]).toEqual({op: "rename", name: "b"});
+  });
+  test("an unreadable hash is an error and no request", async () => {
+    const t = fake(b);
+    expect(await applyShareHash("#d=!!!", () => h, t.transport)).toEqual({error: `${prefix}it could not be read`});
+    expect(t.calls.length).toBe(0);
+  });
+  test("a server rejection is an error", async () => {
+    const t = fake(new TransportError("criteria.0.gene: unknown", 422));
+    expect(await applyShareHash(shareHash(b), () => h, t.transport)).toEqual({error: `${prefix}criteria.0.gene: unknown`});
+  });
+  test("the current version's own hash does nothing", async () => {
+    const t = fake(b);
+    expect(await applyShareHash(shareHash(EMPTY), () => h, t.transport)).toBeNull();
+    expect(t.calls.length).toBe(0);
+  });
+  test("a link equal to the current definition after normalisation adds no version", async () => {
+    const t = fake(EMPTY);
+    const r = await applyShareHash(shareHash({...EMPTY, name: "x"}), () => h, t.transport) as {history: History};
+    expect(r.history).toBe(h);
+  });
+  test("a hash that is not a share link leaves the history alone", async () => {
+    const t = fake(b);
+    for (const hash of ["#answer-h", ""]) {
+      const r = await applyShareHash(hash, () => h, t.transport) as {history: History};
+      expect(r.history).toBe(h);
+    }
+    expect(t.calls.length).toBe(0);
+  });
+  test("an edit made during the request is kept", async () => {
+    const h2 = pushVersion(h, c);
+    let reads = 0;
+    const r = await applyShareHash(shareHash(b), () => (reads++ === 0 ? h : h2), fake(b).transport) as {history: History};
+    expect(r.history.versions.map((v) => v.n)).toEqual([1, 2, 3]);
+    expect(r.history.versions[1].definition).toEqual(c);
+    expect(r.history.versions[2].definition).toEqual(b);
+  });
+  test("one code path: the mount effect and a hashchange listener both use it", () => {
+    const src = readFileSync(join(import.meta.dir, "App.tsx"), "utf8");
+    expect(src).toContain('addEventListener("hashchange"');
+    expect(src).toContain('removeEventListener("hashchange"');
+    expect(src.split("applyShareHash(window.location.hash").length - 1).toBe(2);
+    expect(src).not.toContain("window.location.hash.startsWith");
   });
 });
