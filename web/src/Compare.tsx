@@ -76,6 +76,13 @@ export function Compare({versions, transport, years, onClose}: {
   const minCell = columns?.find((c) => c.result)?.result?.min_cell ?? 5;
   return (
     <section aria-label="Compare versions" className="panel">
+      {versions.length < MIN_PICKED ? (
+        <>
+        <p className="hint">Compare needs two or more edits. Make a change to the cohort, then compare the versions here.</p>
+        <div className="row"><button type="button" onClick={onClose}>Close</button></div>
+        </>
+      ) : (
+        <>
       <fieldset className="checks">
         <legend>Versions to compare ({MIN_PICKED}–{MAX_PICKED})</legend>
         {versions.map((v) => (
@@ -86,9 +93,11 @@ export function Compare({versions, transport, years, onClose}: {
         ))}
       </fieldset>
       <div className="row">
-        <button type="button" disabled={busy || picked.length < MIN_PICKED || picked.length > MAX_PICKED} onClick={run}>Count</button>{" "}
+        <button type="button" disabled={busy || picked.length < MIN_PICKED || picked.length > MAX_PICKED} onClick={run}>Compare selected</button>{" "}
         <button type="button" onClick={onClose}>Close</button>
       </div>
+        </>
+      )}
       {columns && <CompareTable columns={columns} minCell={minCell} />}
     </section>
   );

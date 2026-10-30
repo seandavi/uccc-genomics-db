@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Answer, DATA_FOOTNOTE, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
-import { EMPTY } from "./cohort.ts";
+import { Answer, DATA_FOOTNOTE, PIVOT_SUGGESTIONS, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
+import { EMPTY, pivotAxes } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, PivotResult } from "./types.ts";
 
 const kras = {kind: "alteration", id: "c1", mode: "include", gene: ["KRAS"], aa: ["G12C"], class: ["mutation"], tier: ["likely_pathogenic", "pathogenic"]} as Criterion;
@@ -349,8 +349,50 @@ describe("tabs", () => {
     expect(html).toContain('<th scope="col">c2 · ALK fusion · gene</th>');
     expect(html).not.toMatch(/<caption>[^<]*EGFR/);
   });
-  test("pivot before choosing", () => {
-    expect(render(result(), "Pivot")).toContain("Choose rows and columns.");
+  test("pivot before choosing: purpose line, suggested pairs, Choose… placeholder", () => {
+    const html = render(result(), "Pivot");
+    expect(html).toContain("Count patients for every combination of two characteristics, such as tumor type by year.");
+    expect(html).toContain("Choose rows and columns, or try:");
+    for (const label of ["Tumor type × Year", "Vendor × Year", "Tumor type × Sex"]) expect(html).toContain(`>${label}</button>`);
+    expect(html).toContain('<option value="" selected="">Choose…</option>');
+    expect(html).not.toContain(">none</option>");
+  });
+  test("pivot chosen: no suggestions; before it is counted, a waiting line", () => {
+    const d: Definition = {...def, pivot: {rows: "oncotree", cols: "year"}};
+    const pivot: PivotResult = {
+      cohort_id: "abc", rows: "oncotree", cols: "year", patients: 8, min_cell: 5, notes: [],
+      cells: [{row: "NSCLC", col: "2023", patients: 6}],
+      row_totals: [{value: "NSCLC", patients: 6}], col_totals: [{value: "2023", patients: 6}],
+    };
+    expect(render(result(), "Pivot", {}, d, pivot)).not.toContain("Tumor type × Year</button>");
+    const waiting = render(result(), "Pivot", {}, d, null);
+    expect(waiting).toContain("The table appears once it is counted.");
+    expect(waiting).not.toContain("Choose rows and columns, or try:");
+  });
+  test("PIVOT_SUGGESTIONS are distinct pairs of axes every definition has", () => {
+    const axes = pivotAxes(EMPTY).map((a) => a.value);
+    expect(new Set(PIVOT_SUGGESTIONS.map((s) => s.label)).size).toBe(PIVOT_SUGGESTIONS.length);
+    for (const s of PIVOT_SUGGESTIONS) {
+      expect(s.rows).not.toBe(s.cols);
+      expect(axes).toContain(s.rows);
+      expect(axes).toContain(s.cols);
+    }
+  });
+  test("breakdown: purpose line and toggle chips, no checkboxes", () => {
+    const html = render(result(), "Breakdown");
+    expect(html).toContain("Split this cohort by up to four characteristics.");
+    expect(html).toMatch(/aria-pressed="true"[^>]*>(<span[^>]*>✓ <\/span>)?Sex</);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Vendor</);
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).not.toContain("Four chosen");
+  });
+  test("breakdown: with four chosen every other chip is disabled and a hint says so", () => {
+    const four: Definition = {...def, breakdown: ["oncotree", "organ", "sex", "age_band"]};
+    const html = render(result(), "Breakdown", {}, four);
+    const unpressed = html.match(/<button[^>]*aria-pressed="false"[^>]*>/g) ?? [];
+    expect(unpressed.length).toBeGreaterThan(0);
+    for (const b of unpressed) expect(b).toContain('disabled=""');
+    expect(html).toContain("Four chosen: remove one to add another.");
   });
   test("data notes verbatim", () => {
     expect(render(result(), "Data notes")).toContain("<li>Stage and treatment are not in the data.</li>");

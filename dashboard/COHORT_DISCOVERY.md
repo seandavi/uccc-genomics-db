@@ -367,11 +367,14 @@ reorders the funnel.
     spillover) are shaded and marked "*". When every year is hidden the
     chart is one hatched strip. Each mark has a legend line.
   - *Breakdown*: the phase 1 bars (disease, vendor and class, sex, age,
-    alteration class).
+    alteration class): up to four dimensions, chosen with toggle chips; one
+    table each with patients and the share of the population.
   - *Pivot*: choose rows and columns from population dimensions or
     criteria. This answers 2, 4, 5, 9, 12, 15 and 17 directly. Cells are
     floored and secondarily suppressed by row and by column, and the
-    marginal totals are shown floored.
+    marginal totals are shown floored. With no pivot chosen it offers
+    suggested pairs (tumor type × year, vendor × year, tumor type × sex)
+    (#103).
   - *Data notes*: the coverage caveats that apply to this definition, built
     from the criterion kinds (an IHC criterion adds "Caris only, n tested";
     an age criterion adds "FMI age unknown"), plus the absent fields from
@@ -400,7 +403,10 @@ reorders the funnel.
   "Between 2023 and 2026 the UCCC sequenced 120 NSCLC patients, of whom 8
   carried KRAS G12C (about 2 a year). Counts are de-identified patients from
   Caris and FMI reports; demographics beyond sex are not available, and
-  treatment and outcome data are not linked."
+  treatment and outcome data are not linked." When it names a year window it
+  says collection dates are shifted for de-identification, so the last years
+  are partial (#103). It opens as a floating panel under the header with Copy
+  as its one primary button.
 - *Request data* (phase 2 of `COHORT_TOOL.md`): an email to the data
   steward with the definition JSON, as the entry point to the PHI path
   (#16).

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { App, FeasibilityPanel, applyDefinition, applyShareHash, SharePanel, SummaryBar, Who } from "./App.tsx";
+import { App, FeasibilityPanel, applyDefinition, focusTrigger, applyShareHash, SharePanel, SummaryBar, Who } from "./App.tsx";
 import { EMPTY, EXAMPLES, pushVersion, shareHash, type History } from "./cohort.ts";
 import { TransportError, type Transport } from "./transport.ts";
 import type { ApplyResult, CountResult, Definition, Options } from "./types.ts";
@@ -15,18 +15,58 @@ describe("FeasibilityPanel", () => {
     const html = render("");
     expect(html).toContain("Recounting…");
     expect(html).not.toContain("<textarea");
-    expect(html).toMatch(/<button type="button" disabled="">Copy<\/button>/);
+    expect(html).toMatch(/<button type="button" class="btn-primary" disabled="">Copy<\/button>/);
     expect(html).toContain(">Close</button>");
   });
   test("a statement is in a textarea and Copy is enabled", () => {
     const html = render("About 40 patients a year.");
     expect(html).toMatch(/<textarea[^>]*>About 40 patients a year\.<\/textarea>/);
     expect(html).not.toContain("Recounting");
-    expect(html).toContain('<button type="button">Copy</button>');
+    expect(html).toContain('<button type="button" class="btn-primary">Copy</button>');
+  });
+  test("a labelled floating panel with a focusable heading and one primary button", () => {
+    for (const statement of ["", "About 40 patients a year."]) {
+      const html = render(statement);
+      expect(html).toContain('<h2 id="feasibility-h" tabindex="-1">Feasibility statement for grant text</h2>');
+      expect(html).toContain('class="panel floating"');
+      expect(html).toContain('aria-labelledby="feasibility-h"');
+      expect(html.match(/btn-primary/g)?.length).toBe(1);
+    }
   });
   test("copied is announced", () => {
     expect(render("x", true)).toContain("Copied");
     expect(render("x")).not.toContain("Copied");
+  });
+});
+
+describe("focusTrigger", () => {
+  const fake = (offsetParent: object | null) => {
+    let focused = 0;
+    return {el: {offsetParent, focus: () => { focused++; }} as unknown as HTMLElement, focused: () => focused};
+  };
+  test("a visible trigger takes focus, not ⋯", () => {
+    const [trigger, more] = [fake({}), fake({})];
+    focusTrigger(trigger.el, more.el);
+    expect([trigger.focused(), more.focused()]).toEqual([1, 0]);
+  });
+  test("a hidden or missing trigger sends focus to ⋯", () => {
+    const [hidden, more] = [fake(null), fake({})];
+    focusTrigger(hidden.el, more.el);
+    focusTrigger(null, more.el);
+    expect([hidden.focused(), more.focused()]).toEqual([0, 2]);
+  });
+  test("nothing to focus is a no-op", () => {
+    expect(() => focusTrigger(null, null)).not.toThrow();
+  });
+});
+
+describe("panel source", () => {
+  const src = readFileSync(join(import.meta.dir, "App.tsx"), "utf8");
+  test("the feasibility panel is anchored and every panel closes through closePanel", () => {
+    expect(src).toContain('className="panel-anchor"');
+    expect(src.match(/onClose=\{closePanel\}/g)?.length).toBe(3);
+    expect(src).not.toContain("onClose={() => setPanel(null)}");
+    expect(src).toContain('e.key === "Escape"');
   });
 });
 

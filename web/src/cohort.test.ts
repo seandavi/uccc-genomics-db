@@ -168,6 +168,13 @@ describe("feasibility", () => {
     expect(text).toContain("counts under 5, and counts that would let one be worked out by subtraction, are not shown.");
     expect(numbers(text, r)).toEqual([]);
   });
+  test("a year window says the last years are partial; no window does not", () => {
+    const sentence = "Collection dates are shifted for de-identification, so the last years are partial.";
+    const text = feasibility(d, result(), [2020, 2024]);
+    expect(text).toContain(sentence);
+    expect(text.indexOf(sentence)).toBeLessThan(text.indexOf(" Counts are distinct"));
+    expect(feasibility(d, result(), null)).not.toContain(sentence);
+  });
   test("no criteria: no 'of whom' clause; report scope is stated", () => {
     const r = result();
     const text = feasibility({...EMPTY}, r, [2020, 2024]);

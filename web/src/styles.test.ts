@@ -157,3 +157,15 @@ test("every font-size outside :root is a --fs-* token", () => {
   expect(sizes.length).toBeGreaterThan(5);
   for (const v of sizes) expect([v, /^var\(--fs-[\w-]+\)$/.test(v)]).toEqual([v, true]);
 });
+
+test("tabs are underlined, panels float, pivot selects are narrow", () => {
+  for (const decl of ["border: 0", "border-radius: 0", "background: transparent"]) expect(rule(".tabs button")).toContain(decl);
+  expect(rule('.tabs button[aria-selected="true"]')).toContain("var(--accent)");
+  expect(rule(".tabs")).toContain("overflow-x: auto");
+  expect(css).not.toContain("6px 6px 0 0");
+  expect(rule(".panel-anchor")).toContain("position: relative");
+  expect(rule(".panel.floating")).toContain("position: absolute");
+  expect(rule(".panel textarea")).toContain("max-width: 65ch");
+  expect(rule(".pivot-controls select")).toContain("max-width: 16rem");
+  expect(rule('.toggle-chip[aria-pressed="true"]')).toContain("var(--accent)");
+});
