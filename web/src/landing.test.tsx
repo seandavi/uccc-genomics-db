@@ -38,7 +38,35 @@ describe("Landing", () => {
   test("a single year and no year", () => {
     expect(render({...SUMMARY, first_year: 2020, last_year: 2020})).toContain("<dd>2020</dd>");
     const html = render({...SUMMARY, first_year: null, last_year: null, by_year: []});
+    expect(html).not.toContain("First-sample years");
+  });
+  test("access copy names campus Google sign-in", () => {
+    const html = render(SUMMARY);
+    expect(html).toContain("Sign in with your CU Anschutz Google account.");
+    expect(html).toContain("Researchers without a CU Anschutz account can ask the UCCC genomics team for access.");
+    expect(html).not.toContain("To get access");
+  });
+  test("the hint explains partial and hatched bars", () => {
+    const html = render(SUMMARY);
+    expect(html).toContain("A lighter bar is a year not yet complete; a hatched bar is fewer than 5.");
+    expect(html).toContain("Years are approximate");
+  });
+  test("the sr-only table marks partial years", () => {
+    const html = render(SUMMARY);
+    expect(html).toContain("<td>2018 (partial year)</td>");
+    expect(html).toContain("<td>2016</td>");
+  });
+  test("year label and vendors cell", () => {
+    const html = render(SUMMARY);
+    expect(html).toContain("<dt>First-sample years</dt>");
+    expect(html).toContain('<div class="text"><dt>Vendors</dt>');
     expect(html).not.toContain("Collection years");
+  });
+  test("landing <5 titles", () => {
+    const html = render(SUMMARY);
+    expect(html).toMatch(/Tumor types<\/dt><dd><span class="suppressed" title="Fewer than 5">/);
+    expect(html).toContain('title="Fewer than 5 patients"');
+    expect(html).not.toContain("subtraction");
   });
   test("loading and error states show no totals", () => {
     expect(render(null)).toContain("Loading totals…");

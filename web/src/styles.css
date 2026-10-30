@@ -229,5 +229,6 @@ td.hatched, .summary-count.hatched {
 .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--s4); margin: 0; }
 .totals dt { color: var(--muted); }
 .totals dd { margin: 0; font-size: var(--fs-2xl); line-height: var(--lh-2xl); font-weight: 700; }
+.totals .text dd { font-size: var(--fs-md); line-height: var(--lh-md); font-weight: 600; }
 a.btn-primary { display: inline-block; padding: var(--s2) var(--s4); border-radius: 6px; text-decoration: none; background: var(--accent); color: var(--accent-fg); border: 1px solid var(--accent); font-weight: 600; }
 a.btn-primary:hover { background: color-mix(in srgb, var(--accent) 85%, var(--fg)); }

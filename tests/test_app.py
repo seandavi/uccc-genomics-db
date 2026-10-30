@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import uuid
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -563,3 +564,40 @@ def test_public_summary_values(tmp_path, monkeypatch):
     assert (s.first_year, s.last_year) == (2022, 2024)
     assert [(y.year, y.patients, y.complete) for y in s.by_year] == [(2022, 10, True), (2023, None, False),
                                                                       (2024, 30, True)]
+
+
+def test_public_summary_folds_spillover_year(tmp_path, monkeypatch):
+    this_year = date.today().year
+    m = Mart()
+    n = 0
+
+    def add(count, year, complete=True):
+        nonlocal n
+        for _ in range(count):
+            n += 1
+            m.report(f"p{n}", f"r{n}", "NSCLC", "Lung", "caris", year, complete=complete)
+
+    add(10, this_year - 1)
+    add(3, this_year, complete=False)
+    add(3, this_year + 1, complete=False)       # spillover year: folds into this_year
+    m.report("pb", "rb1", "NSCLC", "Lung", "caris", this_year, complete=False)
+    m.report("pb", "rb2", "NSCLC", "Lung", "caris", this_year + 1, complete=False)   # first sample is this_year
+    m.mutation("r1", "KRAS", "G12C")   # write_mart needs a fact row
+    path = str(tmp_path / "v.duckdb")
+    write_mart(path, m)
+    monkeypatch.setattr(public, "get_db", lambda: server.harden(duckdb.connect(path, read_only=True)))
+    monkeypatch.setattr(public, "DEID_DB", path)
+    monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
+    coarse = public.coarse
+    monkeypatch.setattr(public, "coarse", lambda k: k)
+    raw = public.summary()
+    assert [(y.year, y.patients, y.complete) for y in raw.by_year] == [(this_year - 1, 10, True),
+                                                                        (this_year, 7, False)]
+    assert raw.last_year == this_year
+    monkeypatch.setattr(public, "coarse", coarse)
+    monkeypatch.setattr(public, "_summary", {"mtime": None, "v": None})
+    s = public.summary()
+    assert [(y.year, y.patients, y.complete) for y in s.by_year] == [(this_year - 1, 10, True),
+                                                                      (this_year, 10, False)]
+    assert s.last_year == this_year
+    assert not any(y.year > this_year for y in s.by_year)

@@ -80,6 +80,10 @@ describe("tier colours are semantic", () => {
   });
 });
 
+test(".totals .text dd is body size", () => {
+  expect(rule(".totals .text dd")).toContain("var(--fs-md)");
+});
+
 test("the patient count is the largest type", () => {
   expect(rule(".card.hero .big")).toContain("var(--fs-hero)");
   expect(rule(".big")).toContain("var(--fs-2xl)");

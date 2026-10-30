@@ -1,5 +1,7 @@
 # Spec #41: public landing page at `/` with coarse totals; Discover moves to `/discover`
 
+> **Superseded in part by #137:** first-sample years after the current year fold into it; the label is "First-sample years"; the access copy names CU Anschutz Google sign-in. See `docs/specs/137-follow-ups-from-the-41-review.md`.
+
 Issue #41 (rescoped by Sean, 2026-10-30): the campus app (`genomics-app`) gets a public landing
 page at `/` with a few coarse totals from one public endpoint, and Discover moves behind sign-in at
 `/discover`. Retiring the Cloudflare dashboard and `genomics-cohort-api` is a follow-up.
@@ -319,7 +321,8 @@ text-decoration: none;`, with the same colours as `.btn-primary`). Use only the 
 - [ ] The OpenAPI operation for `/api/public/summary` has no `parameters` and no `requestBody`.
       `GET /api/public/summary?oncotree=NSCLC&year=2023` returns the same body as without the query.
       `POST` is 405.
-- [ ] The values match hand-computed `coarse()` of plain SQL on the synthetic mart. Tumor types
+- [ ] The unrounded values (with `coarse` patched to the identity) match literal counts of the
+      synthetic mart, and the rounded values match `coarse()` of those. Tumor types
       leave out `OTHER`, NULL and codes under 5 patients. Vendors under 5 patients are left out. A
       single-patient outlier year is not in `by_year` and not `first_year`. A 1–4-patient year inside
       the range is in `by_year` with `patients: null`.
@@ -370,7 +373,9 @@ from `tests/test_cohort.py`. No test reads `$DATA/raw`, the PHI file or the real
 - `test_public_summary_values`: a dedicated small `Mart` written to `tmp_path`. It has a
   `caris`/`fmi` mix, an `OTHER` code, a NULL oncotree, a code with 3 patients, a vendor value with 2
   patients, a 2-patient year between two 10+-patient years, and a 1-patient outlier year before them.
-  Compare against `coarse()` of plain SQL and the rules above.
+  The test patches `coarse` to the identity and asserts the raw literal counts first, so a broken
+  `OTHER`/NULL/`HAVING` filter fails before rounding can hide it, then restores `coarse` and checks
+  the rounded values.
 - `test_coarse` (parametrized), and `test_public_summary_cached` (count `get_db` calls; bump the
   patched mtime with `os.utime`).
 
