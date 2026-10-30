@@ -381,6 +381,35 @@
         "title": "ApplyResult",
         "type": "object"
       },
+      "Attestation": {
+        "properties": {
+          "attestation_version": {
+            "title": "Attestation Version",
+            "type": "string"
+          },
+          "signed_as": {
+            "title": "Signed As",
+            "type": "string"
+          },
+          "signed_at": {
+            "format": "date-time",
+            "title": "Signed At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attestation_version",
+          "text",
+          "signed_as",
+          "signed_at"
+        ],
+        "title": "Attestation",
+        "type": "object"
+      },
       "Biomarker": {
         "additionalProperties": false,
         "properties": {
@@ -951,10 +980,19 @@
       "IdentifierReason": {
         "properties": {
           "identifier": {
+            "enum": [
+              "mrn",
+              "name",
+              "dob",
+              "true_dates",
+              "vendor_report_id"
+            ],
             "title": "Identifier",
             "type": "string"
           },
           "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
             "title": "Reason",
             "type": "string"
           }
@@ -1157,6 +1195,59 @@
         "title": "IrbAuthorization",
         "type": "object"
       },
+      "IrbCreate": {
+        "properties": {
+          "approval_date": {
+            "format": "date",
+            "title": "Approval Date",
+            "type": "string"
+          },
+          "approved_population": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Approved Population",
+            "type": "string"
+          },
+          "expiration_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiration Date"
+          },
+          "hipaa_pathway": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Hipaa Pathway",
+            "type": "string"
+          },
+          "irb_number": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "title": "Irb Number",
+            "type": "string"
+          },
+          "pi": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Pi",
+            "type": "string"
+          }
+        },
+        "required": [
+          "irb_number",
+          "pi",
+          "approval_date",
+          "hipaa_pathway",
+          "approved_population"
+        ],
+        "title": "IrbCreate",
+        "type": "object"
+      },
       "IrbDocument": {
         "properties": {
           "created_at": {
@@ -1206,18 +1297,94 @@
             "title": "Section Cited"
           },
           "sha256": {
-            "title": "Sha256",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
         "required": [
           "id",
           "doc_type",
           "file_ref",
-          "sha256",
           "created_at"
         ],
         "title": "IrbDocument",
+        "type": "object"
+      },
+      "IrbDocumentCreate": {
+        "properties": {
+          "doc_type": {
+            "enum": [
+              "approval_letter",
+              "personnel_list",
+              "protocol_excerpt",
+              "consent_form"
+            ],
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "file_ref": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "File Ref",
+            "type": "string"
+          },
+          "protocol_version": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol Version"
+          },
+          "section_cited": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Cited"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_type",
+          "title",
+          "file_ref"
+        ],
+        "title": "IrbDocumentCreate",
         "type": "object"
       },
       "IrbList": {
@@ -1234,6 +1401,22 @@
           "authorizations"
         ],
         "title": "IrbList",
+        "type": "object"
+      },
+      "IrbLookup": {
+        "properties": {
+          "authorizations": {
+            "items": {
+              "$ref": "#/components/schemas/IrbStatus"
+            },
+            "title": "Authorizations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "authorizations"
+        ],
+        "title": "IrbLookup",
         "type": "object"
       },
       "IrbPerson": {
@@ -1257,6 +1440,65 @@
           "role"
         ],
         "title": "IrbPerson",
+        "type": "object"
+      },
+      "IrbStatus": {
+        "properties": {
+          "doc_types": {
+            "items": {
+              "enum": [
+                "approval_letter",
+                "personnel_list",
+                "protocol_excerpt",
+                "consent_form"
+              ],
+              "type": "string"
+            },
+            "title": "Doc Types",
+            "type": "array"
+          },
+          "expiration_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiration Date"
+          },
+          "irb_number": {
+            "title": "Irb Number",
+            "type": "string"
+          },
+          "registered_by_you": {
+            "title": "Registered By You",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "irb_number",
+          "version",
+          "status",
+          "doc_types",
+          "registered_by_you"
+        ],
+        "title": "IrbStatus",
         "type": "object"
       },
       "IrbVersion": {
@@ -1410,6 +1652,24 @@
       },
       "MyRequestDetail": {
         "properties": {
+          "attestation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attestation"
+          },
+          "attestations": {
+            "items": {
+              "$ref": "#/components/schemas/Attestation"
+            },
+            "title": "Attestations",
+            "type": "array"
+          },
           "cohort": {
             "format": "uuid",
             "title": "Cohort",
@@ -1449,7 +1709,7 @@
           "irb": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/IrbAuthorization"
+                "$ref": "#/components/schemas/IrbStatus"
               },
               {
                 "type": "null"
@@ -1477,6 +1737,13 @@
               }
             ],
             "title": "Irb Version"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
           },
           "purpose": {
             "title": "Purpose",
@@ -1572,6 +1839,8 @@
           "status",
           "created_at",
           "updated_at",
+          "missing",
+          "attestations",
           "reviews",
           "releases"
         ],
@@ -1962,10 +2231,14 @@
       "Recipient": {
         "properties": {
           "email": {
+            "maxLength": 254,
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
             "title": "Email",
             "type": "string"
           },
           "name": {
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           }
@@ -2241,8 +2514,46 @@
         "title": "Request",
         "type": "object"
       },
+      "RequestCreate": {
+        "properties": {
+          "cohort": {
+            "format": "uuid",
+            "title": "Cohort",
+            "type": "string"
+          },
+          "seq": {
+            "minimum": 1.0,
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cohort",
+          "seq"
+        ],
+        "title": "RequestCreate",
+        "type": "object"
+      },
       "RequestDetail": {
         "properties": {
+          "attestation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attestation"
+          },
+          "attestations": {
+            "items": {
+              "$ref": "#/components/schemas/Attestation"
+            },
+            "title": "Attestations",
+            "type": "array"
+          },
           "cohort": {
             "format": "uuid",
             "title": "Cohort",
@@ -2310,6 +2621,13 @@
               }
             ],
             "title": "Irb Version"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
           },
           "purpose": {
             "title": "Purpose",
@@ -2405,10 +2723,108 @@
           "status",
           "created_at",
           "updated_at",
+          "missing",
+          "attestations",
           "reviews",
           "releases"
         ],
         "title": "RequestDetail",
+        "type": "object"
+      },
+      "RequestDraft": {
+        "properties": {
+          "fields": {
+            "default": [],
+            "items": {
+              "enum": [
+                "demographics",
+                "diagnosis",
+                "specimen",
+                "test",
+                "variants",
+                "copy_number",
+                "fusions",
+                "biomarkers",
+                "ihc",
+                "expression",
+                "genes_tested"
+              ],
+              "type": "string"
+            },
+            "maxItems": 11,
+            "title": "Fields",
+            "type": "array"
+          },
+          "identifiers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/IdentifierReason"
+            },
+            "maxItems": 5,
+            "title": "Identifiers",
+            "type": "array"
+          },
+          "irb_number": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Number"
+          },
+          "irb_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Version"
+          },
+          "purpose": {
+            "default": "",
+            "maxLength": 4000,
+            "minLength": 0,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipients": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Recipient"
+            },
+            "maxItems": 20,
+            "title": "Recipients",
+            "type": "array"
+          },
+          "retention_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention End"
+          },
+          "storage_location": {
+            "default": "",
+            "maxLength": 500,
+            "minLength": 0,
+            "title": "Storage Location",
+            "type": "string"
+          }
+        },
+        "title": "RequestDraft",
         "type": "object"
       },
       "Requests": {
@@ -3075,6 +3491,20 @@
         "title": "Specimen",
         "type": "object"
       },
+      "SubmitRequest": {
+        "properties": {
+          "attestation": {
+            "maxLength": 5000,
+            "title": "Attestation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attestation"
+        ],
+        "title": "SubmitRequest",
+        "type": "object"
+      },
       "UpdateCriterion": {
         "additionalProperties": false,
         "properties": {
@@ -3466,6 +3896,143 @@
         "summary": "Health"
       }
     },
+    "/api/irb": {
+      "get": {
+        "operationId": "get_irb_lookup_api_irb_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrbLookup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Irb Lookup"
+      },
+      "post": {
+        "operationId": "post_irb_api_irb_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IrbCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrbStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Irb"
+      }
+    },
+    "/api/irb/{irb_number}/{version}/documents": {
+      "post": {
+        "operationId": "post_irb_document_api_irb__irb_number___version__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "irb_number",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+              "title": "Irb Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IrbDocumentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrbStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Irb Document"
+      }
+    },
     "/api/me": {
       "get": {
         "operationId": "get_me_api_me_get",
@@ -3643,9 +4210,83 @@
           }
         },
         "summary": "Get Requests"
+      },
+      "post": {
+        "operationId": "post_request_api_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyRequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Request"
       }
     },
     "/api/requests/{id}": {
+      "delete": {
+        "operationId": "delete_request_api_requests__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deleted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Request"
+      },
       "get": {
         "operationId": "get_request_api_requests__id__get",
         "parameters": [
@@ -3683,6 +4324,104 @@
           }
         },
         "summary": "Get Request"
+      },
+      "put": {
+        "operationId": "put_request_api_requests__id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyRequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Request"
+      }
+    },
+    "/api/requests/{id}/submit": {
+      "post": {
+        "operationId": "post_request_submit_api_requests__id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyRequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Request Submit"
       }
     },
     "/api/saved": {

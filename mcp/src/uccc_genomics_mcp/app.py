@@ -36,7 +36,9 @@ import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PA
 from uccc_genomics_mcp import authen, broker, cohort, public, saved, terms
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
-from uccc_genomics_mcp.broker import Irb, IrbList, MyRequestDetail, RequestDetail, Requests, RequestStatus
+from uccc_genomics_mcp.broker import (IRB_NUMBER, Irb, IrbCreate, IrbDocumentCreate, IrbList, IrbLookup, IrbStatus,
+                                      MyRequestDetail, RequestCreate, RequestDetail, RequestDraft, Requests,
+                                      RequestStatus, SubmitRequest)
 from uccc_genomics_mcp.saved import (CohortVersion, Deleted, History, SavedCohort, SavedList, Snapshot,
                                      Snapshots)
 from uccc_genomics_mcp.server import get_db
@@ -63,8 +65,9 @@ INSTRUCTIONS = (
     "logged-in user: save_cohort, then edit with apply_saved_op (each edit is a new revision; "
     "revert_saved_cohort undoes). Saved cohorts hold no counts; count the head definition. Snapshots store "
     "the suppressed count with its data date for grant text. "
-    "Requests for identified data are read-only here: list_my_requests and get_my_request show the caller's own; "
-    "the broker_* tools are for the honest broker group only. "
+    "Requests for identified data are created and submitted in the browser at /requests; here they are "
+    "read-only: list_my_requests and get_my_request show the caller's own; the broker_* tools are for the "
+    "honest broker group only. "
     "A 403 saying the portal terms are not accepted means the user must open /discover in a browser and "
     "accept them; tools can't do it.")
 
@@ -582,6 +585,10 @@ def app(static_dir: str | None = None) -> FastAPI:
     def saved_conflict(request: Request, e: saved.Conflict):
         return JSONResponse({"detail": str(e)}, status_code=409)
 
+    @application.exception_handler(broker.Invalid)
+    def broker_invalid(request: Request, e: broker.Invalid):
+        return JSONResponse({"detail": str(e)}, status_code=400)
+
     @application.exception_handler(saved.Unavailable)
     def saved_unavailable(request: Request, e: saved.Unavailable):
         return JSONResponse({"detail": str(e)}, status_code=503)
@@ -670,6 +677,38 @@ def app(static_dir: str | None = None) -> FastAPI:
     async def get_request(id: uuid.UUID, u: authen.User = Depends(user)) -> MyRequestDetail:
         return await broker.get_my_request(u.sub, id)
 
+    @application.post("/api/requests")
+    async def post_request(body: RequestCreate, u: authen.User = Depends(user)) -> MyRequestDetail:
+        return await broker.create_request(u.sub, body)
+
+    @application.put("/api/requests/{id}")
+    async def put_request(id: uuid.UUID, body: RequestDraft, u: authen.User = Depends(user)) -> MyRequestDetail:
+        return await broker.update_request(u.sub, id, body)
+
+    @application.post("/api/requests/{id}/submit")
+    async def post_request_submit(id: uuid.UUID, body: SubmitRequest,
+                                  u: authen.User = Depends(user)) -> MyRequestDetail:
+        return await broker.submit_request(u.sub, u.email, id, body.attestation)
+
+    @application.delete("/api/requests/{id}")
+    async def delete_request(id: uuid.UUID, u: authen.User = Depends(user)) -> Deleted:
+        return await broker.delete_request(u.sub, id)
+
+    @application.get("/api/irb")
+    async def get_irb_lookup(q: Annotated[str, Query(min_length=1, max_length=64)],
+                             u: authen.User = Depends(user)) -> IrbLookup:
+        return await broker.lookup_irb(u.sub, q)
+
+    @application.post("/api/irb")
+    async def post_irb(body: IrbCreate, u: authen.User = Depends(user)) -> IrbStatus:
+        return await broker.register_irb(u.sub, body)
+
+    @application.post("/api/irb/{irb_number}/{version}/documents")
+    async def post_irb_document(irb_number: Annotated[str, Path(pattern=IRB_NUMBER)],
+                                version: Annotated[int, Path(ge=1)], body: IrbDocumentCreate,
+                                u: authen.User = Depends(user)) -> IrbStatus:
+        return await broker.add_irb_document(u.sub, irb_number, version, body)
+
     @application.get("/api/broker/requests")
     async def get_broker_requests(status: RequestStatus | None = None,
                                   u: authen.User = Depends(broker_user)) -> Requests:
@@ -728,10 +767,11 @@ def app(static_dir: str | None = None) -> FastAPI:
         application.add_api_route("/auth/logout", authen.logout, methods=["POST"], include_in_schema=False,
                                   response_model=None)
     if static_dir:   # last, so lowest precedence
-        discover = os.path.join(static_dir, "discover.html")
-        if os.path.isfile(discover):   # not a discover/ directory: StaticFiles would redirect to an absolute http:// URL
-            application.add_api_route("/discover", lambda: FileResponse(discover), methods=["GET"],
-                                      include_in_schema=False, response_model=None)
+        for page in ("discover", "requests"):
+            html = os.path.join(static_dir, f"{page}.html")
+            if os.path.isfile(html):   # not a {page}/ directory: StaticFiles would redirect to an absolute http:// URL
+                application.add_api_route(f"/{page}", lambda html=html: FileResponse(html), methods=["GET"],
+                                          include_in_schema=False, response_model=None)
         application.mount("/", StaticFiles(directory=static_dir, html=True))
     application.add_middleware(RequireUser)
     return application

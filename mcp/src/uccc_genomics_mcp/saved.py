@@ -273,15 +273,13 @@ async def revert(owner: str, id: uuid.UUID, to: int, *, snapshot_id: str | None)
 
 async def delete(owner: str, id: uuid.UUID) -> Deleted:
     async with _begin() as conn:
+        # the cohort row lock serializes with broker.create_request, which takes it too: no request can
+        # appear between the check and the delete. It also establishes ownership (someone else's stays a 404).
+        await _lock_head(conn, owner, id)
         # text, not the Table: broker.py imports this module. The database refuses too (request's FK is RESTRICT).
-        attached = sa.text("SELECT 1 FROM request r JOIN cohort c ON c.id = r.cohort "
-                           "WHERE r.cohort = :id AND c.owner = :owner LIMIT 1")   # owner: someone else's stays a 404
-        if (await conn.execute(attached, {"id": id, "owner": owner})).first():
+        if (await conn.execute(sa.text("SELECT 1 FROM request WHERE cohort = :id LIMIT 1"), {"id": id})).first():
             raise Conflict(f"saved cohort {id} is attached to a request for identified data; it can't be deleted")
-        gone = (await conn.execute(sa.delete(cohort).where(cohort.c.id == id, cohort.c.owner == owner)
-                                   .returning(cohort.c.id))).first()
-        if gone is None:
-            raise NotFound(f"no saved cohort {id}")
+        await conn.execute(sa.delete(cohort).where(cohort.c.id == id))
         return Deleted(id=id)
 
 
