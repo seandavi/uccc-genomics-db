@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   BREAKDOWN_DIMS, accrualPerYear, barPct, criterionBody, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor, yearSlots,
 } from "./cohort.ts";
@@ -62,9 +62,15 @@ function Cards({r, d, options}: {r: CountResult; d: Definition; options: Options
 export const DATA_FOOTNOTE = "Not in this data: stage, treatment, outcomes, race and ethnicity. "
   + "Dates are shifted for de-identification; the last years are partial.";
 
+/** Selects tab t and moves focus to its tab button, which is always rendered with the answer. */
+function selectTab(t: Tab, onTab: (t: Tab) => void): void {
+  onTab(t);
+  document.getElementById(`tab-${TABS.indexOf(t)}`)?.focus();
+}
+
 function DataFootnote({onTab}: {onTab: (t: Tab) => void}) {
   return <p className="hint footnote">{DATA_FOOTNOTE}{" "}
-    <button type="button" className="btn-tertiary" onClick={() => onTab("Data notes")}>More in Data notes</button></p>;
+    <button type="button" className="btn-tertiary" onClick={() => selectTab("Data notes", onTab)}>More in Data notes</button></p>;
 }
 
 function Funnel({r, d}: {r: CountResult; d: Definition}) {
@@ -223,15 +229,17 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
   const label = (v: string) => pivotAxes(counted).find((a) => a.value === v)?.label ?? v;
   const [rows, setRows] = useState(d.pivot?.rows ?? "");
   const [cols, setCols] = useState(d.pivot?.cols ?? "");
+  const rowsRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => { setRows(d.pivot?.rows ?? ""); setCols(d.pivot?.cols ?? ""); }, [d.pivot?.rows, d.pivot?.cols]);   // replaces a key remount, which dropped focus
   const choose = (nextRows: string, nextCols: string) => {
     setRows(nextRows);
     setCols(nextCols);
     if (nextRows && nextCols && nextRows !== nextCols) onOp({op: "set_pivot", pivot: {rows: nextRows, cols: nextCols}});
     else if (d.pivot && (!nextRows || !nextCols)) onOp({op: "set_pivot", pivot: null});
   };
-  const select = (name: string, value: string, set: (v: string) => void) => (
+  const select = (name: string, value: string, set: (v: string) => void, ref?: React.RefObject<HTMLSelectElement | null>) => (
     <label>{name}{" "}
-      <select value={value} onChange={(e) => set(e.target.value)}>
+      <select ref={ref} value={value} onChange={(e) => set(e.target.value)}>
         <option value="">Choose…</option>
         {axes.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
       </select>
@@ -240,9 +248,9 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
   const cell = new Map(pivot?.cells.map((c) => [`${c.row}\u0000${c.col}`, c.patients]));
   return (
     <div>
-      <p className="hint">Count patients for every combination of two characteristics, such as tumor type by year.</p>
+      <p className="hint">Count patients for every combination of two characteristics, such as tumor type by year of first report.</p>
       <div className="pivot-controls">
-        {select("Rows", rows, (v) => choose(v, cols))}
+        {select("Rows", rows, (v) => choose(v, cols), rowsRef)}
         {select("Columns", cols, (v) => choose(rows, v))}
       </div>
       {!d.pivot
@@ -250,12 +258,12 @@ function PivotTab({d, counted, pivot, minCell, onOp}: {d: Definition; counted: D
           <div className="row suggestions">
             <span className="hint">Choose rows and columns, or try:</span>
             {PIVOT_SUGGESTIONS.map((s) => (
-              <button key={s.label} type="button" onClick={() => choose(s.rows, s.cols)}>{s.label}</button>
+              <button key={s.label} type="button" onClick={() => { choose(s.rows, s.cols); rowsRef.current?.focus(); }}>{s.label}</button>
             ))}
           </div>
         )
         : !pivot
-        ? <p>The table appears once it is counted.</p>
+        ? <p role="status">The table appears once it is counted.</p>
         : (
           <>
           <GridTable label={`${label(pivot.rows)} × ${label(pivot.cols)}`}>
@@ -314,8 +322,7 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
     const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : -1;
     if (next < 0) return;
     e.preventDefault();
-    onTab(TABS[next]);
-    document.getElementById(`tab-${next}`)?.focus();
+    selectTab(TABS[next], onTab);
   };
   const stale = !!answer && answer.d !== definition;
   return (
@@ -347,7 +354,7 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
               <h3 className="sr-only">{tab}</h3>
               {tab === "Accrual" && <AccrualTab r={r} />}
               {tab === "Breakdown" && <BreakdownTab r={r} counted={counted} d={definition} onOp={onOp} />}
-              {tab === "Pivot" && <PivotTab key={JSON.stringify(definition.pivot)} d={definition} counted={counted} pivot={pivot} minCell={r.min_cell} onOp={onOp} />}
+              {tab === "Pivot" && <PivotTab d={definition} counted={counted} pivot={pivot} minCell={r.min_cell} onOp={onOp} />}
               {tab === "Data notes" && <>
                 <ul>{r.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
                 <p className="hint">Cohort ID (for support): <code>{r.cohort_id}</code></p>

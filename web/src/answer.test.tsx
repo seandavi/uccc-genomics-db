@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Answer, DATA_FOOTNOTE, PIVOT_SUGGESTIONS, type AnswerProps, type Counted, type Tab } from "./Answer.tsx";
 import { EMPTY, pivotAxes } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, PivotResult } from "./types.ts";
@@ -161,6 +163,12 @@ describe("funnel", () => {
     for (const label of ["+ KRAS G12C", "− KEAP1 alteration", "+ tested negative: STK11 alteration"]) expect(html).toContain(label);
     expect(html).not.toContain("∧");
     expect(html).not.toContain("− no ");
+  });
+  test("an exclude step with VUS says (incl. VUS), not + VUS", () => {
+    const vus = {...exclude, gene: ["KRAS"], class: ["mutation"], aa: [], tier: ["likely_pathogenic", "pathogenic", "vus"]} as Criterion;
+    const html = render(r, "Accrual", {}, {...d, criteria: [kras, vus, negative]});
+    expect(html).toContain("− KRAS mutation (incl. VUS)");
+    expect(html).not.toContain("+ VUS");
   });
   test("a tested-negative step lists its genes with and, not or", () => {
     const two = {...negative, gene: ["STK11", "KEAP1"]} as Criterion;
@@ -351,7 +359,7 @@ describe("tabs", () => {
   });
   test("pivot before choosing: purpose line, suggested pairs, Choose… placeholder", () => {
     const html = render(result(), "Pivot");
-    expect(html).toContain("Count patients for every combination of two characteristics, such as tumor type by year.");
+    expect(html).toContain("Count patients for every combination of two characteristics, such as tumor type by year of first report.");
     expect(html).toContain("Choose rows and columns, or try:");
     for (const label of ["Tumor type × Year", "Vendor × Year", "Tumor type × Sex"]) expect(html).toContain(`>${label}</button>`);
     expect(html).toContain('<option value="" selected="">Choose…</option>');
@@ -366,7 +374,7 @@ describe("tabs", () => {
     };
     expect(render(result(), "Pivot", {}, d, pivot)).not.toContain("Tumor type × Year</button>");
     const waiting = render(result(), "Pivot", {}, d, null);
-    expect(waiting).toContain("The table appears once it is counted.");
+    expect(waiting).toContain('<p role="status">The table appears once it is counted.</p>');
     expect(waiting).not.toContain("Choose rows and columns, or try:");
   });
   test("PIVOT_SUGGESTIONS are distinct pairs of axes every definition has", () => {
@@ -440,5 +448,18 @@ describe("Data notes and the answer heading", () => {
   });
   test("the answer heading is a focus target", () => {
     expect(render(result())).toContain('id="answer-h" tabindex="-1"');
+  });
+});
+
+describe("Answer source", () => {
+  const src = readFileSync(join(import.meta.dir, "Answer.tsx"), "utf8");
+  test("the footnote link and the arrow keys both go through selectTab", () => {
+    expect(src).toContain('onClick={() => selectTab("Data notes", onTab)}');
+    expect(src).toContain("selectTab(TABS[next], onTab);");
+    expect(src).not.toContain('onClick={() => onTab("Data notes")}');
+  });
+  test("a suggestion focuses Rows, and PivotTab is not remounted by a key", () => {
+    expect(src).not.toContain("key={JSON.stringify(definition.pivot)}");
+    expect(src).toContain("rowsRef.current?.focus()");
   });
 });
