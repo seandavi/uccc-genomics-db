@@ -105,7 +105,7 @@ Every existing call site leaves `title` out, so Discover's output does not chang
 
   ```tsx
   <p>Discover is for University of Colorado researchers and staff. Sign in with your CU Anschutz
-    Google account. Others can ask the UCCC genomics team for access.</p>
+    Google account. Researchers without a CU Anschutz account can ask the UCCC genomics team for access.</p>
   ```
 
 - **Titles** (ux-r0-3). Inside `Landing`, after `const s = summary;`, derive both titles from the
@@ -220,7 +220,7 @@ null 2017 count and an incomplete 2018)
 - Update `"a single year and no year"`: assert `"First-sample years"` is absent when there are no
   years (replacing the `"Collection years"` assertion).
 - `"access copy names campus Google sign-in"`: contains "Sign in with your CU Anschutz Google
-  account." and "Others can ask the UCCC genomics team for access."; does not contain "To get
+  account." and "Researchers without a CU Anschutz account can ask the UCCC genomics team for access."; does not contain "To get
   access".
 - `"the hint explains partial and hatched bars"`: contains "A lighter bar is a year not yet
   complete; a hatched bar is fewer than 5." and "Years are approximate".

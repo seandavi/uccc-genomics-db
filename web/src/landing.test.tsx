@@ -43,7 +43,7 @@ describe("Landing", () => {
   test("access copy names campus Google sign-in", () => {
     const html = render(SUMMARY);
     expect(html).toContain("Sign in with your CU Anschutz Google account.");
-    expect(html).toContain("Others can ask the UCCC genomics team for access.");
+    expect(html).toContain("Researchers without a CU Anschutz account can ask the UCCC genomics team for access.");
     expect(html).not.toContain("To get access");
   });
   test("the hint explains partial and hatched bars", () => {

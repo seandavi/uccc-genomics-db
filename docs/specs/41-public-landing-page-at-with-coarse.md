@@ -1,5 +1,7 @@
 # Spec #41: public landing page at `/` with coarse totals; Discover moves to `/discover`
 
+> **Superseded in part by #137:** first-sample years after the current year fold into it; the label is "First-sample years"; the access copy names CU Anschutz Google sign-in. See `docs/specs/137-follow-ups-from-the-41-review.md`.
+
 Issue #41 (rescoped by Sean, 2026-10-30): the campus app (`genomics-app`) gets a public landing
 page at `/` with a few coarse totals from one public endpoint, and Discover moves behind sign-in at
 `/discover`. Retiring the Cloudflare dashboard and `genomics-cohort-api` is a follow-up.

@@ -20,7 +20,7 @@ export function Landing({summary, error}: {summary: PublicSummary | null; error:
       <p>Discover counts how many patients fit a study: choose tumor types, genes, biomarkers and other
         criteria, then copy a feasibility statement for grant text. It shows counts, never patient records.</p>
       <p>Discover is for University of Colorado researchers and staff. Sign in with your CU Anschutz
-        Google account. Others can ask the UCCC genomics team for access.</p>
+        Google account. Researchers without a CU Anschutz account can ask the UCCC genomics team for access.</p>
       <p><a className="btn-primary" href="/discover">Sign in to Discover</a></p>
       <section aria-labelledby="totals-h">
         <h2 id="totals-h">What's in it</h2>
