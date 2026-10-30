@@ -202,16 +202,21 @@ Replace the accrual block (today `.accrual .bars` … `.barlabel`):
 
 - `grid-auto-flow: column` with `grid-auto-columns: minmax(0, 1fr)` gives N equal columns
   without passing N from JSX. No `overflow-x`, no `min-width` in rem on `.col`, so it always fits.
+- Phones (`max-width: 600px`): the answer column is about 340px, so more than a few years leave
+  columns too narrow for a four-character label. `.bars` gets the class `dense` when there are
+  more than 6 slots, and `.accrual .dense .col:nth-last-child(even) .barlabel > span` is
+  `visibility: hidden`, so alternate columns are labelled and the last year always is. The
+  labels are `aria-hidden`; the sr-only table carries every value.
 - The fixed second row (`calc(2 * var(--lh-xs))`) is the one baseline: every `barbox` has the
   same height whatever its label says.
 
 Legend items: `.legend` gains `flex-wrap: wrap;` and a new rule
 
 ```css
-.legend > span { display: inline-flex; align-items: center; gap: .4rem; margin-right: var(--s3); }
+.legend > span:not(.swatch) { display: inline-flex; align-items: center; gap: .4rem; margin-right: var(--s3); }
 ```
 
-(the funnel legend is a bare text node plus a swatch, so it is unaffected).
+(`:not(.swatch)` keeps the funnel legend's direct-child swatch unchanged).
 
 **#105 contrast.** In `td.hatched, .summary-count.hatched` change the stripe mix from 35% to
 15%: `color-mix(in srgb, var(--suppressed-stripe) 15%, transparent)`. Composited over
@@ -274,7 +279,8 @@ README, ARCHITECTURE, PLAN and COHORT_TOOL don't describe the chart.
         `uv run pytest -q` passes (no Python change). Dashboard check: n/a.
 12. [ ] Screenshot (orchestrator, after merge, dev server at 1440 light/dark): every year visible
         without scrolling (01); one baseline including partial years (08); no hatched bar taller
-        than a shown bar of 5 or more (01); no year missing from the axis (06/08).
+        than a shown bar of 5 or more (01); no year missing from the axis (06/08). Also at 375px
+        light/dark with 12 and 14 synthetic years: no overlapping labels, last year labelled.
 
 ## Test plan
 
@@ -305,11 +311,14 @@ no `$DATA`, no PHI. Synthetic counts only (e.g. 6, 7, 400).
   `height:([\d.]+)%`; the hatched one ≤ the 2020 one. Funnel: `funnel` 50, 5, `null` →
   `class="bar hatched" style="width:10%"`, and ≤ the width of the step of 5.
 - all hidden and empty (acceptance 6).
+- dense class: 7 years → `class="bars dense"`, 6 years → `class="bars"`.
 
 **`web/src/styles.test.ts`**:
 
 - New `test("accrual: equal columns, no scroll, one label row")` for acceptance 1–2 using the
   existing `rule()` helper on `.accrual .bars` and `.accrual .col`.
+- New `test("accrual: on phones alternate labels hide, the last column keeps its label")`
+  matches the `@media (max-width: 600px)` rule above.
 - New `test("<5 text on a hatched cell meets 4.5:1 in both themes")`: parse the percent from
   `rule("td.hatched")` (`/suppressed-stripe\) (\d+)%/`), mix
   `round(p * stripe + (1 - p) * bg)` per sRGB channel into `#rrggbb`, and check `contrast()` of

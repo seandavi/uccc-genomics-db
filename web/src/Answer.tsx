@@ -128,7 +128,7 @@ function AccrualTab({r}: {r: CountResult}) {
       <figure className="accrual">
         {allHidden
           ? <p className="strip"><span className="bar hatched" aria-hidden="true" /><span>{`Every year under ${r.min_cell} or hidden`}</span></p>
-          : <div className="bars" role="group" aria-label={ACCRUAL}>
+          : <div className={slots.length > 6 ? "bars dense" : "bars"} role="group" aria-label={ACCRUAL}>
               {slots.map(({year, row}) => (
                 <div key={year} className={row == null ? "col gap" : row.complete ? "col" : "col partial"}>
                   <div className="barbox" aria-hidden="true">

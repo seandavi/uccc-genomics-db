@@ -166,6 +166,8 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .vbar { width: 100%; background: var(--bar); border-radius: 2px 2px 0 0; }
 .col.partial .vbar:not(.hatched) { background: var(--bar-partial); }
 .barlabel { font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; white-space: nowrap; font-size: var(--fs-xs); line-height: var(--lh-xs); }
+/* phones: columns too narrow for every label, so label alternate columns (the last year always keeps its label); the sr-only table has every value */
+@media (max-width: 600px) { .accrual .dense .col:nth-last-child(even) .barlabel > span { visibility: hidden; } }
 .accrual .strip { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--s3); margin: 0; }
 .accrual .strip .bar { height: var(--s4); }
 figcaption { color: var(--muted); font-size: var(--fs-sm); line-height: var(--lh-sm); margin-top: .4rem; }

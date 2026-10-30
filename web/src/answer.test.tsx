@@ -212,6 +212,10 @@ describe("accrual chart", () => {
     for (const label of html.split('<div class="barlabel"').slice(1)) expect(label.split("</div>")[0]).not.toContain("partial year");
     expect(html).toContain("<td>partial year</td>");
   });
+  test("more than 6 columns get the dense class (phones label alternate columns)", () => {
+    expect(render(result({by_year: years(2018, 7)}))).toContain('class="bars dense"');
+    expect(render(result({by_year: years(2018, 6)}))).toContain('class="bars"');
+  });
   test("past 12 years the labels are two-digit; the table keeps four", () => {
     const html = render(result({by_year: years(2010, 14)}));
     expect(html).toContain("<span>’10</span>");

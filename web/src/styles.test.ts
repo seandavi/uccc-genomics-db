@@ -134,6 +134,10 @@ test("accrual: equal columns, no scroll, one label row", () => {
   expect(rule(".accrual .col")).not.toMatch(/min-width:\s*[\d.]+rem/);
 });
 
+test("accrual: on phones alternate labels hide, the last column keeps its label", () => {
+  expect(css).toMatch(/@media \(max-width: 600px\)[^\n]*\.accrual \.dense \.col:nth-last-child\(even\) \.barlabel > span \{ visibility: hidden; \}/);
+});
+
 test("<5 text on a hatched cell meets 4.5:1 in both themes", () => {
   const pct = Number(rule("td.hatched").match(/suppressed-stripe\) (\d+)%/)?.[1]) / 100;
   for (const [name, theme] of Object.entries(themes)) {
