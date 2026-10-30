@@ -94,7 +94,7 @@ export function Compare({versions, transport, years, onClose}: {
   );
 }
 
-const versionLabel = (v: Version) => `v${v.n} · ${v.definition.name || "Untitled"}`;
+const versionLabel = (v: Version) => `Edit ${v.n} · ${v.definition.name || "Untitled"}`;
 
 const definitionLabel = ({definition: d}: Version) =>
   [populationLabel(d.population), ...d.criteria.map(criterionLabel), ...(d.scope === "report" ? ["same report"] : [])].join("; ");

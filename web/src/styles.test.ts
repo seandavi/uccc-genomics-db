@@ -87,3 +87,22 @@ test("controls: sr-only, minimum heights and button classes", () => {
   expect(css).toMatch(/@media \(pointer: coarse\)\s*\{[^@]*min-height: 44px/);
   for (const c of [".btn-primary", ".btn-secondary", ".btn-tertiary", ".btn-icon"]) expect(css).toContain(c);
 });
+
+test("two columns, centred", () => {
+  expect(css).not.toContain(".assistant");
+  expect(rule(".app")).toContain("max-width: 1280px");
+  expect(rule(".app")).toContain("margin-inline: auto");
+  expect(rule(".cols")).toContain("grid-template-columns: minmax(18rem, 22rem) 1fr;");
+});
+
+test("mobile shell: actions behind the more button, history on its own row, sticky summary bar", () => {
+  const mobile = css.match(/@media \(max-width: 600px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+  expect(mobile).toContain(".actions { display: none; }");
+  const inMobile = (sel: string) => mobile.match(new RegExp("\\n\\s*" + sel.replace(/\./g, "\\.") + " \\{([^}]*)\\}"))?.[1] ?? "";
+  expect(inMobile(".more")).toContain("display: inline-flex");
+  expect(inMobile(".history")).toContain("flex-basis: 100%");
+  expect(inMobile(".summary-bar")).toContain("position: sticky");
+  expect(inMobile(".summary-bar")).toContain("bottom: 0");
+  expect(css.replace(/@media \(max-width: 600px\)\s*\{[\s\S]*?\n\}/, "")).toContain(".summary-bar { display: none; }");
+  expect(css.match(/([^{}]*)\{[^}]*suppressed-stripe\) 35%/)?.[1]).toContain(".summary-count.hatched");
+});
