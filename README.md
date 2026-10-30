@@ -339,10 +339,15 @@ its own signed cookie for at most 8 hours (not extended on use), so removing som
 takes effect at their next sign-in, up to 8 hours later. `/api/*` and `/mcp` also accept
 `Authorization: Bearer <access token>` from the same provider, checked on every call like the ID
 token; how a local MCP client obtains one is not built here. `/api/*` and `/mcp` answer 401 without
-a login; a browser opening the site gets a page that sends it to `/auth/login` and back to the same address, a
+a login (with `WWW-Authenticate: Bearer realm="uccc-genomics"`), or 503 with `Retry-After` when a Bearer
+token can't be checked because Authentik is unreachable. The app fetches Authentik's discovery document
+and key set at most once per 30 s, so a token signed with a new key is refused for up to 30 s after the
+last fetch and accepted after one refetch; a browser opening the site gets a page that sends it to `/auth/login` and back to the same address, a
 `#d=` share link included. `GET /api/me` returns the
 caller's own `sub`, `email` and whether Discover shows "Sign out". Check it once as the contract
 asks: a member gets in (`/api/me` answers), a non-member is refused at Authentik or on the callback.
+A refusal page names the group (`AUTHENTIK_GROUP`) and says to ask the UCCC genomics team; a failure
+that is not about the group says "Sign-in failed; try again."
 
 Users are keyed on `sub`; saved cohorts and snapshots belong to it, and the rate limit counts per
 `sub`. Rows saved under an earlier backend (owner = `APP_USER` or an email) stay unreachable until a

@@ -66,7 +66,8 @@ class RequireUser:
     """Pure ASGI middleware around the whole app: every HTTP request except GET /api/health and the open
     sign-in paths is authenticated once with authen.user(); the authen.User goes into the request's
     scope state. A failed browser navigation to the static site gets the sign-in page (authen.signin_page,
-    which keeps the #fragment); /api/* and /mcp answer 401."""
+    which keeps the #fragment); /api/* and /mcp answer 401; a Bearer token that can't be checked because the
+    provider is unreachable gets 503."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -82,7 +83,10 @@ class RequireUser:
             u = await run_in_threadpool(authen.user, Request(scope))
         except PermissionError as e:
             path, login = scope["path"], authen.login_path()
-            if login and scope["method"] == "GET" and not path.startswith("/api/") and path != "/mcp":
+            if isinstance(e, authen.ProviderUnavailable):   # a Bearer token we couldn't check: not the caller's fault
+                response = JSONResponse({"detail": str(e)}, status_code=503,
+                                        headers={"Retry-After": str(authen.PROVIDER_RETRY_SECONDS)})
+            elif login and scope["method"] == "GET" and not path.startswith("/api/") and path != "/mcp":
                 response = authen.signin_page()
             else:
                 response = JSONResponse({"detail": str(e)} | ({"login": login} if login else {}), status_code=401,

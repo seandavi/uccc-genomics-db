@@ -7,6 +7,7 @@ import base64
 import hashlib
 import io
 import json
+import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -31,8 +32,8 @@ KEYS = {kid: rsa.generate_private_key(public_exponent=65537, key_size=2048) for 
 class FakeIssuer:
     def __init__(self):
         self.kid, self.alg, self.sign_with, self.override = "k1", "RS256", None, {}
-        self.jwks_fetches, self.codes, self.last_form = 0, {}, None
-        self.token_fails = self.down = False
+        self.jwks_fetches, self.discovery_fetches, self.codes, self.last_form = 0, 0, {}, None
+        self.token_fails = self.down = self.jwks_down = False
 
     # claims -------------------------------------------------------------------------------------
     def claims(self, **override):
@@ -52,14 +53,17 @@ class FakeIssuer:
 
     # the three endpoints, called in place of urllib.request.urlopen ------------------------------
     def urlopen(self, req, timeout=None, context=None):
-        if self.down:
-            raise urllib.error.URLError("down")
         url = req.full_url
+        if url == ISS + ".well-known/openid-configuration":
+            self.discovery_fetches += 1   # counted before the failure, so failed attempts count
+        elif url == ISS + "jwks/":
+            self.jwks_fetches += 1
+        if self.down or (self.jwks_down and url == ISS + "jwks/"):
+            raise urllib.error.URLError("down")
         if url == ISS + ".well-known/openid-configuration":
             body = {"issuer": ISS, "authorization_endpoint": ISS + "authorize/", "token_endpoint": ISS + "token/",
                     "jwks_uri": ISS + "jwks/", "end_session_endpoint": ISS + "end-session/"}
         elif url == ISS + "jwks/":
-            self.jwks_fetches += 1
             body = {"keys": [{**jwt.algorithms.RSAAlgorithm.to_jwk(KEYS[k].public_key(), as_dict=True),
                               "kid": k, "alg": "RS256", "use": "sig"} for k in ("k1", self.kid)]}
         elif url == ISS + "token/":
@@ -117,6 +121,18 @@ def make(issuer, tmp_path, monkeypatch):
 @pytest.fixture
 def c(make):
     return make()
+
+
+def age(seconds=authen.PROVIDER_RETRY_SECONDS):
+    """Move the last provider fetches back in time, instead of sleeping."""
+    if authen.AUTH["jwks"] is not None:
+        authen.AUTH["jwks"].fetched_at -= seconds
+    if authen.AUTH["oidc_failed_at"] is not None:
+        authen.AUTH["oidc_failed_at"] -= seconds
+
+
+def random_kid_token(issuer):
+    return jwt.encode(issuer.claims(), KEYS["k1"], algorithm="RS256", headers={"kid": secrets.token_hex(8)})
 
 
 def begin(c, issuer, next=None):
@@ -188,9 +204,13 @@ def test_login_redirects_to_the_issuer(c, issuer):
 
 def test_login_when_the_issuer_is_down_is_502(c, issuer):
     issuer.down = True
-    assert c.get("/auth/login").status_code == 502
+    r = c.get("/auth/login")
+    assert r.status_code == 502 and authen.UNREACHABLE in r.text
     issuer.down = False
-    assert c.get("/auth/login").status_code == 302   # the failure was not cached
+    assert c.get("/auth/login").status_code == 502   # backing off
+    age()
+    assert c.get("/auth/login").status_code == 302   # retried after PROVIDER_RETRY_SECONDS
+    assert issuer.discovery_fetches == 2
 
 
 def test_member_signs_in(c, issuer, capsys):
@@ -238,24 +258,49 @@ def never_signed_in(c, r):
     assert "uccc_session" not in c.cookies and me(c).status_code == 401
 
 
-@pytest.mark.parametrize("tweak", [
-    lambda i: i.override.update(iss="https://evil.example.test/"),
-    lambda i: i.override.update(aud="other-client"),
-    lambda i: i.override.update(iat=int(time.time()) - 900, exp=int(time.time()) - 600),
-    lambda i: setattr(i, "sign_with", "other"),   # kid k1 in the header, signed by another key
-    lambda i: setattr(i, "alg", "HS256"),
-    lambda i: i.override.update(groups=DROP),
-    lambda i: i.override.update(groups=["some-other-group"]),
-    lambda i: i.override.update(groups=GROUP),   # not a list
-    lambda i: i.override.update(nonce=DROP),
-    lambda i: i.override.update(nonce="wrong"),
-], ids=["iss", "aud", "expired", "other-key", "hs256", "no-groups", "other-group", "groups-string",
-        "no-nonce", "wrong-nonce"])
-def test_callback_refuses_bad_id_tokens(c, issuer, tweak):
-    tweak(issuer)
+GROUP_TWEAKS = {
+    "no-groups": lambda i: i.override.update(groups=DROP),
+    "other-group": lambda i: i.override.update(groups=["some-other-group"]),
+    "groups-string": lambda i: i.override.update(groups=GROUP),   # not a list
+}
+TOKEN_TWEAKS = {
+    "iss": lambda i: i.override.update(iss="https://evil.example.test/"),
+    "aud": lambda i: i.override.update(aud="other-client"),
+    "expired": lambda i: i.override.update(iat=int(time.time()) - 900, exp=int(time.time()) - 600),
+    "other-key": lambda i: setattr(i, "sign_with", "other"),   # kid k1 in the header, signed by another key
+    "hs256": lambda i: setattr(i, "alg", "HS256"),
+    "no-nonce": lambda i: i.override.update(nonce=DROP),
+    "wrong-nonce": lambda i: i.override.update(nonce="wrong"),
+}
+
+
+def callback_of(c, issuer):
     state, code = begin(c, issuer)
-    r = c.get("/auth/callback", params={"code": code, "state": state})
+    return c.get("/auth/callback", params={"code": code, "state": state})
+
+
+@pytest.mark.parametrize("name", GROUP_TWEAKS)
+def test_callback_refuses_non_members_and_says_who_to_ask(c, issuer, name):
+    GROUP_TWEAKS[name](issuer)
+    r = callback_of(c, issuer)
     assert r.status_code == 403 and "uccc_login=" in r.headers["set-cookie"]
+    assert "You don't have access to this app." in r.text and GROUP + " group" in r.text
+    never_signed_in(c, r)
+
+
+@pytest.mark.parametrize("name", TOKEN_TWEAKS)
+def test_callback_refuses_bad_id_tokens(c, issuer, name):
+    TOKEN_TWEAKS[name](issuer)
+    r = callback_of(c, issuer)
+    assert r.status_code == 403 and "uccc_login=" in r.headers["set-cookie"]
+    assert "Sign-in failed; try again." in r.text and "don't have access" not in r.text
+    never_signed_in(c, r)
+
+
+def test_callback_when_the_jwks_is_down_is_502(c, issuer):
+    issuer.jwks_down = True
+    r = callback_of(c, issuer)
+    assert r.status_code == 502 and authen.UNREACHABLE in r.text
     never_signed_in(c, r)
 
 
@@ -267,16 +312,18 @@ def test_callback_tolerates_provider_clock_skew(c, issuer):
 def test_callback_refuses_an_iat_far_in_the_future(c, issuer):
     now = int(time.time())
     issuer.override.update(iat=now + 300, exp=now + 600)
-    state, code = begin(c, issuer)
-    assert c.get("/auth/callback", params={"code": code, "state": state}).status_code == 403
+    r = callback_of(c, issuer)
+    assert r.status_code == 403 and "Sign-in failed; try again." in r.text
 
 
-@pytest.mark.parametrize("what", ["bad-state", "no-state", "no-code", "no-login-cookie"])
+@pytest.mark.parametrize("what", ["bad-state", "non-ascii-state", "no-state", "no-code", "no-login-cookie"])
 def test_callback_refuses_a_flow_that_did_not_start_here(c, issuer, what):
     state, code = begin(c, issuer)
     params = {"code": code, "state": state}
     if what == "bad-state":
         params["state"] = "x" * len(state)
+    elif what == "non-ascii-state":
+        params["state"] = "é"
     elif what == "no-state":
         del params["state"]
     elif what == "no-code":
@@ -284,7 +331,7 @@ def test_callback_refuses_a_flow_that_did_not_start_here(c, issuer, what):
     else:
         c.cookies.delete("uccc_login", path="/auth")
     r = c.get("/auth/callback", params=params)
-    assert r.status_code == 400
+    assert r.status_code == 400 and "uccc_login=" in r.headers["set-cookie"]
     never_signed_in(c, r)
 
 
@@ -292,7 +339,22 @@ def test_callback_refuses_an_error_from_the_provider(c, issuer):
     begin(c, issuer)
     r = c.get("/auth/callback", params={"error": "access_denied", "error_description": "<script>x</script>"})
     assert r.status_code == 403 and "script" not in r.text
+    assert "Sign-in was refused." in r.text and GROUP + " group" in r.text
     never_signed_in(c, r)
+
+
+def test_refusal_page_escapes_the_group(make, issuer, monkeypatch):
+    monkeypatch.setenv("AUTHENTIK_GROUP", "g<b>&")
+    c = make()
+    begin(c, issuer)
+    r = c.get("/auth/callback", params={"error": "x"})
+    assert "g&lt;b&gt;&amp;" in r.text and "g<b>&" not in r.text
+
+
+def test_pages_have_lang_viewport_and_heading(c, issuer):
+    for r in (c.get("/auth/callback"), c.get("/")):
+        assert r.status_code in (400, 401)
+        assert '<html lang="en">' in r.text and 'name="viewport"' in r.text and "<h1>" in r.text
 
 
 def test_callback_when_the_token_endpoint_fails_is_502(c, issuer):
@@ -354,6 +416,7 @@ def test_signed_out_gets_401_or_a_redirect(c, method, path):
         assert_signin_page(r)
     else:
         assert r.status_code == 401 and r.json()["login"] == "/auth/login" and "location" not in r.headers
+        assert r.headers["www-authenticate"] == 'Bearer realm="uccc-genomics"'
 
 
 def assert_signin_page(r):
@@ -418,8 +481,41 @@ def test_rotated_signing_key_is_accepted_after_one_refetch(c, issuer):
     assert mcp_post(c, issuer.token()).status_code == 200
     assert issuer.jwks_fetches == 1
     issuer.rotate()
+    assert mcp_post(c, issuer.token()).status_code == 401   # within PROVIDER_RETRY_SECONDS of the last fetch
+    assert issuer.jwks_fetches == 1
+    age()
     assert mcp_post(c, issuer.token()).status_code == 200
     assert issuer.jwks_fetches == 2
+
+
+def test_random_kids_cause_at_most_one_fetch(c, issuer):
+    assert mcp_post(c, issuer.token()).status_code == 200
+    assert issuer.jwks_fetches == 1
+    for _ in range(2):
+        assert mcp_post(c, random_kid_token(issuer)).status_code == 401
+    assert issuer.jwks_fetches == 1
+    age()
+    for _ in range(2):
+        assert mcp_post(c, random_kid_token(issuer)).status_code == 401
+    assert issuer.jwks_fetches == 2
+
+
+def test_bearer_when_discovery_is_down_is_503(c, issuer):
+    issuer.down = True
+    for _ in range(2):
+        r = mcp_post(c, issuer.token())
+        assert r.status_code == 503 and r.headers["retry-after"] == "30"
+    assert issuer.discovery_fetches == 1
+    issuer.down = False
+    age()
+    assert mcp_post(c, issuer.token()).status_code == 200
+
+
+def test_bearer_when_the_jwks_is_down_is_503(c, issuer):
+    issuer.jwks_down = True
+    for _ in range(2):
+        assert mcp_post(c, issuer.token()).status_code == 503
+    assert issuer.jwks_fetches == 1
 
 
 # --- logout --------------------------------------------------------------------------------------

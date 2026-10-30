@@ -71,7 +71,7 @@ export function SummaryBar({answer, options}: {answer: Counted | null; options: 
 export function Who({me, onSignOut}: {me: Me; onSignOut: () => void}) {
   return (
     <>
-      <span className="who">{me.email}</span>
+      <span className="who"><span className="sr-only">Signed in as </span>{me.email}</span>
       {me.sign_out && <button type="button" className="btn-tertiary" onClick={onSignOut}>Sign out</button>}
     </>
   );
@@ -235,7 +235,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
           {single && <span id="compare-why" className="hint">Make a change to compare versions</span>}
           <button type="button" className="btn-primary" aria-expanded={panel === "feasibility"}
             disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
-          {me && account && <Who me={me} onSignOut={() => { account.signOut().catch(() => {}); }} />}
+          {me && account && <Who me={me} onSignOut={() => { account.signOut().catch((e) => setEditError({at: "builder", message: `Sign-out failed: ${describeError(e)}`})); }} />}
         </div>
       </header>
       {panel === "share" && (
