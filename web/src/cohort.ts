@@ -106,17 +106,22 @@ export function forScope(entries: Option[], scope: Definition["scope"]): Option[
 const VENDOR_NAMES = {caris: "Caris", fmi: "FMI"} as const;
 
 export function criterionLabel(c: Criterion | Leaf | SeqMember): string {
-  const vendor = "vendor" in c && c.vendor ? ` (${VENDOR_NAMES[c.vendor]})` : "";
   const mode = "mode" in c ? c.mode : "include";
-  if (mode === "tested_negative" && c.kind === "alteration") return `${c.gene.join(" and ")} tested negative${vendor}`;
-  const label = baseLabel(c) + vendor;
+  if (mode === "tested_negative" && c.kind === "alteration") return `${c.gene.join(" and ")} tested negative${vendorSuffix(c)}`;
+  const label = criterionBody(c);
   return mode === "exclude" ? `no ${label}` : label;
 }
+
+const vendorSuffix = (c: Criterion | Leaf | SeqMember): string => "vendor" in c && c.vendor ? ` (${VENDOR_NAMES[c.vendor]})` : "";
+
+/** What the criterion matches, without the mode word ("no", "tested negative"): the funnel row supplies its own prefix. */
+export const criterionBody = (c: Criterion | Leaf | SeqMember): string => baseLabel(c) + vendorSuffix(c);
 
 function baseLabel(c: Criterion | Leaf | SeqMember): string {
   switch (c.kind) {
     case "alteration": {
-      const genes = c.gene.join(" or ");
+      // every listed gene must be negative (AND); for include/exclude any one gene is enough (OR)
+      const genes = c.gene.join("mode" in c && c.mode === "tested_negative" ? " and " : " or ");
       const what = c.aa.length ? c.aa.join("/") : c.class.length ? c.class.join("/") : "alteration";
       return `${genes} ${what}${tierSuffix(c.tier)}`;
     }

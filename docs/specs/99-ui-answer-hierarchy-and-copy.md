@@ -81,13 +81,17 @@ Imports add `fmtPerYear` and `isEmptyDefinition` from `./cohort.ts` (and `Criter
 if (i === 0 || criterion == null) return populationLabel(d.population);
 const c = d.criteria.find((x) => x.id === criterion);
 if (!c) return `+ ${criterion}`;
-const label = criterionLabel({...c, mode: "include"} as Criterion);
+const label = criterionBody(c);
 return c.mode === "exclude" ? `− ${label}` : c.mode === "tested_negative" ? `+ tested negative: ${label}` : `+ ${label}`;
 ```
 
-The label is computed as if the criterion were an include, so the mode word appears once, in the
+`criterionBody(c)` (new export in `cohort.ts`; `criterionLabel` is now the body plus the "no" mode
+word) is what the criterion matches without any mode word, so the mode word appears once, in the
 prefix: "− KEAP1 alteration", not "− no KEAP1 alteration", and "+ tested negative: STK11
-alteration", not "+ tested negative: STK11 tested negative". The minus is U+2212, not a hyphen.
+alteration", not "+ tested negative: STK11 tested negative". For a tested-negative alteration the
+genes are joined with " and " (every listed gene must be negative; include and exclude join with
+" or ", any one gene): "+ tested negative: STK11 and KEAP1 alteration", matching the builder card's
+"STK11 and KEAP1 tested negative". The minus is U+2212, not a hyphen.
 
 **`Cards({r, d, options})`** (same props). `d` is the counted definition, as today.
 
@@ -168,8 +172,15 @@ In the `/* answer */` block:
 `@media (max-width: 600px)` block:
 
 ```css
-.cards { grid-template-columns: 1fr 1fr; }
 .card.hero { grid-column: 1 / -1; }
+```
+
+The two-column grid goes in its own media query placed *after* the base `.cards` rule, because the
+existing 600px block sits earlier in the file and has the same specificity, so the later base
+`2fr 1fr 1fr` would win there:
+
+```css
+@media (max-width: 600px) { .cards { grid-template-columns: 1fr 1fr; } }
 ```
 
 With the Share card hidden the third track stays empty, so the hero keeps about half the row.
@@ -256,6 +267,8 @@ All tests use synthetic `CountResult` / `Definition` objects built in the test (
     (`{...alk, id: "c3", gene: ["STK11"], class: [], mode: "tested_negative"}`) and a funnel over
     `c1`, `c2`, `c3` renders `+ KRAS G12C`, `− KEAP1 alteration`,
     `+ tested negative: STK11 alteration`; the HTML contains no `∧` and no `− no `.
+  - "a tested-negative step lists its genes with and": a tested-negative on `["STK11", "KEAP1"]`
+    renders `+ tested negative: STK11 and KEAP1 alteration` and not `STK11 or KEAP1`.
   - "the heading names the narrowing": contains `How each criterion narrows the cohort`.
 - `Data notes and the answer heading` describe:
   - "the heading is the cohort name or Your cohort": `{...def, name: "Lung pilot"}` gives

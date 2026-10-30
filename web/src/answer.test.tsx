@@ -125,6 +125,12 @@ describe("funnel", () => {
     expect(html).not.toContain("∧");
     expect(html).not.toContain("− no ");
   });
+  test("a tested-negative step lists its genes with and, not or", () => {
+    const two = {...negative, gene: ["STK11", "KEAP1"]} as Criterion;
+    const html = render(r, "Accrual", {}, {...d, criteria: [kras, exclude, two]});
+    expect(html).toContain("+ tested negative: STK11 and KEAP1 alteration");
+    expect(html).not.toContain("STK11 or KEAP1");
+  });
   test("the heading names the narrowing", () => {
     expect(render(r, "Accrual", {}, d)).toContain("How each criterion narrows the cohort");
   });

@@ -1,8 +1,8 @@
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
-  BREAKDOWN_DIMS, accrualPerYear, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor,
+  BREAKDOWN_DIMS, accrualPerYear, criterionBody, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor,
 } from "./cohort.ts";
-import type { BreakdownDim, CountResult, Criterion, Definition, Operation, Options, PivotResult } from "./types.ts";
+import type { BreakdownDim, CountResult, Definition, Operation, Options, PivotResult } from "./types.ts";
 
 export const TABS = ["Accrual", "Breakdown", "Pivot", "Data notes"] as const;
 export type Tab = (typeof TABS)[number];
@@ -19,7 +19,7 @@ function stepLabel(d: Definition, i: number, criterion: string | null): string {
   if (i === 0 || criterion == null) return populationLabel(d.population);
   const c = d.criteria.find((x) => x.id === criterion);
   if (!c) return `+ ${criterion}`;
-  const label = criterionLabel({...c, mode: "include"} as Criterion);   // the mode word is the prefix, once
+  const label = criterionBody(c);   // the mode word is the prefix, once
   return c.mode === "exclude" ? `− ${label}` : c.mode === "tested_negative" ? `+ tested negative: ${label}` : `+ ${label}`;
 }
 
