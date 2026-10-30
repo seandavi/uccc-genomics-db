@@ -313,7 +313,8 @@ tool.
 aggregates over `mart.report`: patients, reports and tumor types (OncoTree codes other than `OTHER`
 with at least 5 patients) each floored at 5 and rounded to the nearest 10, the vendors with at least 5
 patients, and patients by year of first sample for the years with at least 5 patients (a year in
-that range with fewer shows null). It is cached per de-id file and sent with `Cache-Control: public,
+that range with fewer shows null; years after the current one (date-shift spillover) count as the
+current year). It is cached per de-id file and sent with `Cache-Control: public,
 max-age=3600`.
 
 `--static` serves a built front end: the landing page at `/` and Discover (below) at `/discover`.

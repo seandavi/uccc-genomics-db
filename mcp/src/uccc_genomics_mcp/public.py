@@ -1,6 +1,8 @@
 """The public landing page's totals (docs/specs/41-*.md): fixed, unfilterable aggregates over mart.report,
-each floored at MIN_CELL and rounded to the nearest PUBLIC_ROUND. No parameters reach SQL."""
+each floored at MIN_CELL and rounded to the nearest PUBLIC_ROUND. No parameters reach SQL. Years after the
+current one (date-shift spillover) count as the current year."""
 import os
+from datetime import date
 
 from pydantic import BaseModel
 
@@ -15,9 +17,10 @@ class PublicSummary(BaseModel):
     reports: int | None       # rows of mart.report
     tumor_types: int | None   # oncotree codes (not NULL, not 'OTHER') with >= MIN_CELL patients
     vendors: list[str]        # vendor values with >= MIN_CELL patients, sorted ("caris", "fmi")
-    first_year: int | None    # first / last year in by_year
+    first_year: int | None    # first / last year in by_year; never after the current year
     last_year: int | None
-    by_year: list[YearCount]  # patients by year of their first sample, first_year..last_year
+    by_year: list[YearCount]  # patients by year of their first sample, first_year..last_year;
+                              # later (date-shifted) years fold into the current year
     min_cell: int             # MIN_CELL: the landing page shows null as "<5"
     round_to: int             # PUBLIC_ROUND: the landing page says counts are rounded to it
 
@@ -41,12 +44,15 @@ def _compute() -> PublicSummary:
         vendors = [v for (v,) in con.execute(
             "SELECT vendor FROM mart.report GROUP BY vendor "
             "HAVING count(DISTINCT research_id) >= $min_cell ORDER BY vendor", {"min_cell": MIN_CELL}).fetchall()]
-        # first-sample year per patient, as Discover's accrual (compile.py `pp`); complete as compile.py's year_complete row
+        # first-sample year per patient, as Discover's accrual (compile.py `pp`); complete as compile.py's
+        # year_complete row. Years after this one (date-shift spillover, up to 182 days) fold into this year.
         years = con.execute(
-            "WITH pp AS (SELECT research_id, min(year) AS yr FROM mart.report WHERE year IS NOT NULL GROUP BY 1), "
-            "c AS (SELECT year, bool_and(year_complete) AS complete FROM mart.report "
+            "WITH pp AS (SELECT research_id, least(min(year), $this_year) AS yr FROM mart.report "
+            "WHERE year IS NOT NULL GROUP BY 1), "
+            "c AS (SELECT least(year, $this_year) AS year, bool_and(year_complete) AS complete FROM mart.report "
             "WHERE year IS NOT NULL GROUP BY 1) "
-            "SELECT pp.yr, count(*), c.complete FROM pp JOIN c ON c.year = pp.yr GROUP BY 1, 3 ORDER BY 1").fetchall()
+            "SELECT pp.yr, count(*), c.complete FROM pp JOIN c ON c.year = pp.yr GROUP BY 1, 3 ORDER BY 1",
+            {"this_year": date.today().year}).fetchall()
     finally:
         con.close()
     big = [y for y, n, _ in years if n >= MIN_CELL]   # a date-shifted outlier year never appears, not even as "<5"
