@@ -39,9 +39,9 @@ export function describeError(e: unknown): string {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-/** A same-site path: starts with "/", not "//" (protocol-relative) and no backslash (browsers read "/\" as "//"). */
+/** A same-site path: starts with "/", not "//" (protocol-relative), no backslash (browsers read "/\" as "//") and no control character (URL parsers drop tab and newline, so "/\t/host" is "//host"). */
 export function sameSitePath(p: unknown): p is string {
-  return typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !p.includes("\\");
+  return typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !p.includes("\\") && !/[\u0000-\u001f\u007f]/.test(p);
 }
 
 /** Send the browser to sign in, back to this page afterwards (the fragment, e.g. a #d= share link, is kept). */

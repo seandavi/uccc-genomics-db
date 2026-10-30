@@ -32,7 +32,7 @@ hostnames, subs and emails below are the synthetic ones `tests/test_authen.py` a
    only, never from request values.
 5. The fixed HTML pages have `<html lang="en">`, a viewport meta and an `<h1>`.
 6. Discover follows a 401's `login` only when it is a same-site path (`/x`, not `//host`, not
-   `/\host`); a failed sign-out shows an error; the signed-in label reads "Signed in as …" to a
+   `/\host`, no control character such as a tab); a failed sign-out shows an error; the signed-in label reads "Signed in as …" to a
    screen reader.
 
 ## Non-goals
@@ -252,12 +252,13 @@ checked because the provider is unreachable gets 503."
 
 ### `web/src/transport.ts` (security-r0-3)
 
-A named check, matching `authen._safe_next` (leading `/`, not `//`, no `\`):
+A named check, matching `authen._safe_next` (leading `/`, not `//`, no `\`, no control character):
 
 ```ts
-/** A same-site path: starts with "/", not "//" (protocol-relative) and no "\" (browsers read "/\" as "//"). */
+/** A same-site path: starts with "/", not "//" (protocol-relative), no "\" (browsers read "/\" as "//") and no control character (URL parsers drop tab and newline, so "/\t/host" is "//host"). */
 export function sameSitePath(p: unknown): p is string {
-  return typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !p.includes("\\");
+  return typeof p === "string" && p.startsWith("/") && !p.startsWith("//") && !p.includes("\\")
+    && !/[\u0000-\u001f\u007f]/.test(p);
 }
 ```
 
@@ -313,7 +314,7 @@ genomics team; a failure that is not about the group says 'Sign-in failed; try a
       `&lt;b&gt;&amp;` and not `<b>&`.
 - [ ] `_PAGE` refusal pages and `signin_page()` contain `<html lang="en">`, the viewport meta and
       `<h1>`.
-- [ ] Discover: a 401 with `login` `//evil.example` or `/\evil.example` does not call `signIn`;
+- [ ] Discover: a 401 with `login` `//evil.example` or `/\evil.example` or `/<tab>/evil.example` does not call `signIn`;
       `/auth/login` still does. `Who` renders `Signed in as </span>a@example.edu`.
 - [ ] `uv run pytest -q` and `cd web && bun install --frozen-lockfile && bun run typecheck && bun
       test` pass. Dashboard check n/a (nothing under `dashboard/`).
@@ -372,7 +373,7 @@ No network, no `$DATA`, no PHI file, no real de-id file: the tests reuse `tests/
 `tests/test_app.py`: no change; `test_refused_without_login` already pins `Basic` under `password`.
 
 `web/src/transport.test.ts`: in "a 401 without one, or with an off-site one, does not", add
-`{detail: "x", login: "//evil.example"}` and `{detail: "x", login: "/\\evil.example"}`.
+`{detail: "x", login: "//evil.example"}`, `{detail: "x", login: "/\\evil.example"}`, `{detail: "x", login: "/\t/evil.example"}` and `{detail: "x", login: "/\n/evil.example"}`.
 
 `web/src/app.test.tsx`: in `Who`, assert `html(true)` contains
 `<span class="sr-only">Signed in as </span>a@example.edu`.
