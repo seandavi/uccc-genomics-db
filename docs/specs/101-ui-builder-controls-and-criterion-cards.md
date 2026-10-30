@@ -227,7 +227,7 @@ Add-criterion typeahead (the review's wireframe):
 
 ```tsx
 const sid = useId();
-const showSameReport = d.criteria.length >= 2 || d.scope === "report";
+const showSameReport = d.scope === "report" || d.criteria.length >= 2 || d.criteria.some((c) => c.mode !== "include");
 …
 {d.criteria.map(…cards…)}
 <Typeahead label="Add criterion" placeholder="…" … />
@@ -270,7 +270,7 @@ Change or add these rules in the `/* builder */` block. Use only defined tokens 
 .card-actions { gap: var(--s1); }
 .card-actions .sep { color: var(--muted); }
 .card-actions .remove { margin-left: auto; }
-.typeahead li { justify-content: flex-start; gap: 0; }
+.typeahead li { justify-content: flex-start; gap: var(--s1); }
 .typeahead .kind {
   font-size: var(--fs-xs); line-height: var(--lh-xs); font-weight: 600; white-space: nowrap;
   padding: 2px var(--s2); border-radius: 999px; background: var(--surface-2); color: var(--muted); align-self: center;
@@ -282,8 +282,9 @@ Change or add these rules in the `/* builder */` block. Use only defined tokens 
 
 - Remove `.cid`, `.typeahead .field` and `.criterion header select { margin-left: .5rem; }`.
   Nothing renders them any more.
-- In the existing `.typeahead li` rule, drop `justify-content: space-between` and the `.75rem`
-  gap, or override them as above. The badge leads the row and the value follows it.
+- In the existing `.typeahead li` rule, drop `justify-content: space-between` and use a
+  `var(--s1)` gap: the row is a flex container, so the spaces around the ' · ' separator collapse
+  and the gap provides them. The badge leads the row and the value follows it.
 - The badge select keeps the base 36px `min-height` (44px on coarse pointers). It does not
   override it.
 - `.chip button` keeps `min-height: 24px; min-width: 24px` from #97. The coarse-pointer rule
@@ -300,9 +301,9 @@ Change or add these rules in the `/* builder */` block. Use only defined tokens 
       `placeholder` (builder test). The Add-criterion placeholder is the §1.3 text.
 - [ ] (b) Option rows lead with the kind: `kindLabel` gives "Gene alteration" for
       `alteration.gene` and "RNA expression" for `expression.gene`, and `optionText` gives "KRAS"
-      for both. The row markup is badge, " · ", text. Rows render nothing from the `Option` beyond
-      `field`, `parent` and `value`, so there are no counts (cohort tests). The orchestrator checks
-      screenshot 02.
+      for both. The row markup (badge, ' · ', text) is checked by the orchestrator's screenshot 02, not by a
+      test; the row's gap is pinned in `styles.test.ts`. Rows render nothing from the `Option`
+      beyond `field`, `parent` and `value`, so there are no counts (cohort tests).
 - [ ] (c) An exclude card for genes KEAP1 and STK11 renders the mode select (with Exclude
       selected) before `<span class="clabel">KEAP1 or STK11 alteration</span>`, and no visible
       ">No KEAP1" text. `criterionLabel` still returns "no KEAP1 or STK11 alteration" (builder and
@@ -318,9 +319,9 @@ Change or add these rules in the `/* builder */` block. Use only defined tokens 
 - [ ] Adders are `class="adder"` buttons reading "+ Tumor type" … "+ Assay". The years row reads
       "Years", with two selects whose empty option is "Any", and no "All years", "From" or "To"
       label text (builder test).
-- [ ] The same-report toggle is absent with zero or one criterion at patient scope. It is present
-      after the last card with two criteria, and present and checked at report scope even with
-      none. When it is blocked, the checkbox is disabled and `aria-describedby` points at a
+- [ ] The same-report toggle is absent with zero criteria, or with one include criterion, at
+      patient scope. It is present after the last card with two criteria or with any exclude or
+      tested-negative criterion, and present and checked at report scope even with none. When it is blocked, the checkbox is disabled and `aria-describedby` points at a
       visible `.hint` that contains "cannot be matched on one report" (builder test).
 - [ ] `styles.css` has `.adder` dashed, mode stripes using `--high`/`--low`, and `.chip button`
       at least 24px. It has no `.cid` or `.typeahead .field` rule (styles test). The existing
@@ -416,7 +417,7 @@ definitions and options, as today. No DOM library may be added. Nothing reads `$
   exclude of the same gene) both get "Remove KRAS alteration". The article's aria-label ("KRAS
   alteration" vs "No KRAS alteration") tells them apart in a screen reader's landmark list. The
   issue asks for `Remove {label}` without the id, so the id isn't added.
-- **Hidden toggle state.** The same-report toggle hides at one criterion. If a user is at report
+- **Hidden toggle state.** The same-report toggle hides at one include criterion. If a user is at report
   scope and removes criteria down to one, the toggle stays visible (`scope === "report"`), so the
   state is never hidden while it is on.
 - **`useId` in tests.** The hint id is generated, so tests read it from `aria-describedby` and

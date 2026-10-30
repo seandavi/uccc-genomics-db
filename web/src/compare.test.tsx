@@ -69,13 +69,19 @@ describe("Compare", () => {
     <Compare versions={Array.from({length: n}, (_, i) => ({n: i + 1, definition: EMPTY}))} transport={{} as Transport} years={null} onClose={() => {}} />);
   test("one version: explanation and Close, no checkbox, no disabled button", () => {
     const html = panel(1);
-    expect(html).toContain("Compare needs two or more edits");
+    expect(html).toContain("Compare needs two or more versions.");
     expect(html).toContain(">Close</button>");
+    expect(html).toMatch(/<button[^>]*autofocus=""[^>]*>Close</);
     for (const gone of ['type="checkbox"', "Compare selected", 'disabled=""']) expect(html).not.toContain(gone);
   });
   test("two versions: Compare selected, and Count is gone", () => {
     const html = panel(2);
     expect(html).toContain(">Compare selected</button>");
     expect(html).not.toContain(">Count<");
+  });
+  test("two versions: focus goes to the first checkbox only", () => {
+    const html = panel(3);
+    expect(html.match(/autofocus=""/g)?.length).toBe(1);
+    expect(html.match(/<input[^>]*>/g)?.[0]).toContain('autofocus=""');
   });
 });

@@ -84,11 +84,23 @@ describe("criterion cards", () => {
   test("no + Later report at report scope", () => {
     expect(render({...EMPTY, scope: "report", criteria: [alt]})).not.toContain(">+ Later report</button>");
   });
-  test("a per-patient data criterion has no Edit; no Or… for data", () => {
+  test("a per-patient data criterion has no Edit; no + Or another for data", () => {
     const html = render({...EMPTY, criteria: [data]});
     expect(html).not.toContain(">Edit</button>");
     expect(html).not.toContain(">+ Or another</button>");
     expect(html).not.toContain(">+ Later report</button>");
+  });
+  test("the header holds the mode, a separator, the label and Remove, in that order", () => {
+    const html = render({...EMPTY, criteria: [alt]});
+    const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    const at = ['aria-label="Mode of c1"', '<span class="sep" aria-hidden="true">·</span>', '<span class="clabel">', 'class="btn-icon remove"']
+      .map((x) => header.indexOf(x));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
+  });
+  test("an alteration card has an actions row; a sequence card has none", () => {
+    expect(render({...EMPTY, criteria: [alt]})).toContain('class="row card-actions"');
+    expect(render({...EMPTY, criteria: [sequence]})).not.toContain("card-actions");
   });
   test("+ Or another is offered for a finding", () => {
     expect(render({...EMPTY, criteria: [alt]})).toContain(">+ Or another</button>");

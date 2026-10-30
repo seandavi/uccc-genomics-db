@@ -14,9 +14,14 @@ function loadHistory(): History {
   return {versions: [{n: 1, definition: EMPTY}], current: 0};
 }
 
-/** Focus back on the button that opened a panel, or on ⋯ when that button sits in the closed mobile menu (hidden). */
-export function focusTrigger(trigger: HTMLElement | null, more: HTMLElement | null): void {
-  (trigger && trigger.offsetParent !== null ? trigger : more)?.focus();
+const COMPARE_WHY = "Make a change to compare versions";
+
+/** Focus back on the button that opened a panel; else on ⋯ (the trigger sits in the closed mobile menu); else on
+ *  fallback (the answer heading). An element is skipped when hidden (offsetParent null) or disabled. */
+export function focusTrigger(trigger: HTMLElement | null, more: HTMLElement | null, fallback: HTMLElement | null): void {
+  const usable = (el: HTMLElement | null): el is HTMLElement =>
+    el !== null && el.offsetParent !== null && !(el as HTMLButtonElement).disabled;
+  (usable(trigger) ? trigger : usable(more) ? more : fallback)?.focus();
 }
 
 export function FeasibilityPanel({statement, copied, onCopy, onClose, textareaRef}: {
@@ -63,8 +68,11 @@ function jumpToAnswer() {
   h?.focus();
 }
 
-/** The patient count, tier and a jump to the answer: shown only at 600px and below (CSS). */
-export function SummaryBar({answer, options}: {answer: Counted | null; options: Options | null}) {
+/** The patient count, tier and a jump to the answer: shown only at 600px and below (CSS). While a recount runs, or
+ *  when the count is for an earlier version (the recount failed), they are dimmed and a word says so. */
+export function SummaryBar({answer, options, busy = false, stale = false}: {
+  answer: Counted | null; options: Options | null; busy?: boolean; stale?: boolean;
+}) {
   if (!answer) return null;
   const {d, r} = answer;
   const perYear = accrualPerYear(r.patients, d.population.years ?? options?.years ?? null);
@@ -72,12 +80,14 @@ export function SummaryBar({answer, options}: {answer: Counted | null; options: 
     e.preventDefault();   // a #answer-h fragment would replace the share hash in the address bar
     jumpToAnswer();
   };
+  const dim = busy || stale ? "dim" : undefined;
   return (
     <div className="summary-bar" role="region" aria-label="Cohort summary">
-      <span><span className={r.patients == null ? "summary-count hatched" : "summary-count"}>
+      <span className={dim}><span className={r.patients == null ? "summary-count hatched" : "summary-count"}>
         <Count n={r.patients} minCell={r.min_cell} /></span> patients</span>
-      {perYear != null && <TierPill perYear={perYear} />}
-      <a href="#answer-h" onClick={view}>View</a>
+      {perYear != null && <span className={dim}><TierPill perYear={perYear} /></span>}
+      {(busy || stale) && <span className="hint">{busy ? "Counting…" : "Out of date"}</span>}
+      <a href="#answer-h" onClick={view}>View answer</a>
     </div>
   );
 }
@@ -242,8 +252,9 @@ export function App({transport, account}: {transport: Transport; account?: Accou
   }, [tab, refresh]);
 
   const closePanel = () => {
-    if (panel) focusTrigger({share: shareRef, compare: compareRef, feasibility: feasibilityRef}[panel].current, moreRef.current);
+    const trigger = panel ? {share: shareRef, compare: compareRef, feasibility: feasibilityRef}[panel].current : null;
     setPanel(null);
+    requestAnimationFrame(() => focusTrigger(trigger, moreRef.current, document.getElementById("answer-h")));   // after the commit: a trigger the close disabled is skipped
   };
   const commitName = () => { if (name !== current.name) edit({op: "rename", name}, "builder"); };
   const go = (i: number) => { setHist({...histRef.current, current: i}); refresh(); };
@@ -273,7 +284,11 @@ export function App({transport, account}: {transport: Transport; account?: Accou
 
   return (
     <div className="app">
-      <header className="top">
+      <header className="top"
+        onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}
+        onBlur={(e) => {   // Tab out of the header closes the menu, so it never covers the focused control (WCAG 2.4.11)
+          if (menuOpen && e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget)) setMenuOpen(false);
+        }}>
         <h1>Discover</h1>
         <input aria-label="Cohort name" className="cohort-name" placeholder="Untitled cohort" value={name} maxLength={200}
           onChange={(e) => setName(e.target.value)} onBlur={commitName}
@@ -291,12 +306,12 @@ export function App({transport, account}: {transport: Transport; account?: Accou
         </div>
         <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
           aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
-        <div id="header-actions" className={menuOpen ? "actions open" : "actions"}
-          onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}>
+        <div id="header-actions" className={menuOpen ? "actions open" : "actions"}>
           <button type="button" ref={shareRef} className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
           <button type="button" ref={compareRef} className="btn-secondary" aria-expanded={panel === "compare"} disabled={single}
-            aria-describedby={single ? "compare-why" : undefined} onClick={() => togglePanel("compare")}>Compare</button>
-          {single && <span id="compare-why" className="hint">Make a change to compare versions</span>}
+            aria-describedby={single ? "compare-why" : undefined} title={single ? COMPARE_WHY : undefined}
+            onClick={() => togglePanel("compare")}>Compare</button>
+          {single && <span id="compare-why" className="sr-only">{COMPARE_WHY}</span>}
           <button type="button" ref={feasibilityRef} className="btn-primary" aria-expanded={panel === "feasibility"}
             disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
           {me && account && <Who me={me} onSignOut={() => { account.signOut().catch((e) => setEditError({at: "builder", message: `Sign-out failed: ${describeError(e)}`})); }} />}
@@ -324,7 +339,7 @@ export function App({transport, account}: {transport: Transport; account?: Accou
           onOp={(op) => edit(op, "answer")} onRetry={refresh} busy={busy} error={answerError} onExample={applyExample}
           editError={editError?.at === "answer" ? editError.message : null} />
       </div>
-      <SummaryBar answer={answer} options={options} />
+      <SummaryBar answer={answer} options={options} busy={busy} stale={stale} />
     </div>
   );
 }

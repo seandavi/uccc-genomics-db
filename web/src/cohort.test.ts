@@ -80,7 +80,7 @@ describe("labels", () => {
     expect(criterionLabel(alt({aa: ["G12C"], class: ["mutation"]}))).toBe("KRAS G12C");
     expect(criterionLabel(alt({gene: ["KRAS", "NRAS"], class: ["mutation"]}))).toBe("KRAS or NRAS mutation");
     expect(criterionLabel(alt({gene: ["ERBB2"], class: ["amplification"]}))).toBe("ERBB2 amplification");
-    expect(criterionLabel(alt({gene: ["ALK"], class: ["fusion"], tier: ["likely_pathogenic", "pathogenic", "vus"]}))).toBe("ALK fusion + VUS");
+    expect(criterionLabel(alt({gene: ["ALK"], class: ["fusion"], tier: ["likely_pathogenic", "pathogenic", "vus"]}))).toBe("ALK fusion (incl. VUS)");
     expect(criterionLabel(bio({call: ["high"]}))).toBe("MSI high");
     expect(criterionLabel(bio({name: "TMB", at_least: 10}))).toBe("TMB ≥ 10");
     expect(criterionLabel(bio({name: "LOH"}))).toBe("LOH tested");

@@ -110,7 +110,7 @@ export function populationLabel(p: Population): string {
 function tierSuffix(tier: string[]): string {
   const have = new Set(tier);
   if (have.size === 0 || (have.size === 2 && DEFAULT_TIERS.every((t) => have.has(t)))) return "";
-  if (DEFAULT_TIERS.every((t) => have.has(t))) return ` + ${tier.filter((t) => !DEFAULT_TIERS.includes(t)).map((t) => TIER_NAMES[t]).join(" + ")}`;
+  if (DEFAULT_TIERS.every((t) => have.has(t))) return ` (incl. ${tier.filter((t) => !DEFAULT_TIERS.includes(t)).map((t) => TIER_NAMES[t]).join(", ")})`;
   return ` (${tier.map((t) => TIER_NAMES[t]).join(", ")} only)`;
 }
 

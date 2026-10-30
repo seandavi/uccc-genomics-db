@@ -78,17 +78,17 @@ export function Compare({versions, transport, years, onClose}: {
     <section aria-label="Compare versions" className="panel">
       {versions.length < MIN_PICKED ? (
         <>
-        <p className="hint">Compare needs two or more edits. Make a change to the cohort, then compare the versions here.</p>
-        <div className="row"><button type="button" onClick={onClose}>Close</button></div>
+        <p className="hint">Compare needs two or more versions. Make a change to the cohort, then compare the versions here.</p>
+        <div className="row"><button type="button" autoFocus onClick={onClose}>Close</button></div>
         </>
       ) : (
         <>
       <fieldset className="checks">
         <legend>Versions to compare ({MIN_PICKED}–{MAX_PICKED})</legend>
-        {versions.map((v) => (
+        {versions.map((v, i) => (
           <label key={v.n}>
             <input type="checkbox" checked={picked.includes(v.n)} disabled={!picked.includes(v.n) && picked.length >= MAX_PICKED}
-              onChange={() => toggle(v.n)} /> <span title={definitionLabel(v)}>{versionLabel(v)}</span>
+              autoFocus={i === 0} onChange={() => toggle(v.n)} /> <span title={definitionLabel(v)}>{versionLabel(v)}</span>
           </label>
         ))}
       </fieldset>

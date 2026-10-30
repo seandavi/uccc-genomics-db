@@ -109,7 +109,6 @@ test("mobile shell: actions behind the more button, history on its own row, stic
   const inMobile = (sel: string) => mobile.match(new RegExp("\\n\\s*" + sel.replace(/\./g, "\\.") + " \\{([^}]*)\\}"))?.[1] ?? "";
   expect(inMobile(".more")).toContain("display: inline-flex");
   expect(inMobile(".history")).toContain("flex-basis: 100%");
-  expect(inMobile(".card.hero")).toContain("grid-column: 1 / -1");
   expect(inMobile(".summary-bar")).toContain("position: sticky");
   expect(inMobile(".summary-bar")).toContain("bottom: 0");
   expect(css.replace(/@media \(max-width: 600px\)\s*\{[\s\S]*?\n\}/, "")).toContain(".summary-bar { display: none; }");
@@ -168,4 +167,35 @@ test("tabs are underlined, panels float, pivot selects are narrow", () => {
   expect(rule(".panel textarea")).toContain("max-width: 65ch");
   expect(rule(".pivot-controls select")).toContain("max-width: 16rem");
   expect(rule('.toggle-chip[aria-pressed="true"]')).toContain("var(--accent)");
+});
+
+test("header: the name grows, Compare's reason is not a visible hint", () => {
+  expect(rule(".top .cohort-name")).toContain("flex: 1 1 16rem");
+  expect(rule(".top .cohort-name")).toContain("min-width: 16rem");
+  expect(css).not.toContain(".actions .hint");
+});
+
+test("tab focus ring is inset so .tabs does not clip it", () => {
+  expect(rule(".tabs button:focus-visible")).toContain("outline-offset: -2px");
+});
+
+test("cards: hero on top, two below up to 960px, after the base grid", () => {
+  const media = "@media (max-width: 960px) { .cards { grid-template-columns: 1fr 1fr; } .card.hero { grid-column: 1 / -1; } }";
+  expect(css).toContain(media);
+  expect(css.indexOf(media)).toBeGreaterThan(css.indexOf(".cards { display: grid"));
+  expect(css.match(/@media \(max-width: 600px\)\s*\{([\s\S]*?)\n\}/)?.[1]).not.toContain(".card.hero");
+});
+
+test("the footnote link is underlined, not colour-only", () => {
+  expect(rule(".footnote .btn-tertiary")).toContain("text-decoration: underline");
+});
+
+test("criterion card header is one row: no wrap, the label shrinks, the mode pill fits its text", () => {
+  expect(rule(".criterion header")).not.toContain("flex-wrap");
+  expect(rule(".criterion header .clabel")).toContain("min-width: 0");
+  expect(rule(".criterion .mode")).toContain("field-sizing: content");
+});
+
+test("typeahead rows have a gap, so the ' · ' separator keeps its spaces", () => {
+  expect(rule(".typeahead li")).toContain("gap: var(--s1)");
 });
