@@ -948,6 +948,24 @@
         "title": "History",
         "type": "object"
       },
+      "IdentifierReason": {
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier",
+          "reason"
+        ],
+        "title": "IdentifierReason",
+        "type": "object"
+      },
       "Ihc": {
         "additionalProperties": false,
         "properties": {
@@ -1049,6 +1067,279 @@
           "marker"
         ],
         "title": "Ihc",
+        "type": "object"
+      },
+      "Irb": {
+        "properties": {
+          "irb_number": {
+            "title": "Irb Number",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/IrbVersion"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "irb_number",
+          "versions"
+        ],
+        "title": "Irb",
+        "type": "object"
+      },
+      "IrbAuthorization": {
+        "properties": {
+          "approval_date": {
+            "format": "date",
+            "title": "Approval Date",
+            "type": "string"
+          },
+          "approved_population": {
+            "title": "Approved Population",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expiration_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiration Date"
+          },
+          "hipaa_pathway": {
+            "title": "Hipaa Pathway",
+            "type": "string"
+          },
+          "irb_number": {
+            "title": "Irb Number",
+            "type": "string"
+          },
+          "pi": {
+            "title": "Pi",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "irb_number",
+          "version",
+          "pi",
+          "approval_date",
+          "hipaa_pathway",
+          "approved_population",
+          "status",
+          "created_at"
+        ],
+        "title": "IrbAuthorization",
+        "type": "object"
+      },
+      "IrbDocument": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "doc_type": {
+            "enum": [
+              "approval_letter",
+              "personnel_list",
+              "protocol_excerpt",
+              "consent_form"
+            ],
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "file_ref": {
+            "title": "File Ref",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "protocol_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocol Version"
+          },
+          "section_cited": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Cited"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "doc_type",
+          "file_ref",
+          "sha256",
+          "created_at"
+        ],
+        "title": "IrbDocument",
+        "type": "object"
+      },
+      "IrbList": {
+        "properties": {
+          "authorizations": {
+            "items": {
+              "$ref": "#/components/schemas/IrbAuthorization"
+            },
+            "title": "Authorizations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "authorizations"
+        ],
+        "title": "IrbList",
+        "type": "object"
+      },
+      "IrbPerson": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "person_id": {
+            "title": "Person Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "person_id",
+          "name",
+          "role"
+        ],
+        "title": "IrbPerson",
+        "type": "object"
+      },
+      "IrbVersion": {
+        "properties": {
+          "approval_date": {
+            "format": "date",
+            "title": "Approval Date",
+            "type": "string"
+          },
+          "approved_population": {
+            "title": "Approved Population",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/IrbDocument"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "expiration_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiration Date"
+          },
+          "hipaa_pathway": {
+            "title": "Hipaa Pathway",
+            "type": "string"
+          },
+          "irb_number": {
+            "title": "Irb Number",
+            "type": "string"
+          },
+          "personnel": {
+            "items": {
+              "$ref": "#/components/schemas/IrbPerson"
+            },
+            "title": "Personnel",
+            "type": "array"
+          },
+          "pi": {
+            "title": "Pi",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "irb_number",
+          "version",
+          "pi",
+          "approval_date",
+          "hipaa_pathway",
+          "approved_population",
+          "status",
+          "created_at",
+          "documents",
+          "personnel"
+        ],
+        "title": "IrbVersion",
         "type": "object"
       },
       "Loosen": {
@@ -1404,6 +1695,104 @@
         "title": "Population",
         "type": "object"
       },
+      "Recipient": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "Recipient",
+        "type": "object"
+      },
+      "Release": {
+        "properties": {
+          "closeout_attested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closeout Attested At"
+          },
+          "fields_released": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields Released",
+            "type": "array"
+          },
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/Recipient"
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "released_at": {
+            "format": "date-time",
+            "title": "Released At",
+            "type": "string"
+          },
+          "removed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed At"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "sharepoint_link": {
+            "title": "Sharepoint Link",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "sha256",
+          "row_count",
+          "fields_released",
+          "recipients",
+          "sharepoint_link",
+          "released_at"
+        ],
+        "title": "Release",
+        "type": "object"
+      },
       "RemoveCriterion": {
         "additionalProperties": false,
         "properties": {
@@ -1444,6 +1833,336 @@
         "title": "Rename",
         "type": "object"
       },
+      "Request": {
+        "properties": {
+          "cohort": {
+            "format": "uuid",
+            "title": "Cohort",
+            "type": "string"
+          },
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierReason"
+            },
+            "title": "Identifiers",
+            "type": "array"
+          },
+          "irb_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Number"
+          },
+          "irb_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Version"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/Recipient"
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "requester": {
+            "title": "Requester",
+            "type": "string"
+          },
+          "retention_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention End"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "submitted",
+              "returned",
+              "approved",
+              "denied",
+              "fulfilled",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "storage_location": {
+            "title": "Storage Location",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requester",
+          "cohort",
+          "seq",
+          "cohort_id",
+          "definition",
+          "purpose",
+          "fields",
+          "identifiers",
+          "recipients",
+          "storage_location",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Request",
+        "type": "object"
+      },
+      "RequestDetail": {
+        "properties": {
+          "cohort": {
+            "format": "uuid",
+            "title": "Cohort",
+            "type": "string"
+          },
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/Definition"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identifiers": {
+            "items": {
+              "$ref": "#/components/schemas/IdentifierReason"
+            },
+            "title": "Identifiers",
+            "type": "array"
+          },
+          "irb": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IrbVersion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "irb_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Number"
+          },
+          "irb_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Irb Version"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/Recipient"
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/Release"
+            },
+            "title": "Releases",
+            "type": "array"
+          },
+          "requester": {
+            "title": "Requester",
+            "type": "string"
+          },
+          "retention_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention End"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/Review"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "submitted",
+              "returned",
+              "approved",
+              "denied",
+              "fulfilled",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "storage_location": {
+            "title": "Storage Location",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requester",
+          "cohort",
+          "seq",
+          "cohort_id",
+          "definition",
+          "purpose",
+          "fields",
+          "identifiers",
+          "recipients",
+          "storage_location",
+          "status",
+          "created_at",
+          "updated_at",
+          "reviews",
+          "releases"
+        ],
+        "title": "RequestDetail",
+        "type": "object"
+      },
+      "Requests": {
+        "properties": {
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/Request"
+            },
+            "title": "Requests",
+            "type": "array"
+          }
+        },
+        "required": [
+          "requests"
+        ],
+        "title": "Requests",
+        "type": "object"
+      },
       "RevertRequest": {
         "properties": {
           "to": {
@@ -1456,6 +2175,54 @@
           "to"
         ],
         "title": "RevertRequest",
+        "type": "object"
+      },
+      "Review": {
+        "properties": {
+          "checklist": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Checklist",
+            "type": "object"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "return",
+              "deny"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "reviewer": {
+            "title": "Reviewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reviewer",
+          "checklist",
+          "decision",
+          "notes",
+          "decided_at"
+        ],
+        "title": "Review",
         "type": "object"
       },
       "Revision": {
@@ -1487,6 +2254,17 @@
           "seq": {
             "title": "Seq",
             "type": "integer"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
           }
         },
         "required": [
@@ -1494,6 +2272,7 @@
           "cohort_id",
           "definition",
           "op",
+          "snapshot_id",
           "created_at"
         ],
         "title": "Revision",
@@ -2215,6 +2994,159 @@
         "summary": "Post Apply"
       }
     },
+    "/api/broker/irb": {
+      "get": {
+        "operationId": "get_broker_irb_list_api_broker_irb_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrbList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Broker Irb List"
+      }
+    },
+    "/api/broker/irb/{irb_number}": {
+      "get": {
+        "operationId": "get_broker_irb_api_broker_irb__irb_number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "irb_number",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "title": "Irb Number",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Irb"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Broker Irb"
+      }
+    },
+    "/api/broker/requests": {
+      "get": {
+        "operationId": "get_broker_requests_api_broker_requests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "submitted",
+                    "returned",
+                    "approved",
+                    "denied",
+                    "fulfilled",
+                    "closed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Requests"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Broker Requests"
+      }
+    },
+    "/api/broker/requests/{id}": {
+      "get": {
+        "operationId": "get_broker_request_api_broker_requests__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Broker Request"
+      }
+    },
     "/api/cohort": {
       "post": {
         "operationId": "post_cohort_api_cohort_post",
@@ -2410,6 +3342,64 @@
           }
         },
         "summary": "Post Pivot"
+      }
+    },
+    "/api/requests": {
+      "get": {
+        "operationId": "get_requests_api_requests_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Requests"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Requests"
+      }
+    },
+    "/api/requests/{id}": {
+      "get": {
+        "operationId": "get_request_api_requests__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Request"
       }
     },
     "/api/saved": {

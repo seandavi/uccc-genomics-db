@@ -56,6 +56,7 @@ cohort_revision = sa.Table(
     sa.Column("cohort_id", sa.Text, sa.ForeignKey("cohort_version.cohort_id"), nullable=False),
     sa.Column("definition", JSONB, nullable=False),
     sa.Column("op", JSONB, nullable=True),
+    sa.Column("snapshot_id", sa.Text, nullable=True),   # the de-id build it was saved against; NULL before #132
     _created_at())
 
 # grant feasibility records; append-only
@@ -82,6 +83,7 @@ class Revision(BaseModel):
     cohort_id: str
     definition: Definition
     op: dict | None
+    snapshot_id: str | None
     created_at: datetime.datetime
 
 
@@ -169,7 +171,7 @@ async def _upsert_version(conn: AsyncConnection, d: Definition, cohort_id: str, 
 
 def _revision(row) -> Revision:
     return Revision(seq=row.seq, cohort_id=row.cohort_id, definition=Definition.model_validate(row.definition),
-                    op=row.op, created_at=row.created_at)
+                    op=row.op, snapshot_id=row.snapshot_id, created_at=row.created_at)
 
 
 def _saved(row) -> SavedCohort:
@@ -180,7 +182,7 @@ def _with_head(owner: str):
     """SELECT of the owner's cohorts joined to their head revision."""
     return (sa.select(cohort.c.id, cohort.c.created_at.label("cohort_created_at"), cohort.c.updated_at,
                       cohort_revision.c.seq, cohort_revision.c.cohort_id, cohort_revision.c.definition,
-                      cohort_revision.c.op, cohort_revision.c.created_at)
+                      cohort_revision.c.op, cohort_revision.c.snapshot_id, cohort_revision.c.created_at)
             .join_from(cohort, cohort_revision, sa.and_(cohort_revision.c.cohort == cohort.c.id,
                                                         cohort_revision.c.seq == cohort.c.head))
             .where(cohort.c.owner == owner))
@@ -202,21 +204,21 @@ async def _lock_head(conn: AsyncConnection, owner: str, id: uuid.UUID) -> int:
 
 
 async def _append(conn: AsyncConnection, owner: str, id: uuid.UUID, head: int, d: Definition,
-                  op: dict) -> SavedCohort:
+                  op: dict, *, snapshot_id: str | None) -> SavedCohort:
     """Add revision head + 1 to a cohort whose row this transaction has locked."""
     if head >= MAX_REVISIONS:
         raise Conflict(f"a saved cohort holds at most {MAX_REVISIONS} revisions")
     cid = selecting_id(d)
     await _upsert_version(conn, d, cid, owner)
     await conn.execute(sa.insert(cohort_revision).values(cohort=id, seq=head + 1, cohort_id=cid,
-                                                         definition=_dump(d), op=op))
+                                                         definition=_dump(d), op=op, snapshot_id=snapshot_id))
     await conn.execute(sa.update(cohort).where(cohort.c.id == id).values(head=head + 1, updated_at=sa.func.now()))
     return await _get(conn, owner, id)
 
 
 # --- persistence ---------------------------------------------------------------------------------
 
-async def create(owner: str, d: Definition) -> SavedCohort:
+async def create(owner: str, d: Definition, *, snapshot_id: str | None) -> SavedCohort:
     async with _begin() as conn:
         n = await conn.scalar(sa.select(sa.func.count()).select_from(cohort).where(cohort.c.owner == owner))
         if n >= MAX_COHORTS:
@@ -226,7 +228,7 @@ async def create(owner: str, d: Definition) -> SavedCohort:
         id = uuid.uuid4()
         await conn.execute(sa.insert(cohort).values(id=id, owner=owner, head=1))
         await conn.execute(sa.insert(cohort_revision).values(cohort=id, seq=1, cohort_id=cid,
-                                                             definition=_dump(d), op=None))
+                                                             definition=_dump(d), op=None, snapshot_id=snapshot_id))
         return await _get(conn, owner, id)
 
 
@@ -249,26 +251,33 @@ async def history(owner: str, id: uuid.UUID) -> History:
         return History(revisions=[_revision(r) for r in rows])
 
 
-async def append(owner: str, id: uuid.UUID, d: Definition, op: dict, after: int) -> SavedCohort:
+async def append(owner: str, id: uuid.UUID, d: Definition, op: dict, after: int, *,
+                 snapshot_id: str | None) -> SavedCohort:
     async with _begin() as conn:
         head = await _lock_head(conn, owner, id)
         if head != after:
             raise Conflict(f"saved cohort changed since revision {after}; reload it")
-        return await _append(conn, owner, id, head, d, op)
+        return await _append(conn, owner, id, head, d, op, snapshot_id=snapshot_id)
 
 
-async def revert(owner: str, id: uuid.UUID, to: int) -> SavedCohort:
+async def revert(owner: str, id: uuid.UUID, to: int, *, snapshot_id: str | None) -> SavedCohort:
     async with _begin() as conn:
         head = await _lock_head(conn, owner, id)
         target = (await conn.execute(sa.select(cohort_revision.c.definition).where(
             cohort_revision.c.cohort == id, cohort_revision.c.seq == to))).scalar()
         if target is None:
             raise NotFound(f"no revision {to}")
-        return await _append(conn, owner, id, head, Definition.model_validate(target), {"op": "revert", "to": to})
+        return await _append(conn, owner, id, head, Definition.model_validate(target), {"op": "revert", "to": to},
+                             snapshot_id=snapshot_id)
 
 
 async def delete(owner: str, id: uuid.UUID) -> Deleted:
     async with _begin() as conn:
+        # text, not the Table: broker.py imports this module. The database refuses too (request's FK is RESTRICT).
+        attached = sa.text("SELECT 1 FROM request r JOIN cohort c ON c.id = r.cohort "
+                           "WHERE r.cohort = :id AND c.owner = :owner LIMIT 1")   # owner: someone else's stays a 404
+        if (await conn.execute(attached, {"id": id, "owner": owner})).first():
+            raise Conflict(f"saved cohort {id} is attached to a request for identified data; it can't be deleted")
         gone = (await conn.execute(sa.delete(cohort).where(cohort.c.id == id, cohort.c.owner == owner)
                                    .returning(cohort.c.id))).first()
         if gone is None:

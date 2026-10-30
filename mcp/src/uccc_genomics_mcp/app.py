@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.mcpserver import Context, MCPServer
@@ -29,9 +29,10 @@ from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import uccc_genomics.config  # noqa: F401  loads the repo .env (APP_USER, APP_PASSWORD_HASH, ACCESS_*)
-from uccc_genomics_mcp import authen, cohort, saved
+from uccc_genomics_mcp import authen, broker, cohort, saved
 from uccc_genomics_mcp.cohort import CountResult, Definition, DefinitionError, Operation, PivotResult
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
+from uccc_genomics_mcp.broker import Irb, IrbList, RequestDetail, Requests, RequestStatus
 from uccc_genomics_mcp.saved import (CohortVersion, Deleted, History, SavedCohort, SavedList, Snapshot,
                                      Snapshots)
 from uccc_genomics_mcp.server import get_db
@@ -57,7 +58,9 @@ INSTRUCTIONS = (
     "Quote only numbers a tool returned. Never claim the data holds stage, treatment, outcomes, race or ethnicity. Saved cohorts belong to the "
     "logged-in user: save_cohort, then edit with apply_saved_op (each edit is a new revision; "
     "revert_saved_cohort undoes). Saved cohorts hold no counts; count the head definition. Snapshots store "
-    "the suppressed count with its data date for grant text.")
+    "the suppressed count with its data date for grant text. "
+    "Requests for identified data are read-only here: list_my_requests and get_my_request show the caller's own; "
+    "the broker_* tools are for the honest broker group only.")
 
 
 # --- auth ----------------------------------------------------------------------------------------
@@ -112,6 +115,20 @@ def _mcp_user(ctx: Context) -> authen.User:
         return ctx.request_context.request.state.user
     except (ValueError, AttributeError):
         raise ToolError("not authenticated") from None
+
+
+def broker_user(u: authen.User = Depends(user)) -> authen.User:
+    """FastAPI dependency: the honest broker group only (403 otherwise)."""
+    if not u.broker:
+        raise HTTPException(403, "honest broker only")
+    return u
+
+
+def _mcp_broker(ctx: Context) -> authen.User:
+    u = _mcp_user(ctx)
+    if not u.broker:
+        raise ToolError("honest broker only")
+    return u
 
 
 # --- models --------------------------------------------------------------------------------------
@@ -236,13 +253,20 @@ def run_schema() -> SchemaInfo:
 
 async def run_save(u: authen.User, d: Definition) -> SavedCohort:
     await run_in_threadpool(lambda: cohort.vocabulary().check(d))
-    return await saved.create(u.sub, d)
+    sid = await run_in_threadpool(cohort.snapshot_id)
+    return await saved.create(u.sub, d, snapshot_id=sid)
 
 
 async def run_saved_apply(u: authen.User, id: uuid.UUID, op: Operation) -> SavedCohort:
     c = await saved.get(u.sub, id)
     new = await run_in_threadpool(lambda: cohort.apply(c.head.definition, op, cohort.vocabulary()))
-    return await saved.append(u.sub, id, new, op.model_dump(mode="json", by_alias=True), after=c.head.seq)
+    sid = await run_in_threadpool(cohort.snapshot_id)
+    return await saved.append(u.sub, id, new, op.model_dump(mode="json", by_alias=True), after=c.head.seq,
+                              snapshot_id=sid)
+
+
+async def run_revert(u: authen.User, id: uuid.UUID, to: int) -> SavedCohort:
+    return await saved.revert(u.sub, id, to, snapshot_id=await run_in_threadpool(cohort.snapshot_id))
 
 
 async def run_snapshot(u: authen.User, surface: Surface, id: uuid.UUID) -> Snapshot:
@@ -379,7 +403,7 @@ async def saved_cohort_history(id: uuid.UUID, ctx: Context) -> History:
 async def revert_saved_cohort(id: uuid.UUID, to: Annotated[int, Field(ge=1)], ctx: Context) -> SavedCohort:
     """Make a saved cohort's definition equal to revision `to` again, as a new revision (history is kept)."""
     try:
-        return await saved.revert(_mcp_user(ctx).sub, id, to)
+        return await run_revert(_mcp_user(ctx), id, to)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -419,6 +443,64 @@ async def get_cohort_version(cohort_id: str, ctx: Context) -> CohortVersion:
     try:
         _mcp_user(ctx)
         return await saved.get_version(cohort_id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def list_my_requests(ctx: Context) -> Requests:
+    """The logged-in user's requests for identified data, newest first. Read-only."""
+    try:
+        return await broker.list_my_requests(_mcp_user(ctx).sub)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def get_my_request(id: uuid.UUID, ctx: Context) -> RequestDetail:
+    """One of the logged-in user's requests, with its frozen cohort revision, IRB, reviews and releases."""
+    try:
+        return await broker.get_my_request(_mcp_user(ctx).sub, id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def broker_list_requests(ctx: Context, status: RequestStatus | None = None) -> Requests:
+    """Honest broker only: every request, newest first, optionally one status."""
+    try:
+        _mcp_broker(ctx)
+        return await broker.list_requests(status)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def broker_get_request(id: uuid.UUID, ctx: Context) -> RequestDetail:
+    """Honest broker only: any request, with its frozen cohort revision, IRB, reviews and releases."""
+    try:
+        _mcp_broker(ctx)
+        return await broker.get_request(id)
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def broker_list_irb(ctx: Context) -> IrbList:
+    """Honest broker only: the latest version of each IRB authorization in the registry."""
+    try:
+        _mcp_broker(ctx)
+        return await broker.list_irb()
+    except TOOL_ERRORS as e:
+        raise ToolError(str(e)) from None
+
+
+@mcp_app.tool()
+async def broker_get_irb(irb_number: Annotated[str, Field(max_length=64)], ctx: Context) -> Irb:
+    """Honest broker only: every version of one IRB authorization, with its documents and approved personnel."""
+    try:
+        _mcp_broker(ctx)
+        return await broker.get_irb(irb_number)
     except TOOL_ERRORS as e:
         raise ToolError(str(e)) from None
 
@@ -516,7 +598,7 @@ def app(static_dir: str | None = None) -> FastAPI:
 
     @application.post("/api/saved/{id}/revert")
     async def post_saved_revert(id: uuid.UUID, body: RevertRequest, u: authen.User = Depends(user)) -> SavedCohort:
-        return await saved.revert(u.sub, id, body.to)
+        return await run_revert(u, id, body.to)
 
     @application.post("/api/saved/{id}/snapshot")
     async def post_saved_snapshot(id: uuid.UUID, u: authen.User = Depends(user)) -> Snapshot:
@@ -533,6 +615,32 @@ def app(static_dir: str | None = None) -> FastAPI:
     @application.get("/api/versions/{cohort_id}")
     async def get_version(cohort_id: str, u: authen.User = Depends(user)) -> CohortVersion:
         return await saved.get_version(cohort_id)
+
+    @application.get("/api/requests")
+    async def get_requests(u: authen.User = Depends(user)) -> Requests:
+        return await broker.list_my_requests(u.sub)
+
+    @application.get("/api/requests/{id}")
+    async def get_request(id: uuid.UUID, u: authen.User = Depends(user)) -> RequestDetail:
+        return await broker.get_my_request(u.sub, id)
+
+    @application.get("/api/broker/requests")
+    async def get_broker_requests(status: RequestStatus | None = None,
+                                  u: authen.User = Depends(broker_user)) -> Requests:
+        return await broker.list_requests(status)
+
+    @application.get("/api/broker/requests/{id}")
+    async def get_broker_request(id: uuid.UUID, u: authen.User = Depends(broker_user)) -> RequestDetail:
+        return await broker.get_request(id)
+
+    @application.get("/api/broker/irb")
+    async def get_broker_irb_list(u: authen.User = Depends(broker_user)) -> IrbList:
+        return await broker.list_irb()
+
+    @application.get("/api/broker/irb/{irb_number}")
+    async def get_broker_irb(irb_number: Annotated[str, Path(max_length=64)],
+                             u: authen.User = Depends(broker_user)) -> Irb:
+        return await broker.get_irb(irb_number)
 
     @application.get("/api/health")
     def health():

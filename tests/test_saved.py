@@ -64,7 +64,8 @@ def sql(statement, **params):
 @pytest.fixture
 def clean(pg_url, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", pg_url)
-    sql("TRUNCATE snapshot, cohort_revision, cohort, cohort_version")
+    sql("TRUNCATE release_patient, release, review, request, irb_personnel, irb_document, irb_authorization, "
+        "snapshot, cohort_revision, cohort, cohort_version")
     return pg_url
 
 
@@ -200,6 +201,17 @@ def test_revisions(sclient):
     assert ok(s.revert(id, 4))["head"]["seq"] == 5   # reverting to the head is a no-op revision
 
 
+@pytest.mark.parametrize("surface", [Rest, Mcp])
+def test_revision_snapshot_id(sclient, surface):
+    s = surface(sclient)
+    id = ok(s.save(START))["id"]
+    ok(s.apply(id, {"op": "rename", "name": "y"}))
+    ok(s.revert(id, 1))
+    revisions = ok(s.history(id))["revisions"]
+    assert len(revisions) == 3 and {r["snapshot_id"] for r in revisions} == {"synthetic-build-1"}
+    assert ok(s.get(id))["head"]["snapshot_id"] == "synthetic-build-1"
+
+
 def test_ownership(sclient):
     ra, rb = Rest(sclient, A), Rest(sclient, B)
     id = ok(ra.save(START))["id"]
@@ -322,13 +334,13 @@ def test_stale_append_conflicts(clean):
     async def go():
         saved.start(saved.database_url())
         try:
-            c = await saved.create(A, cohort.parse(START))
+            c = await saved.create(A, cohort.parse(START), snapshot_id=None)
             renamed = cohort.parse(START | {"name": "y"})
-            await saved.append(A, c.id, renamed, {"op": "rename", "name": "y"}, after=1)
+            await saved.append(A, c.id, renamed, {"op": "rename", "name": "y"}, after=1, snapshot_id=None)
             with pytest.raises(saved.Conflict):
-                await saved.append(A, c.id, renamed, {"op": "rename", "name": "z"}, after=1)
+                await saved.append(A, c.id, renamed, {"op": "rename", "name": "z"}, after=1, snapshot_id=None)
             with pytest.raises(saved.NotFound):
-                await saved.append(B, c.id, renamed, {"op": "rename", "name": "z"}, after=2)
+                await saved.append(B, c.id, renamed, {"op": "rename", "name": "z"}, after=2, snapshot_id=None)
         finally:
             await saved.stop()
     asyncio.run(go())
@@ -368,3 +380,26 @@ def test_owner_is_sub(sclient, monkeypatch):
     assert Rest(sclient, "b").get(id).code == 404 and ok(Rest(sclient, "b").list())["cohorts"] == []
     ok(Rest(sclient, "a").snapshot(id))
     assert sql("SELECT created_by FROM snapshot") == [{"created_by": "sub-a"}]
+
+
+BROKER_TABLES = ("irb_authorization", "irb_document", "irb_personnel", "request", "review", "release",
+                 "release_patient")
+
+
+def test_migration_down_and_up(pg_url, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", pg_url)
+    cfg = Config(str(REPO / "mcp" / "alembic.ini"))
+    present = ("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() "
+               "AND table_name = ANY(:names)")
+    column = ("SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+              "AND table_name = 'cohort_revision' AND column_name = 'snapshot_id'")
+    assert {r["table_name"] for r in sql(present, names=list(BROKER_TABLES))} == set(BROKER_TABLES)
+    assert sql(column)
+    try:
+        command.downgrade(cfg, "0001")
+        assert sql(present, names=list(BROKER_TABLES)) == [] and sql(column) == []
+        assert sql("SELECT count(*) AS n FROM cohort_revision")   # the older tables survive
+    finally:
+        command.upgrade(cfg, "head")
+    command.check(cfg)
+    assert sql(column)
