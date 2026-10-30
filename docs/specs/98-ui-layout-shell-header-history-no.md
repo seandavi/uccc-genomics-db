@@ -151,6 +151,8 @@ const last = hist.versions.length - 1;
       </select>
     </label>
   </div>
+  <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
+    aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
   <div id="header-actions" className={menuOpen ? "actions open" : "actions"}
     onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}>
     <button type="button" className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
@@ -160,8 +162,6 @@ const last = hist.versions.length - 1;
     <button type="button" className="btn-primary" aria-expanded={panel === "feasibility"}
       disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
   </div>
-  <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
-    aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
 </header>
 ```
 
@@ -169,7 +169,8 @@ const last = hist.versions.length - 1;
 - ↶, ↷ and ⋯ are plain buttons, which have the secondary look. They are not `.btn-icon`, because
   `.btn-icon` turns `--danger` red on hover and is for removal.
 - The ⋯ menu is a disclosure (`aria-expanded` with `aria-controls`), not `role="menu"`. Its items
-  are ordinary buttons reached with Tab.
+  are ordinary buttons reached with Tab, and the ⋯ button precedes `#header-actions` in the DOM so
+  Tab from it enters the menu.
 - The "Share link" button text becomes "Share". The input keeps `aria-label="Share link"`.
 
 #### Panels
@@ -291,7 +292,8 @@ to the `td.hatched` rule (its 35% stripe keeps the muted "<5" readable). No raw 
 .summary-count { font-weight: 600; font-variant-numeric: tabular-nums; padding: 0 var(--s1); border-radius: 4px; }
 ```
 
-How the ≤600px header lays out. The DOM order is h1, name, `.history`, `.actions`, ⋯. Row 1 is
+How the ≤600px header lays out. The DOM order is h1, name, `.history`, ⋯, `.actions`. ⋯ comes before the menu it opens so that Tab
+from ⋯ lands on Share (WCAG 2.4.3). Row 1 is
 "Discover", the name (it takes the remaining width and truncates) and ⋯. `.history` has
 `order: 1` and `flex-basis: 100%`, so it wraps to row 2 on its own. `.actions` is hidden, or when
 open it is absolutely positioned under the header and takes no row. So the header is at most two
@@ -351,7 +353,8 @@ All tests use `renderToStaticMarkup` (no DOM library; none may be added) and syn
      `aria-label="Next edit"` both `disabled`;
    - Compare has `disabled` and `aria-describedby="compare-why"`, and the text
      "Make a change to compare versions" is present;
-   - `aria-label="More actions"`, `aria-expanded="false"` and `aria-controls="header-actions"`.
+   - `aria-label="More actions"`, `aria-expanded="false"` and `aria-controls="header-actions"`, and the ⋯ button
+     comes before `id="header-actions"` in the header HTML (Tab from ⋯ enters the open menu).
 
    In the full HTML: no `aria-label="Assistant"` and no "Coming later".
 2. *Header with two versions.* Before rendering, set

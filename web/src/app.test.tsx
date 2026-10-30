@@ -51,6 +51,7 @@ describe("header", () => {
     expect(h).toContain('aria-label="More actions"');
     expect(h).toContain('aria-expanded="false"');
     expect(h).toContain('aria-controls="header-actions"');
+    expect(h.indexOf('aria-controls="header-actions"')).toBeLessThan(h.indexOf('id="header-actions"'));
     expect(html).not.toContain('aria-label="Assistant"');
     expect(html).not.toContain("Coming later");
   });

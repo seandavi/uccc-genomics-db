@@ -213,6 +213,8 @@ export function App({transport}: {transport: Transport}) {
             </select>
           </label>
         </div>
+        <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
+          aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
         <div id="header-actions" className={menuOpen ? "actions open" : "actions"}
           onKeyDown={(e) => { if (e.key === "Escape" && menuOpen) { setMenuOpen(false); moreRef.current?.focus(); } }}>
           <button type="button" className="btn-secondary" aria-expanded={panel === "share"} onClick={share}>Share</button>
@@ -222,8 +224,6 @@ export function App({transport}: {transport: Transport}) {
           <button type="button" className="btn-primary" aria-expanded={panel === "feasibility"}
             disabled={panel !== "feasibility" && (!answer || stale)} onClick={() => togglePanel("feasibility")}>Feasibility statement</button>
         </div>
-        <button type="button" ref={moreRef} className="more" aria-label="More actions" aria-expanded={menuOpen}
-          aria-controls="header-actions" onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
       </header>
       {panel === "share" && (
         <SharePanel link={window.location.href} copied={copied} cohortId={answer && !stale ? answer.r.cohort_id : null}
