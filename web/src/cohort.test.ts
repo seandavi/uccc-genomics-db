@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  DATA_ENTRIES, EMPTY, KIND_LABELS, MAX_VERSIONS, accrualPerYear, addToPopulation, barPct, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
-  feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor, yearSlots,
+  DATA_ENTRIES, EMPTY, EXAMPLES, KIND_LABELS, MAX_VERSIONS, accrualPerYear, addToPopulation, barPct, capitalise, cardLabel, comboKey, criterionLabel, dataEntries,
+  exampleLabel, feasibility, fmtCount, fmtPerYear, forScope, isEmptyDefinition, kindLabel, modesFor, newCriterion, optionText, pct, pivotAxes, populationLabel, pushVersion, readShareHash, shareHash, tierFor, yearSlots,
   type History,
 } from "./cohort.ts";
 import type { CountResult, Criterion, Definition, Option, Population } from "./types.ts";
@@ -330,5 +330,28 @@ describe("option rows and card labels", () => {
     expect(cardLabel(alt({mode: "tested_negative"}))).toBe("KRAS tested negative");
     expect(cardLabel({kind: "data", id: "c1", mode: "exclude", vendor: null, has: "both_vendors"} as Criterion)).toBe("Testing by both Caris and FMI");
     expect(cardLabel(alt({class: ["mutation"], tier: []}))).toBe("KRAS mutation");
+  });
+});
+
+describe("EXAMPLES", () => {
+  const noYears = (s: string) => s.replace(/\b(19|20)\d{2}\b/g, "");
+  test("a few uniquely named, non-empty examples with ids the server accepts", () => {
+    expect(EXAMPLES.length).toBeGreaterThanOrEqual(3);
+    expect(EXAMPLES.length).toBeLessThanOrEqual(5);
+    expect(new Set(EXAMPLES.map((d) => d.name)).size).toBe(EXAMPLES.length);
+    for (const d of EXAMPLES) {
+      expect(d.name).not.toBe("");
+      expect(isEmptyDefinition(d)).toBe(false);
+      for (const c of d.criteria) expect(c.id).toMatch(/^c[1-9]\d{0,2}$/);
+    }
+  });
+  test("names and labels hold no digit but a year", () => {
+    for (const d of EXAMPLES) {
+      expect(noYears(d.name)).not.toMatch(/\d/);
+      expect(noYears(exampleLabel(d))).not.toMatch(/\d/);
+    }
+  });
+  test("a label is the population then each criterion", () => {
+    expect(exampleLabel(EXAMPLES[0])).toBe("NSCLC + EGFR mutation");
   });
 });

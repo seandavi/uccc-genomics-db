@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { App, FeasibilityPanel, applyShareHash, SharePanel, SummaryBar, Who } from "./App.tsx";
-import { EMPTY, pushVersion, shareHash, type History } from "./cohort.ts";
+import { App, FeasibilityPanel, applyDefinition, applyShareHash, SharePanel, SummaryBar, Who } from "./App.tsx";
+import { EMPTY, EXAMPLES, pushVersion, shareHash, type History } from "./cohort.ts";
 import { TransportError, type Transport } from "./transport.ts";
-import type { ApplyResult, CountResult, Options } from "./types.ts";
+import type { ApplyResult, CountResult, Definition, Options } from "./types.ts";
 
 const render = (statement: string, copied = false) =>
   renderToStaticMarkup(<FeasibilityPanel statement={statement} copied={copied} onCopy={() => {}} onClose={() => {}} textareaRef={{current: null}} />);
@@ -38,6 +38,7 @@ describe("header", () => {
   test("one version: one primary button, no hash, History, Compare explained, no assistant", () => {
     const html = renderToStaticMarkup(<App transport={stalled} />);
     const h = headerOf(html);
+    expect(html).toContain("Start from an example");
     expect(h.match(/btn-primary/g)?.length).toBe(1);
     expect(h).toMatch(/class="btn-primary"[^>]*>Feasibility statement</);
     expect(h).not.toContain("<code");
@@ -200,5 +201,54 @@ describe("applyShareHash", () => {
     expect(src).toContain('removeEventListener("hashchange"');
     expect(src.split("applyShareHash(window.location.hash").length - 1).toBe(2);
     expect(src).not.toContain("window.location.hash.startsWith");
+  });
+});
+
+describe("applyDefinition", () => {
+  const h: History = {versions: [{n: 1, definition: EMPTY}], current: 0};
+  const example = EXAMPLES[0];
+  const normal = {...example, criteria: [{...example.criteria[0], tier: ["likely_pathogenic", "pathogenic"]}]} as Definition;
+  const fake = (result: unknown) => {
+    const calls: unknown[][] = [];
+    const apply = async (...args: unknown[]) => {
+      calls.push(args);
+      if (result instanceof Error) throw result;
+      return {definition: result} as ApplyResult;
+    };
+    return {calls, transport: {apply} as unknown as Pick<Transport, "apply">};
+  };
+
+  test("an example is version n+1 holding the server's normal form", async () => {
+    const t = fake(normal);
+    const r = await applyDefinition(example, () => h, t.transport);
+    expect(r.versions.length).toBe(2);
+    expect(r.current).toBe(1);
+    expect(r.versions[1].n).toBe(2);
+    expect(r.versions[1].definition).toEqual(normal);
+    expect(t.calls.length).toBe(1);
+    expect(t.calls[0][1]).toEqual({op: "rename", name: example.name});
+  });
+  test("a server rejection rejects and adds nothing", async () => {
+    const err = new TransportError("criteria.c1.gene: 'EGFR' is not in the vocabulary", 400);
+    await expect(applyDefinition(example, () => h, fake(err).transport)).rejects.toBe(err);
+  });
+  test("a normal form equal to the current version adds no version", async () => {
+    expect(await applyDefinition(example, () => h, fake(EMPTY).transport)).toBe(h);
+  });
+  test("an edit made during the request is kept", async () => {
+    const c = {...EMPTY, name: "c", population: {...EMPTY.population, sex: ["Male"]}};
+    const h2 = pushVersion(h, c);
+    const r = await applyDefinition(example, () => h2, fake(normal).transport);
+    expect(r.versions.map((v) => v.n)).toEqual([1, 2, 3]);
+    expect(r.versions[1].definition).toEqual(c);
+    expect(r.versions[2].definition).toEqual(normal);
+  });
+  test("App.tsx: share links and examples go through it", () => {
+    const src = readFileSync(join(import.meta.dir, "App.tsx"), "utf8");
+    const body = (start: string, end: string) => src.slice(src.indexOf(start), src.indexOf(end, src.indexOf(start)));
+    expect(body("export async function applyShareHash", "export function App")).toContain("applyDefinition(");
+    const example = body("const applyExample", "}, [transport");
+    for (const text of ["applyDefinition(", "setHist(", "refresh()", "requestAnimationFrame(jumpToAnswer)", "This example could not be used: "]) expect(example).toContain(text);
+    expect(src).toContain("onExample={applyExample}");
   });
 });

@@ -342,8 +342,14 @@ reorders the funnel.
   a year with its year window and the existing tier badge, then the
   percentage of the right denominator. Under the percentage the card names
   the denominator ("of 120 NSCLC patients tested since 2023"). With an empty
-  definition (no population values and no criteria) the percentage card and
-  the funnel are not shown. A one-line footnote under the cards names the
+  definition (no population values, no year window and no criteria) the
+  answer column is a guided start instead (#102): an intro line, four example
+  cohorts (synthetic definitions in `web/src/cohort.ts`, shown by name and
+  label with no counts), the whole-population total and a small accrual
+  sparkline. "Use →" applies an example through `/api/apply`, as a share link
+  is applied, so its counts come from the ordinary `/api/cohort` call. While an
+  example is being counted the cards show without the percentage card and the
+  funnel. A one-line footnote under the cards names the
   fields that are not in the data and says the last years are partial because
   dates are shifted (#99).
 - **How each criterion narrows the cohort** (the funnel), an attrition table

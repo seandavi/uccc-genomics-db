@@ -145,6 +145,16 @@ code { background: var(--surface); padding: .1rem .35rem; border-radius: 4px; }
 .tier-low { color: var(--low); background: var(--low-bg); }
 .loosen { border: 1px dashed var(--line); border-radius: 6px; padding: .5rem .8rem; margin-bottom: 1rem; }
 .loosen p, .loosen ul { margin: .2rem 0; }
+.start .intro { margin: 0 0 var(--s5); max-width: 65ch; }
+.examples { list-style: none; padding: 0; margin: var(--s2) 0 var(--s5); display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--s3); }
+.example { display: flex; flex-direction: column; gap: var(--s2); }
+.example h4 { margin: 0; font-size: var(--fs-md); line-height: var(--lh-md); }
+.example button { align-self: flex-end; margin-top: auto; }
+.start .total { color: var(--muted); margin: 0 0 var(--s2); }
+.spark { max-width: 16rem; }
+.spark-bars { display: flex; align-items: flex-end; gap: 2px; height: 2rem; }
+.spark .vbar { flex: 1; }
+.spark .vbar.partial:not(.hatched) { background: var(--bar-partial); }
 .suppressed { font-style: italic; color: var(--muted); }
 
 .funnel { list-style: none; padding: 0; margin: 0 0 .5rem; display: grid; gap: .35rem; }

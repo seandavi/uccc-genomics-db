@@ -51,6 +51,18 @@ export function isEmptyDefinition(d: Definition): boolean {
   return d.criteria.length === 0 && d.population.years == null && POP_DIMS.every((k) => d.population[k].length === 0);
 }
 
+/** Synthetic example cohorts for the guided start: generic public terms, shown by name and label only (no counts). */
+export const EXAMPLES: Definition[] = [
+  {...EMPTY, name: "EGFR-mutant lung cancer", population: {...EMPTY.population, oncotree: ["NSCLC"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "alteration", gene: ["EGFR"], aa: [], class: ["mutation"], tier: []}]},
+  {...EMPTY, name: "KRAS-mutant pancreatic cancer", population: {...EMPTY.population, oncotree: ["PAAD"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "alteration", gene: ["KRAS"], aa: [], class: ["mutation"], tier: []}]},
+  {...EMPTY, name: "MSI-high colorectal cancer", population: {...EMPTY.population, oncotree: ["COADREAD"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "biomarker", name: "MSI", call: ["high"], at_least: null}]},
+  {...EMPTY, name: "BRAF-mutant melanoma", population: {...EMPTY.population, oncotree: ["MEL"]},
+   criteria: [{id: "c1", mode: "include", vendor: null, kind: "alteration", gene: ["BRAF"], aa: [], class: ["mutation"], tier: []}]},
+];
+
 /** Bar length in percent of `max` (the largest shown count, 0 if none is shown). A suppressed count is
  *  drawn as if it were `minCell`, so it is never longer than a shown bar of `minCell` or more; 0 is no
  *  bar. With nothing shown there is no scale, so a suppressed bar is the 2% stub. */
@@ -134,6 +146,10 @@ const vendorSuffix = (c: Criterion | Leaf | SeqMember): string => "vendor" in c 
 
 /** What the criterion matches, without the mode word ("no", "tested negative"): the funnel row supplies its own prefix. */
 export const criterionBody = (c: Criterion | Leaf | SeqMember): string => baseLabel(c) + vendorSuffix(c);
+
+/** An example card's second line: its population, then each criterion, e.g. "NSCLC + EGFR mutation". */
+export const exampleLabel = (d: Definition): string =>
+  [populationLabel(d.population), ...d.criteria.map(criterionLabel)].join(" + ");
 
 function baseLabel(c: Criterion | Leaf | SeqMember): string {
   switch (c.kind) {

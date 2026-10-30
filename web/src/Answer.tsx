@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   BREAKDOWN_DIMS, accrualPerYear, barPct, criterionBody, criterionLabel, fmtCount, fmtPerYear, isEmptyDefinition, pct, pivotAxes, populationLabel, tierFor, yearSlots,
 } from "./cohort.ts";
+import { Start } from "./Start.tsx";
 import type { BreakdownDim, CountResult, Definition, Operation, Options, PivotResult } from "./types.ts";
 
 export const TABS = ["Accrual", "Breakdown", "Pivot", "Data notes"] as const;
@@ -282,9 +283,10 @@ export interface AnswerProps {
   busy?: boolean;
   error?: string | null;            // count/pivot failure: shown with a Retry button
   editError?: string | null;        // an edit made from this column failed
+  onExample?: (d: Definition) => void;   // the guided start's "Use →"
 }
 
-export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, busy = false, error = null, editError = null}: AnswerProps) {
+export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, busy = false, error = null, editError = null, onExample}: AnswerProps) {
   const onKey = (e: KeyboardEvent) => {
     const i = TABS.indexOf(tab);
     const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : -1;
@@ -299,7 +301,10 @@ export function Answer({definition, answer, options, tab, onTab, onOp, onRetry, 
       <h2 id="answer-h" tabIndex={-1}>{definition.name.trim() || "Your cohort"}</h2>
       {editError && <p role="alert" className="error">{editError}</p>}
       {error && <p role="alert" className="error">{error}{onRetry && <> <button type="button" onClick={onRetry}>Retry</button></>}</p>}
-      {!answer ? <p>{busy ? "Counting…" : "No result yet."}</p> : (() => {
+      {isEmptyDefinition(definition)
+        ? <Start total={answer && answer.d === definition ? answer.r : null} busy={busy}
+            minCell={options?.min_cell ?? 5} onExample={onExample ?? (() => {})} />
+        : !answer ? <p>{busy ? "Counting…" : "No result yet."}</p> : (() => {
         const {d: counted, r, p: pivot} = answer;
         return (
           <div className={busy ? "answer-body dim" : "answer-body"}>
