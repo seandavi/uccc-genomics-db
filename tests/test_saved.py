@@ -19,8 +19,8 @@ from alembic.config import Config
 from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.testclient import TestClient
 
-from test_app import MCP_HEADERS, ids, mart_file, walk  # noqa: F401  (fixtures)
-from uccc_genomics_mcp import app, authen, cohort, saved
+from test_app import MCP_HEADERS, accepted_yes, ids, mart_file, walk  # noqa: F401  (fixtures)
+from uccc_genomics_mcp import app, authen, cohort, saved, terms
 
 REPO = Path(__file__).resolve().parent.parent
 A, B = "a@x.edu", "b@x.edu"
@@ -64,8 +64,9 @@ def sql(statement, **params):
 @pytest.fixture
 def clean(pg_url, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", pg_url)
+    monkeypatch.setattr(terms, "_accepted", set())
     sql("TRUNCATE release_patient, release, review, request, irb_personnel, irb_document, irb_authorization, "
-        "snapshot, cohort_revision, cohort, cohort_version")
+        "snapshot, cohort_revision, cohort, cohort_version, terms_acceptance")
     return pg_url
 
 
@@ -78,6 +79,7 @@ def sclient(ids, clean, monkeypatch):
         except KeyError:
             raise PermissionError("no test user") from None
     monkeypatch.setattr(authen, "user", fake)
+    monkeypatch.setattr(terms, "accepted", accepted_yes)
     with TestClient(app.app()) as c:
         c.ids = ids
         yield c

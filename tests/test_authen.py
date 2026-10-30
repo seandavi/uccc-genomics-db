@@ -20,8 +20,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from test_app import GATED, MCP_HEADERS, ids, mart_file  # noqa: F401  (fixtures)
-from uccc_genomics_mcp import app, authen
+from test_app import GATED, MCP_HEADERS, accepted_yes, ids, mart_file  # noqa: F401  (fixtures)
+from uccc_genomics_mcp import app, authen, terms
 
 ISS = "https://id.example.test/application/o/uccc-genomics/"
 CLIENT_ID, CLIENT_SECRET, GROUP = "uccc-genomics", "synthetic-client-secret", "uccc-genomics-dashboard"
@@ -101,6 +101,7 @@ def issuer(ids, monkeypatch):   # noqa: F811
     monkeypatch.setattr(urllib.request, "urlopen", fake.urlopen)
     monkeypatch.setattr(authen, "AUTH", dict(authen.AUTH))
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(terms, "accepted", accepted_yes)   # authentik without a database: the gate would answer 503
     for k, v in {"AUTHENTIK_ISSUER": ISS, "AUTHENTIK_CLIENT_ID": CLIENT_ID, "AUTHENTIK_CLIENT_SECRET": CLIENT_SECRET,
                  "APP_BASE_URL": "http://testserver", "SESSION_SECRET": SESSION_SECRET}.items():
         monkeypatch.setenv(k, v)

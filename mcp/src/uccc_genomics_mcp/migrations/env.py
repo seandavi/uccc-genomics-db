@@ -4,7 +4,7 @@ import asyncio
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from uccc_genomics_mcp import broker  # noqa: F401  registers the broker tables on saved.metadata
+from uccc_genomics_mcp import broker, terms  # noqa: F401  registers the broker and terms tables on saved.metadata
 from uccc_genomics_mcp import saved
 
 

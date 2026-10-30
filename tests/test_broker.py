@@ -12,10 +12,10 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 
-from test_app import MCP_HEADERS, ids, mart_file, walk  # noqa: F401  (fixtures)
+from test_app import MCP_HEADERS, accepted_yes, ids, mart_file, walk  # noqa: F401  (fixtures)
 from test_saved import A, B, COUNTED, START, Mcp, Rest, clean, ok, pg_url, sql  # noqa: F401
 from uccc_genomics.deid import DROP
-from uccc_genomics_mcp import app, authen
+from uccc_genomics_mcp import app, authen, terms
 
 BROKER = "broker@x.edu"
 SHA = "0" * 64
@@ -33,6 +33,7 @@ def bclient(ids, clean, monkeypatch):
             raise PermissionError("no test user") from None
         return authen.User(h, h, request.headers.get("x-test-broker") == "1")
     monkeypatch.setattr(authen, "user", fake)
+    monkeypatch.setattr(terms, "accepted", accepted_yes)
     with TestClient(app.app()) as c:
         yield c
 

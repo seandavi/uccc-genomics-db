@@ -18,12 +18,17 @@ from mcp.server.mcpserver.exceptions import ToolError
 from starlette.testclient import TestClient
 
 from test_cohort import Mart, build_mart, use_mart, write_mart
-from uccc_genomics_mcp import app, authen, public, server
+from uccc_genomics_mcp import app, authen, public, server, terms
 from uccc_genomics_mcp.cohort.vocabulary import FIELDS
 
 ROOT = Path(__file__).resolve().parent.parent
 AUTH = ("sean", "s3cret")
 MCP_HEADERS = {"accept": "application/json, text/event-stream"}
+
+
+async def accepted_yes(sub):
+    """Stands in for terms.accepted in tests that are not about the portal terms gate (#131)."""
+    return True
 
 
 @pytest.fixture(scope="module")
@@ -376,6 +381,7 @@ def test_access_backend(client, monkeypatch, capsys):
         def get_signing_key_from_jwt(self, token):
             return type("K", (), {"key": key.public_key()})
 
+    monkeypatch.setattr(terms, "accepted", accepted_yes)   # access without a database: the gate would answer 503
     monkeypatch.setitem(authen.AUTH, "mode", "access")
     monkeypatch.setitem(authen.AUTH, "team", "team")
     monkeypatch.setitem(authen.AUTH, "aud", "aud-tag")
