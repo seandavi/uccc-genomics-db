@@ -35,6 +35,10 @@ services:
       - "traefik.http.routers.uccc-genomics.entrypoints=websecure"
       - "traefik.http.routers.uccc-genomics.tls=true"
       - "traefik.http.routers.uccc-genomics.tls.certresolver=cloudflare"   # grey cloud: LE via TLS-ALPN-01
+      # Per-IP limit on the open routes (/api/public/summary, /auth/*, /, /assets/*; spec 41). Grey cloud: the remote address is the client.
+      - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.average=20"
+      - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.burst=50"
+      - "traefik.http.routers.uccc-genomics.middlewares=uccc-genomics-rl"
       - "traefik.http.services.uccc-genomics.loadbalancer.server.port=8092"
     healthcheck:
       test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(b'Healthy' not in urllib.request.urlopen('http://127.0.0.1:8092/api/health', timeout=5).read())"]

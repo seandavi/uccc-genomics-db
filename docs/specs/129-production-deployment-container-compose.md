@@ -134,13 +134,13 @@ services:
     pull_policy: never                 # built on this host; never look for it on a registry
     container_name: uccc_genomics_app  # genomics.service restarts it by this name after the nightly rebuild
     restart: unless-stopped
-    user: "${APP_UID:?set APP_UID in deploy/.env}:${APP_GID:?set APP_GID in deploy/.env}"   # owner of $DATA/.db_key (mode 600)
+    user: "${APP_UID:?set APP_UID in deploy/.env}:${APP_GID:?set APP_GID in deploy/.env}"   # owner of the host data dir's .db_key (mode 600)
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     networks: [proxy, pg_main_stack_default]
     volumes:
-      # Only the de-id file and its key, read-only. Never $DATA itself: it holds the PHI file, its key,
-      # .deid_key and raw/. A file mount keeps the old inode after deid's rename, hence the nightly restart.
+      # Only the de-id file and its key, read-only. Never the whole data dir: it holds the identified file, its key,
+      # the de-id hashing key and the raw mirror. A file mount keeps the old inode after deid's rename, hence the nightly restart.
       # Long syntax: a missing source fails the start instead of becoming an empty directory.
       - {type: bind, source: "${HOST_DATA:?set HOST_DATA in deploy/.env}/genomics.duckdb", target: /data/genomics.duckdb, read_only: true}
       - {type: bind, source: "${HOST_DATA:?set HOST_DATA in deploy/.env}/.db_key", target: /data/.db_key, read_only: true}
@@ -161,6 +161,10 @@ services:
       - "traefik.http.routers.uccc-genomics.entrypoints=websecure"
       - "traefik.http.routers.uccc-genomics.tls=true"
       - "traefik.http.routers.uccc-genomics.tls.certresolver=cloudflare"   # grey cloud: LE via TLS-ALPN-01
+      # Per-IP limit on the open routes (/api/public/summary, /auth/*, /, /assets/*; spec 41). Grey cloud: the remote address is the client.
+      - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.average=20"
+      - "traefik.http.middlewares.uccc-genomics-rl.ratelimit.burst=50"
+      - "traefik.http.routers.uccc-genomics.middlewares=uccc-genomics-rl"
       - "traefik.http.services.uccc-genomics.loadbalancer.server.port=8092"
     healthcheck:
       test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(b'Healthy' not in urllib.request.urlopen('http://127.0.0.1:8092/api/health', timeout=5).read())"]
@@ -177,6 +181,11 @@ networks:
   pg_main_stack_default: {external: true}
 ```
 
+- The comments avoid `$DATA` and the names `.deid_key`/`raw/`: compose interpolates `$` in unquoted
+  `.env` values (an unset-variable warning), and `test_compose_mounts_only_the_deid_file_and_its_key_read_only`
+  bans `deid_key` and `/raw` anywhere in `compose.yaml`.
+- The rate-limit middleware (average 20/s, burst 50 per remote address) answers spec 41's follow-up
+  "add a per-IP limit at Traefik when production hosting lands" for the open routes.
 - No `ports:`: the app is reachable only on the two docker networks, by Traefik and other members.
 - No `env_file:`: only the variables listed reach the container, and `docker compose config`
   works in CI with `--env-file deploy/.env.example`.
@@ -193,9 +202,9 @@ Placeholders only:
 # Copy to deploy/.env (umask 077) and fill in; README "Production (container)" fills the secrets from GSM.
 APP_TAG=<short git sha of the built image>
 APP_HOST=<public hostname>
-APP_UID=<uid owning $DATA/.db_key: stat -c %u>
-APP_GID=<gid owning $DATA/.db_key: stat -c %g>
-HOST_DATA=<the host's $DATA, e.g. /data/<user>/genomics>
+APP_UID=<uid owning HOST_DATA/.db_key: stat -c %u>
+APP_GID=<gid owning HOST_DATA/.db_key: stat -c %g>
+HOST_DATA=<the host data dir, e.g. /data/<user>/genomics>
 AUTHENTIK_ISSUER=https://<authentik-host>/application/o/uccc-genomics/
 AUTHENTIK_CLIENT_ID=uccc-genomics
 AUTHENTIK_CLIENT_SECRET=<from GSM uccc-genomics-authentik-client-secret>
@@ -252,7 +261,8 @@ check=True, capture_output=True, text=True)`; the compose tests carry
   targets `/data/genomics.duckdb` and `/data/.db_key`; and the compose file's text contains none of
   `genomics_phi`, `db_key_phi`, `deid_key`, `/raw`.
 - `test_compose_routes_no_mcp_and_publishes_no_port`: no `ports` key; the router rule label contains
-  ``!PathPrefix(`/mcp`)``; `tls.certresolver` is `cloudflare`.
+  ``!PathPrefix(`/mcp`)``; `tls.certresolver` is `cloudflare`; the router's `middlewares` label names
+  `uccc-genomics-rl`, whose `ratelimit.average` and `ratelimit.burst` labels are set.
 - `test_compose_uses_https_base_url_and_authentik_env`: `environment["APP_BASE_URL"]` starts with
   `https://`; `SESSION_SECRET`, `AUTHENTIK_CLIENT_SECRET`, `DATABASE_URL` present; no `env_file`.
 - `test_dockerignore_is_an_allowlist` (no docker needed, no skip): the first non-comment line of `.dockerignore` is `*`,
