@@ -15,9 +15,11 @@ import base64
 import getpass
 import hashlib
 import hmac
+import html
 import json
 import os
 import secrets
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -37,6 +39,18 @@ LOGIN_SECONDS = 600
 LEEWAY_SECONDS = 60   # provider clock skew on iat/exp; the provider runs on another host
 OPEN_PATHS = ("/auth/login", "/auth/callback", "/auth/logout")   # open under authentik only
 DEFAULT_GROUP = "uccc-genomics-dashboard"
+PROVIDER_RETRY_SECONDS = 30   # at most one discovery or JWKS fetch per this long (#107)
+ACCESS_HELP = ("Access is limited to members of the {group} group; "
+               "ask the UCCC genomics team to be added.")
+UNREACHABLE = "The identity provider is not reachable; try again."
+
+
+class NotInGroup(PermissionError):
+    """The token is good but the caller is not in AUTH["group"]."""
+
+
+class ProviderUnavailable(PermissionError):
+    """Discovery or the JWKS could not be fetched (or failed under PROVIDER_RETRY_SECONDS ago)."""
 
 
 @dataclass(frozen=True)
@@ -47,7 +61,7 @@ class User:
 
 AUTH = {"mode": "none", "team": None, "aud": None, "jwks": None, "user": None, "hash": None,
         "issuer": None, "client_id": None, "client_secret": None, "base_url": None,
-        "session_secret": None, "group": None, "oidc": None}
+        "session_secret": None, "group": None, "oidc": None, "oidc_failed_at": None}
 
 
 def configure(mode: str) -> None:
@@ -78,13 +92,17 @@ def configure(mode: str) -> None:
             raise SystemExit(f"--auth authentik needs {', '.join(bad)} (in .env)")
         AUTH.update(issuer=issuer, client_id=env("AUTHENTIK_CLIENT_ID"), client_secret=env("AUTHENTIK_CLIENT_SECRET"),
                     base_url=base.rstrip("/"), session_secret=env("SESSION_SECRET"),
-                    group=env("AUTHENTIK_GROUP") or DEFAULT_GROUP, oidc=None, jwks=None)
+                    group=env("AUTHENTIK_GROUP") or DEFAULT_GROUP, oidc=None, jwks=None, oidc_failed_at=None)
     AUTH["mode"] = mode
 
 
 def challenge() -> dict:
-    """Headers for a 401, so a browser shows its login prompt under the password backend."""
-    return {"WWW-Authenticate": 'Basic realm="uccc-genomics"'} if AUTH["mode"] == "password" else {}
+    """Headers for a 401: the Basic login prompt under password, a Bearer challenge (RFC 6750) under authentik."""
+    if AUTH["mode"] == "password":
+        return {"WWW-Authenticate": 'Basic realm="uccc-genomics"'}
+    if AUTH["mode"] == "authentik":
+        return {"WWW-Authenticate": 'Bearer realm="uccc-genomics"'}
+    return {}
 
 
 def login_path() -> str | None:
@@ -115,7 +133,7 @@ def hash_password(password: str) -> str:
 
 
 def _scrypt(password: str, salt: bytes) -> bytes:
-    # ponytail: ~50 ms per request at these settings; fine for one local user, gone with Zitadel.
+    # ponytail: ~50 ms per request at these settings; fine for one local user (password is a development stand-in).
     return hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
 
 
@@ -163,22 +181,59 @@ def _post_form(url: str, form: dict[str, str]) -> dict:
         return json.load(r)
 
 
+class _JWKS(jwt.PyJWKClient):
+    """PyJWKClient that fetches the key set at most once per PROVIDER_RETRY_SECONDS, whatever asks
+    (an unknown kid, a retry after a failed fetch), so unauthenticated Bearer tokens can't make the
+    server hammer the provider (#107). Lookups take a lock, so a burst waits for one fetch."""
+
+    def __init__(self, uri: str) -> None:
+        super().__init__(uri, timeout=10)
+        self.fetched_at, self.failed = float("-inf"), False
+        self._lock = threading.Lock()
+
+    def get_signing_key(self, kid: str) -> jwt.PyJWK:
+        with self._lock:
+            return super().get_signing_key(kid)
+
+    def fetch_data(self):
+        if time.monotonic() - self.fetched_at < PROVIDER_RETRY_SECONDS:
+            if self.failed:
+                raise jwt.PyJWKClientConnectionError("identity provider unavailable")
+            raise jwt.PyJWKClientError("unknown signing key")
+        self.fetched_at, self.failed = time.monotonic(), True
+        data = super().fetch_data()
+        self.failed = False
+        return data
+
+
+_OIDC_LOCK = threading.Lock()
+
+
 def _oidc() -> dict:
-    """The provider's discovery document, fetched on first use (an outage doesn't stop the app starting)."""
-    if AUTH["oidc"] is None:
-        doc = _get_json(AUTH["issuer"] + ".well-known/openid-configuration")
-        if doc.get("issuer") != AUTH["issuer"] or not all(
-                k in doc for k in ("authorization_endpoint", "token_endpoint", "jwks_uri")):
-            raise RuntimeError("identity provider misconfigured")
-        AUTH["jwks"] = jwt.PyJWKClient(doc["jwks_uri"], timeout=10)
-        AUTH["oidc"] = doc
-    return AUTH["oidc"]
+    """The provider's discovery document, fetched on first use (an outage doesn't stop the app starting).
+    A failed fetch is retried at most once per PROVIDER_RETRY_SECONDS; meanwhile callers get RuntimeError."""
+    with _OIDC_LOCK:   # one discovery at a time; the others wait for its answer
+        if AUTH["oidc"] is None:
+            failed = AUTH["oidc_failed_at"]
+            if failed is not None and time.monotonic() - failed < PROVIDER_RETRY_SECONDS:
+                raise RuntimeError("identity provider unavailable")
+            try:
+                doc = _get_json(AUTH["issuer"] + ".well-known/openid-configuration")
+                if doc.get("issuer") != AUTH["issuer"] or not all(
+                        k in doc for k in ("authorization_endpoint", "token_endpoint", "jwks_uri")):
+                    raise RuntimeError("identity provider misconfigured")
+            except Exception:
+                AUTH["oidc_failed_at"] = time.monotonic()
+                raise
+            AUTH["jwks"] = _JWKS(doc["jwks_uri"])
+            AUTH["oidc"] = doc
+        return AUTH["oidc"]
 
 
 def _require_group(claims: dict) -> None:
     groups = claims.get("groups")
     if not (isinstance(groups, list) and AUTH["group"] in groups):
-        raise PermissionError("not in the required group")
+        raise NotInGroup("not in the required group")
 
 
 def _verify(token: str, nonce: str | None) -> dict:
@@ -188,10 +243,12 @@ def _verify(token: str, nonce: str | None) -> dict:
         key = AUTH["jwks"].get_signing_key_from_jwt(token).key
         claims = jwt.decode(token, key, algorithms=["RS256"], audience=AUTH["client_id"], issuer=AUTH["issuer"],
                             leeway=LEEWAY_SECONDS, options={"require": ["exp", "iat", "sub"]})
+    except jwt.PyJWKClientConnectionError:   # before PyJWTError: it is a subclass
+        raise ProviderUnavailable("identity provider unavailable") from None
     except jwt.PyJWTError as e:
         raise PermissionError(str(e)) from None
-    except (OSError, ValueError, RuntimeError, KeyError):   # discovery failed or was malformed
-        raise PermissionError("identity provider unavailable") from None
+    except (OSError, ValueError, RuntimeError, KeyError):   # discovery failed, was malformed, or is backing off
+        raise ProviderUnavailable("identity provider unavailable") from None
     if nonce is not None:
         got = claims.get("nonce")
         if not (isinstance(got, str) and hmac.compare_digest(got, nonce)):
@@ -242,15 +299,21 @@ def _authentik(request: Request) -> User:
     return User(s["sub"], s["email"])
 
 
-_PAGE = ('<!doctype html><meta charset="utf-8"><title>UCCC genomics</title><p>{}</p>'
-         '<p><a href="/auth/login">Sign in</a></p>')
+_HEAD = ('<!doctype html><html lang="en"><meta charset="utf-8">'
+         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+         '<title>UCCC genomics</title><h1>UCCC genomics</h1>')
+_PAGE = _HEAD + '<p>{}</p><p><a href="/auth/login">Sign in</a></p>'
+
+
+def _access_help() -> str:
+    return ACCESS_HELP.format(group=html.escape(AUTH["group"]))
 
 
 def signin_page() -> Response:
     """For a signed-out browser navigation: an HTML page that goes to sign-in carrying the whole
     address, `#fragment` included (a server redirect never sees it, so a `#d=` share link would be lost)."""
     return HTMLResponse(
-        '<!doctype html><meta charset="utf-8"><title>UCCC genomics</title><p>Signing in&hellip;</p>'
+        _HEAD + '<p>Signing in&hellip;</p>'
         '<p><a href="/auth/login">Sign in</a></p>'
         '<script>location.replace("/auth/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash))</script>',
         status_code=401)
@@ -267,7 +330,7 @@ def login(request: Request) -> Response:
     try:
         oidc = _oidc()
     except (OSError, ValueError, RuntimeError, KeyError):
-        return HTMLResponse(_PAGE.format("The identity provider is not reachable."), status_code=502)
+        return HTMLResponse(_PAGE.format(UNREACHABLE), status_code=502)
     state, nonce, verifier = (secrets.token_urlsafe(n) for n in (32, 32, 48))
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     r = RedirectResponse(oidc["authorization_endpoint"] + "?" + urllib.parse.urlencode({
@@ -284,13 +347,13 @@ def callback(request: Request) -> Response:
     """GET /auth/callback: exchange the code, check the ID token and the group, set the session cookie."""
     q = request.query_params
     if "error" in q:   # Authentik refuses non-members before it issues a code
-        return _refuse(403, "Sign-in was refused.")
+        return _refuse(403, "Sign-in was refused. " + _access_help())
     try:
         login_claims = _unsign(request.cookies.get(LOGIN_COOKIE, ""), LOGIN_AUD)
     except jwt.PyJWTError:
         login_claims = None
     if (login_claims is None or not q.get("code") or not q.get("state")
-            or not hmac.compare_digest(q["state"], login_claims["state"])):
+            or not hmac.compare_digest(q["state"].encode(), login_claims["state"].encode())):
         return _refuse(400, "Sign-in expired or was started elsewhere; try again.")
     try:
         answer = _post_form(_oidc()["token_endpoint"], {
@@ -302,8 +365,12 @@ def callback(request: Request) -> Response:
         return _refuse(502, "Sign-in failed at the identity provider.")
     try:
         claims = _verify(id_token, login_claims["nonce"])
+    except NotInGroup:
+        return _refuse(403, "You don't have access to this app. " + _access_help())
+    except ProviderUnavailable:
+        return _refuse(502, UNREACHABLE)
     except PermissionError:
-        return _refuse(403, "You don't have access to this app.")
+        return _refuse(403, "Sign-in failed; try again.")
     r = RedirectResponse(login_claims["next"], status_code=303)
     _cookie(r, SESSION_COOKIE, _sign({"sub": claims["sub"], "email": _display(claims)}, SESSION_AUD,
                                      SESSION_HOURS * 3600), SESSION_HOURS * 3600, "/")
